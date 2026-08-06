@@ -30,7 +30,7 @@
             font-family: 'Barlow', sans-serif; font-weight: 800;
             font-size: .85rem; color: #fff; letter-spacing: .5px; line-height: 1.1;
         }
-        .sidebar-brand-text .sub { font-size: .65rem; color: rgba(255,255,255,.6); }
+        .sidebar-brand-text .sub { font-size: .65rem; color: rgba(255,255,255,.6); letter-spacing: .5px; }
         .sidebar-nav { flex: 1; padding: 18px 0; }
         .sidebar-nav a {
             display: block; padding: 10px 20px; font-size: .82rem; font-weight: 500;
@@ -156,6 +156,12 @@
     <nav class="sidebar-nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>
         <a href="{{ route('incident') }}">Incidents</a>
+        <a href="{{ route('sos-alerts') }}">
+            <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
+            @if(($pendingSosCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('mapview') }}">Map View</a>
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}" class="active">Evacuation Centers</a>
@@ -197,8 +203,6 @@
                     <tr>
                         <th>Center Name</th>
                         <th>Barangay</th>
-                        <th>Capacity</th>
-                        <th>Current Occupancy</th>
                         <th>Distance from HQ</th>
                         <th>Status</th>
                         <th>Action</th>
@@ -207,8 +211,6 @@
                 <tbody>
                     @forelse($centers as $c)
                     @php
-                        $pct   = $c->occupancy_percent;
-                        $fill  = $pct >= 80 ? 'occ-high' : ($pct >= 50 ? 'occ-mid' : 'occ-low');
                         $badge = 'badge-' . $c->status;
                         $label = ucfirst($c->status);
                         $dist  = $c->distance_from_hq;
@@ -216,15 +218,7 @@
                     <tr>
                         <td class="td-name">{{ $c->name }}</td>
                         <td>{{ $c->barangay }}</td>
-                        <td>{{ $c->capacity }}</td>
                         <td>
-                            <div class="occ-wrap">
-                                <span>{{ $c->occupancy }}</span>
-                                <div class="occ-bar">
-                                    <div class="occ-fill {{ $fill }}" style="width:{{ $pct }}%"></div>
-                                </div>
-                                <span style="font-size:.72rem;color:#9ca3af;">{{ $pct }}%</span>
-                            </div>
                         </td>
                         <td>{{ $dist !== null ? $dist . 'km' : '—' }}</td>
                         <td><span class="{{ $badge }}">{{ $label }}</span></td>
@@ -290,10 +284,6 @@
                             </div>
                         </div>
 
-                        <div class="col-6">
-                            <label class="form-label-m">Capacity</label>
-                            <input type="number" name="capacity" class="form-control-m" placeholder="500" min="1" required>
-                        </div>
                         <div class="col-6">
                             <label class="form-label-m">Status</label>
                             <select name="status" class="form-control-m" required>
@@ -366,5 +356,6 @@
         }
     });
 </script>
+@include('partials.sos-alert-overlay')
 </body>
 </html>

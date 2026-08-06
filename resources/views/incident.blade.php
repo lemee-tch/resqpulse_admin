@@ -21,9 +21,24 @@
             padding: 18px 16px 16px; border-bottom: 1px solid rgba(255,255,255,.12);
         }
         .sidebar-brand img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,.3); }
-        .sidebar-brand-text .title { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: .85rem; color: #fff; letter-spacing: .5px; line-height: 1.1; }
-        .sidebar-brand-text .sub { font-size: .65rem; color: rgba(255,255,255,.6); }
-        .sidebar-nav { flex: 1; padding: 18px 0; }
+
+        .sidebar-brand-text .title {
+            font-family: 'Barlow', sans-serif;
+            font-weight: 800; 
+            font-size: .85rem;
+            color: #fff; 
+            letter-spacing: .5px;
+            line-height: 1.1;
+            }
+        .sidebar-brand-text .sub { 
+            font-size: .65rem; 
+            color: rgba(255,255,255,.6);
+            letter-spacing: .5px;
+         }
+        .sidebar-nav { 
+            flex: 1; 
+            padding: 18px 0; 
+        }
         .sidebar-nav a { display: block; padding: 10px 20px; font-size: .82rem; font-weight: 500; color: rgba(255,255,255,.75); text-decoration: none; border-left: 3px solid transparent; transition: all .2s; }
         .sidebar-nav a:hover { color: #fff; background: rgba(255,255,255,.08); }
         .sidebar-nav a.active { color: #fff; font-weight: 700; border-left-color: #fff; background: rgba(255,255,255,.1); }
@@ -108,6 +123,12 @@
     <nav class="sidebar-nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>
         <a href="{{ route('incident') }}" class="active">Incidents</a>
+        <a href="{{ route('sos-alerts') }}">
+            <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
+            @if(($pendingSosCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('mapview') }}">Map View</a>
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
@@ -201,6 +222,7 @@
                         $priorityVal   = $inc->priority ?? 'unset';
                         $priorityClass = $inc->priority ? 'priority-'.$inc->priority : 'priority-unset';
                         $priorityLabel = $inc->priority ? ucfirst($inc->priority) : 'Not Set';
+                        $isResolved    = $inc->status === 'resolved';
                         $statusBadge   = match($inc->status) {
                             'responding'   => 'badge-responding',
                             'resolved'     => 'badge-resolved',
@@ -232,24 +254,36 @@
                     >
                         <td class="td-id">#{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }}</td>
 
-                        {{-- Inline priority dropdown (click shouldn't navigate) --}}
+                        {{-- Priority: editable dropdown normally, but once an incident
+                             is resolved it's just shown as plain text — no dropdown,
+                             no icon, nothing to click. --}}
                         <td onclick="event.stopPropagation()">
-                            <form method="POST" action="{{ route('incident.priority', $inc->id) }}">
-                                @csrf @method('PATCH')
-                                <select class="inline-select {{ $priorityClass }}"
-                                        name="priority"
-                                        onchange="this.form.submit()"
-                                        title="Set priority">
-                                    <option value="" {{ !$inc->priority ? 'selected' : '' }} disabled>Not Set</option>
-                                    <option value="critical" {{ $inc->priority === 'critical' ? 'selected' : '' }}>Critical</option>
-                                    <option value="high"     {{ $inc->priority === 'high'     ? 'selected' : '' }}>High</option>
-                                    <option value="low"      {{ $inc->priority === 'low'      ? 'selected' : '' }}>Low</option>
-                                </select>
-                            </form>
+                            @if($isResolved)
+                                <span class="{{ $priorityClass }}">{{ $priorityLabel }}</span>
+                            @else
+                                <form method="POST" action="{{ route('incident.priority', $inc->id) }}">
+                                    @csrf @method('PATCH')
+                                    <select class="inline-select {{ $priorityClass }}"
+                                            name="priority"
+                                            onchange="this.form.submit()"
+                                            title="Set priority">
+                                        <option value="" {{ !$inc->priority ? 'selected' : '' }} disabled>Not Set</option>
+                                        <option value="critical" {{ $inc->priority === 'critical' ? 'selected' : '' }}>Critical</option>
+                                        <option value="high"     {{ $inc->priority === 'high'     ? 'selected' : '' }}>High</option>
+                                        <option value="low"      {{ $inc->priority === 'low'      ? 'selected' : '' }}>Low</option>
+                                    </select>
+                                </form>
+                            @endif
                         </td>
 
-                        <td>{{ $inc->emergency_type }}</td>
-                        <td>{{ $inc->location }}</td>
+                        <td>
+                            {{ $inc->emergency_type }}
+                            @if($inc->ai_detected_type)
+                                <div style="font-size:.68rem;color:#4338ca;font-weight:600;margin-top:2px;">
+                                    <i class="bi bi-stars"></i> AI: {{ $inc->ai_detected_type }}
+                                </div>
+                            @endif
+                        </td>                        <td>{{ $inc->location }}</td>
                         <td>{{ $reporterName }}</td>
                         <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ $inc->description }}">
                             {{ $inc->description }}
@@ -377,5 +411,6 @@
     applyFilters();
 })();
 </script>
+@include('partials.sos-alert-overlay')
 </body>
 </html>

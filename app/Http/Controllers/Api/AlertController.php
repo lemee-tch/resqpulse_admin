@@ -8,9 +8,17 @@ use Illuminate\Http\Request;
 
 class AlertController extends Controller
 {
+    /**
+     * Citizens should only see broadcasts targeted at 'Citizens' or
+     * 'Both' — not the ones sent to responders only.
+     */
     public function index()
     {
-        return response()->json(Alert::orderByDesc('created_at')->get());
+        return response()->json(
+            Alert::whereIn('type', ['Citizens', 'Both'])
+                ->orderByDesc('created_at')
+                ->get()
+        );
     }
 
     public function updateToken(Request $request)

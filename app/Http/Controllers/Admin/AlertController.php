@@ -21,7 +21,7 @@ class AlertController extends Controller
             'title'    => ['required', 'string', 'max:255'],
             'subtitle' => ['nullable', 'string', 'max:255'],
             'body'     => ['required', 'string'],
-            'type'     => ['required', 'in:Alerts,Updates'],
+            'type'     => ['required', 'in:Citizens,Responders,Both'],
         ]);
 
         $alert = Alert::create([
@@ -32,8 +32,22 @@ class AlertController extends Controller
             'user_id'  => auth()->id(),
         ]);
 
-        $push->broadcastToAllCitizens($alert->title, $alert->body);
+        $audience = $request->type;
 
-        return back()->with('success', 'Broadcast sent to all citizens.');
+        if (in_array($audience, ['Citizens', 'Both'], true)) {
+            $push->broadcastToAllCitizens($alert->title, $alert->body);
+        }
+
+        if (in_array($audience, ['Responders', 'Both'], true)) {
+            $push->broadcastToAllResponders($alert->title, $alert->body);
+        }
+
+        $label = match ($audience) {
+            'Both'       => 'citizens and responders',
+            'Responders' => 'responders',
+            default      => 'citizens',
+        };
+
+        return back()->with('success', "Broadcast sent to {$label}.");
     }
 }

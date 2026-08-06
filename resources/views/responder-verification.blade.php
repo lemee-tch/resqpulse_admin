@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RESQPULSE – Citizen Verification</title>
+    <title>RESQPULSE – Responder Verification</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
@@ -85,6 +84,11 @@
         .td-name { font-weight: 600; color: #111827; }
         .td-sub { font-size: .76rem; color: #9ca3af; }
 
+        .agency-badge {
+            font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+            background: #eef2ff; color: #4338ca;
+        }
+
         /* ID thumbnail */
         .id-thumb {
             width: 56px; height: 38px; object-fit: cover;
@@ -153,7 +157,8 @@
         <a href="{{ route('mapview') }}">Map View</a>
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}" class="active">Citizen Verification</a>
+        <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
+        <a href="{{ route('responder-verification') }}" class="active">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
         <a href="#">Settings</a>
@@ -174,82 +179,143 @@
 
         <div class="page-header">
             <div>
-                <div class="page-title">Citizen Verification</div>
-                <div class="page-sub">Review uploaded IDs and confirm residency before marking accounts verified.</div>
+                <div class="page-title">Responder Verification</div>
+                <div class="page-sub">Review uploaded badge/ID photos and confirm agency credentials before marking accounts verified.</div>
             </div>
         </div>
+
+        @if(session('success'))
+            <div class="alert alert-success" style="border-radius:10px;font-size:.85rem;">{{ session('success') }}</div>
+        @endif
 
         <div class="table-card">
             <table class="evac-table">
                 <thead>
                     <tr>
-                        <th>Citizen</th>
+                        <th>Responder</th>
                         <th>Contact</th>
-                        <th>Municipality / Barangay</th>
-                        <th>Valid ID</th>
+                        <th>Agency / Badge #</th>
+                        <th>Badge / ID Photo</th>
                         <th>Registered</th>
                         <th>Status</th>
                         <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse($citizens as $citizen)
+                    @forelse($responders as $responder)
                     <tr>
-                        <td class="td-name">{{ $citizen->full_name }}</td>
+                        <td class="td-name">{{ $responder->full_name }}</td>
                         <td>
-                            {{ $citizen->email }}
-                            @if($citizen->mobile)
-                                <div class="td-sub">{{ $citizen->mobile }}</div>
+                            {{ $responder->email }}
+                            @if($responder->mobile)
+                                <div class="td-sub">{{ $responder->mobile }}</div>
                             @endif
                         </td>
                         <td>
-                            {{ $citizen->municipality ?? '—' }}
-                            @if($citizen->barangay)
-                                <div class="td-sub">Brgy. {{ $citizen->barangay }}</div>
-                            @endif
+                            <span class="agency-badge">{{ $responder->agency }}</span>
+                            <div class="td-sub">
+                                #{{ $responder->badge_number }}
+                                @if($responder->unit_station)
+                                    · {{ $responder->unit_station }}
+                                @endif
+                            </div>
                         </td>
                         <td>
-                            @if($citizen->valid_id_path)
-                                <img src="{{ Storage::url($citizen->valid_id_path) }}"
+                            @if($responder->valid_id_path)
+                                <img src="{{ Storage::url($responder->valid_id_path) }}"
                                      class="id-thumb"
                                      data-bs-toggle="modal"
-                                     data-bs-target="#idModal{{ $citizen->id }}"
+                                     data-bs-target="#idModal{{ $responder->id }}"
                                      alt="ID">
                             @else
-                                <span class="id-none">No ID uploaded</span>
+                                <span class="id-none">No photo uploaded</span>
                             @endif
                         </td>
-                        <td>{{ $citizen->created_at->format('M d, Y') }}</td>
+                        <td>{{ $responder->created_at->format('M d, Y') }}</td>
                         <td>
-                            @if($citizen->verification_status === 'verified')
+                            @if($responder->verification_status === 'verified')
                                 <span class="badge-verified">Verified</span>
-                            @elseif($citizen->verification_status === 'rejected')
+                            @elseif($responder->verification_status === 'rejected')
                                 <span class="badge-rejected">Rejected</span>
                             @else
                                 <span class="badge-pending">Pending</span>
                             @endif
                         </td>
                         <td>
-                            @if($citizen->verification_status !== 'verified')
-                                <form action="{{ route('citizen-verification.approve', $citizen) }}" method="POST" style="display:inline;" class="approve-form">
+                            @if($responder->verification_status !== 'verified')
+                                <form action="{{ route('responder-verification.approve', $responder) }}" method="POST" style="display:inline;">
                                     @csrf
                                     <button type="submit" class="action-btn approve" title="Approve">
                                         <i class="bi bi-check-circle"></i>
                                     </button>
                                 </form>
                             @endif
-                            @if($citizen->verification_status !== 'rejected')
+                            @if($responder->verification_status !== 'rejected')
                                 <button class="action-btn reject" title="Reject"
-                                        data-bs-toggle="modal" data-bs-target="#rejectModal{{ $citizen->id }}">
+                                        data-bs-toggle="modal" data-bs-target="#rejectModal{{ $responder->id }}">
                                     <i class="bi bi-x-circle"></i>
                                 </button>
                             @endif
                         </td>
                     </tr>
+
+                    <div class="modal fade" id="idModal{{ $responder->id }}" tabindex="-1">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content" style="border-radius:14px;border:none;">
+                                <div class="modal-header border-0 pb-0">
+                                    <h5 class="modal-title-custom">{{ $responder->full_name }}'s Badge/ID</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body pt-2">
+                                    @if($responder->valid_id_path)
+                                        <img src="{{ Storage::url($responder->valid_id_path) }}" class="id-preview-img" alt="Badge/ID">
+                                    @endif
+                                    <p style="font-size:.8rem;color:#6b7280;margin-top:12px;">
+                                        Confirm the badge/ID is genuine and matches
+                                        <strong>{{ $responder->agency }}</strong> badge #{{ $responder->badge_number }}
+                                        before approving.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal fade" id="rejectModal{{ $responder->id }}" tabindex="-1">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content" style="border-radius:14px;border:none;">
+                                <form action="{{ route('responder-verification.reject', $responder) }}" method="POST">
+                                    @csrf
+                                    <div class="modal-header border-0 pb-0">
+                                        <h5 class="modal-title-custom">Reject {{ $responder->full_name }}?</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body pt-3">
+                                        <p style="font-size:.8rem;color:#6b7280;margin-bottom:12px;">
+                                            This permanently removes their account and notifies them by email. This can't be undone.
+                                        </p>
+                                        <label class="form-label-m">Reason for rejection</label>
+                                        <select name="rejection_reason" class="form-control-m" required>
+                                            <option value="" disabled selected style="color:#9ca3af;">Select a reason...</option>
+                                            <option value="Badge/ID photo is blurry or unreadable">Badge/ID photo is blurry or unreadable</option>
+                                            <option value="Badge number could not be verified with the agency">Badge number could not be verified with the agency</option>
+                                            <option value="Agency selected does not match the submitted ID">Agency selected does not match the submitted ID</option>
+                                            <option value="Suspected fraudulent or edited document">Suspected fraudulent or edited document</option>
+                                            <option value="Name on ID does not match registered account name">Name on ID does not match registered account name</option>
+                                            <option value="Duplicate or already-registered badge number">Duplicate or already-registered badge number</option>
+                                        </select>
+                                    </div>
+                                    <div class="modal-footer border-0 pt-0">
+                                        <button type="submit" class="btn-reject-confirm">Reject &amp; Remove</button>
+                                        <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
                     @empty
                     <tr>
                         <td colspan="7" style="text-align:center; padding:40px; color:#9ca3af;">
-                            No citizen registrations yet.
+                            No responder registrations yet.
                         </td>
                     </tr>
                     @endforelse
@@ -257,159 +323,9 @@
             </table>
         </div>
 
-        {{-- Modals live OUTSIDE the table on purpose: a <form> (or any non-tr
-             content) placed directly inside <tbody> is invalid HTML, and
-             browsers apply special "foster parenting" / form-pointer rules
-             when parsing it — which silently breaks the form's internal
-             structure (e.g. the <select> ends up not actually contained
-             within the <form> in the parsed DOM, even though the source
-             looks nested correctly). Keeping modals here avoids that. --}}
-        @foreach($citizens as $citizen)
-            <div class="modal fade" id="idModal{{ $citizen->id }}" tabindex="-1">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content" style="border-radius:14px;border:none;">
-                        <div class="modal-header border-0 pb-0">
-                            <h5 class="modal-title-custom">{{ $citizen->full_name }}'s ID</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body pt-2">
-                            @if($citizen->valid_id_path)
-                                <img src="{{ Storage::url($citizen->valid_id_path) }}" class="id-preview-img" alt="Valid ID">
-                            @endif
-                            <p style="font-size:.8rem;color:#6b7280;margin-top:12px;">
-                                Confirm the ID is genuine and shows an address within
-                                <strong>{{ $citizen->municipality }}</strong> before approving.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="modal fade" id="rejectModal{{ $citizen->id }}" tabindex="-1">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content" style="border-radius:14px;border:none;">
-                        <form action="{{ route('citizen-verification.reject', $citizen) }}" method="POST" class="reject-form">
-                            @csrf
-                            <div class="modal-header border-0 pb-0">
-                                <h5 class="modal-title-custom">Reject {{ $citizen->full_name }}'s ID</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body pt-3">
-                                <label class="form-label-m">Reason for rejection</label>
-                                <select name="rejection_reason" class="form-control-m">
-                                    <option value="" disabled selected style="color:#9ca3af;">Select a reason...</option>
-                                    <option value="Address on ID does not match registered locality">Address on ID does not match registered locality</option>
-                                    <option value="ID photo/text is blurry or unreadable">ID photo/text is blurry or unreadable</option>
-                                    <option value="Submitted document is expired">Submitted document is expired</option>
-                                    <option value="Invalid ID type (Document not accepted)">Invalid ID type (Document not accepted)</option>
-                                    <option value="Suspected fraudulent or edited document">Suspected fraudulent or edited document</option>
-                                    <option value="Name on ID does not match registered account name">Name on ID does not match registered account name</option>
-                                </select>
-                            </div>
-                            <div class="modal-footer border-0 pt-0">
-                                <button type="submit" class="btn-reject-confirm">Reject</button>
-                                <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        @endforeach
-
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    const swalTheme = {
-        confirmButtonColor: '#1a3c8f',
-        cancelButtonColor: '#6b7280',
-        buttonsStyling: true,
-        customClass: {
-            popup: 'rounded-4',
-            confirmButton: 'fw-bold',
-            cancelButton: 'fw-bold',
-        },
-    };
-
-    // Approve — simple yes/no, no reason needed
-    document.querySelectorAll('.approve-form').forEach(form => {
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-            Swal.fire({
-                ...swalTheme,
-                icon: 'question',
-                title: 'Approve this citizen?',
-                text: 'This confirms their identity and unlocks full access to the app.',
-                showCancelButton: true,
-                confirmButtonText: 'Yes',
-                cancelButtonText: 'Cancel',
-            }).then(result => {
-                if (result.isConfirmed) form.submit();
-            });
-        });
-    });
-
-    // Reject — the Bootstrap modal already collects a reason via <select>;
-    // close that modal first, THEN show the SweetAlert (firing Swal while a
-    // Bootstrap modal is still open can cause stacking/focus-trap issues),
-    // and do one final destructive-action confirm before the account is
-    // deleted and tokens revoked.
-    document.querySelectorAll('.reject-form').forEach(form => {
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-
-            const reasonSelect = form.querySelector('select[name="rejection_reason"]');
-            if (!reasonSelect.value) {
-                Swal.fire({
-                    ...swalTheme,
-                    icon: 'warning',
-                    title: 'Reason required',
-                    text: 'Please select a reason for rejection before continuing.',
-                    confirmButtonText: 'OK',
-                });
-                return;
-            }
-
-            const parentModalEl = form.closest('.modal');
-            const bsModal = parentModalEl ? bootstrap.Modal.getOrCreateInstance(parentModalEl) : null;
-
-            const confirmReject = () => {
-                Swal.fire({
-                    ...swalTheme,
-                    icon: 'warning',
-                    title: 'Reject this account?',
-                    html: 'This will <strong>permanently delete</strong> this citizen\'s account and revoke their login immediately. This cannot be undone.',
-                    showCancelButton: true,
-                    confirmButtonText: 'Yes, Reject & Delete',
-                    cancelButtonText: 'Cancel',
-                    confirmButtonColor: '#dc2626',
-                }).then(result => {
-                    if (result.isConfirmed) form.submit();
-                });
-            };
-
-            if (bsModal && parentModalEl.classList.contains('show')) {
-                // Wait for the modal to finish closing before opening Swal
-                parentModalEl.addEventListener('hidden.bs.modal', confirmReject, { once: true });
-                bsModal.hide();
-            } else {
-                confirmReject();
-            }
-        });
-    });
-
-    @if(session('success'))
-        Swal.fire({
-            ...swalTheme,
-            icon: 'success',
-            title: 'Done',
-            text: @json(session('success')),
-            timer: 3000,
-            showConfirmButton: false,
-        });
-    @endif
-</script>
-@include('partials.sos-alert-overlay')
 </body>
 </html>

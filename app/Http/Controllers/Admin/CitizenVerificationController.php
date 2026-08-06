@@ -6,13 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Mail\CitizenRejected;
 use App\Models\Citizen;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 
 class CitizenVerificationController extends Controller
 {
     public function index()
     {
-        $citizens = Citizen::orderByRaw("verification_status = 'pending' DESC")
+        $this->pruneStaleUnverified();
+
+        $citizens = Citizen::whereNotNull('email_verified_at')
             ->orderByDesc('created_at')
             ->get();
 
@@ -51,5 +55,30 @@ class CitizenVerificationController extends Controller
         $citizen->delete();
 
         return back()->with('success', "{$name}'s account was rejected and removed. A notification was sent to {$email}.");
+    }
+
+    /**
+     * Opportunistic cleanup of registrations that never completed email
+     * verification. Runs at most once per hour, triggered by whoever next
+     * opens this page — no CLI/cron access needed.
+     */
+    private function pruneStaleUnverified(): void
+    {
+        if (Cache::has('citizens_pruned_recently')) {
+            return;
+        }
+
+        Cache::put('citizens_pruned_recently', true, now()->addHour());
+
+        $stale = Citizen::whereNull('email_verified_at')
+            ->where('created_at', '<', now()->subDay())
+            ->get();
+
+        foreach ($stale as $citizen) {
+            if ($citizen->valid_id_path) {
+                Storage::disk('public')->delete($citizen->valid_id_path);
+            }
+            $citizen->delete();
+        }
     }
 }

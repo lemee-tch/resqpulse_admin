@@ -30,7 +30,7 @@
             font-family: 'Barlow', sans-serif; font-weight: 800;
             font-size: .85rem; color: #fff; letter-spacing: .5px; line-height: 1.1;
         }
-        .sidebar-brand-text .sub { font-size: .65rem; color: rgba(255,255,255,.6); }
+        .sidebar-brand-text .sub { font-size: .65rem; color: rgba(255,255,255,.6); letter-spacing: .5px; }
         .sidebar-nav { flex: 1; padding: 18px 0; }
         .sidebar-nav a {
             display: block; padding: 10px 20px; font-size: .82rem; font-weight: 500;
@@ -112,6 +112,9 @@
         }
         .form-control-m:focus { outline: none; border-color: #1a3c8f; background: #fff; }
         .form-hint { font-size: .74rem; color: #9ca3af; margin-top: 4px; }
+        .name-row { display: flex; gap: 10px; flex-wrap: wrap; }
+        .name-row .name-field { flex: 1; min-width: 130px; }
+        .name-row .name-field.suffix { flex: 0 0 90px; min-width: 90px; }
         .btn-save {
             background: #1a3c8f; color: #fff; border: none; border-radius: 8px;
             padding: 9px 22px; font-family: 'Barlow', sans-serif; font-weight: 700;
@@ -139,10 +142,17 @@
     <nav class="sidebar-nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>
         <a href="{{ route('incident') }}">Incidents</a>
+        <a href="{{ route('sos-alerts') }}" class="active">
+            <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
+            @if(($pendingSosCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('mapview') }}">Map View</a>
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
         <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
+        <a href="{{ route('responder-verification') }}">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}" class="active">User</a>
         <a href="#">Settings</a>
@@ -234,7 +244,21 @@
                     <div class="row g-3">
                         <div class="col-12">
                             <label class="form-label-m">Name</label>
-                            <input type="text" name="name" class="form-control-m" placeholder="e.g. Juan Dela Cruz" required>
+                            <div class="name-row">
+                                <div class="name-field">
+                                    <input type="text" name="first_name" class="form-control-m" placeholder="First name" required>
+                                </div>
+                                <div class="name-field">
+                                    <input type="text" name="middle_name" class="form-control-m" placeholder="Middle name (optional)">
+                                </div>
+                                <div class="name-field">
+                                    <input type="text" name="last_name" class="form-control-m" placeholder="Last name" required>
+                                </div>
+                                <div class="name-field suffix">
+                                    <input type="text" name="suffix" class="form-control-m" placeholder="Suffix" maxlength="20">
+                                </div>
+                            </div>
+                            <div class="form-hint">Suffix is optional — e.g. Jr., Sr., III.</div>
                         </div>
                         <div class="col-12">
                             <label class="form-label-m">Email</label>
@@ -270,7 +294,21 @@
                     <div class="row g-3">
                         <div class="col-12">
                             <label class="form-label-m">Name</label>
-                            <input type="text" name="name" class="form-control-m" value="{{ $user->name }}" required>
+                            <div class="name-row">
+                                <div class="name-field">
+                                    <input type="text" name="first_name" class="form-control-m" placeholder="First name" value="{{ $user->first_name }}" required>
+                                </div>
+                                <div class="name-field">
+                                    <input type="text" name="middle_name" class="form-control-m" placeholder="Middle name (optional)" value="{{ $user->middle_name }}">
+                                </div>
+                                <div class="name-field">
+                                    <input type="text" name="last_name" class="form-control-m" placeholder="Last name" value="{{ $user->last_name }}" required>
+                                </div>
+                                <div class="name-field suffix">
+                                    <input type="text" name="suffix" class="form-control-m" placeholder="Suffix" maxlength="20" value="{{ $user->suffix }}">
+                                </div>
+                            </div>
+                            <div class="form-hint">Suffix is optional — e.g. Jr., Sr., III.</div>
                         </div>
                         <div class="col-12">
                             <label class="form-label-m">Email</label>
@@ -319,4 +357,4 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-</html> 
+</html>

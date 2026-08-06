@@ -9,6 +9,7 @@ class Incident extends Model
     protected $fillable = [
         'citizen_id', 'emergency_type', 'location', 'latitude', 'longitude',
         'description', 'photo_path', 'status', 'priority', 'admin_notes',
+        'ai_detected_type', 'ai_confidence', 'ai_analysis',
     ];
 
     public function citizen()

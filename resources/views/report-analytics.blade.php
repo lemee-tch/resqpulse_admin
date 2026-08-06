@@ -222,6 +222,12 @@ canvas{max-width:100%;}
     <nav class="sidebar-nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>
         <a href="{{ route('incident') }}">Incidents</a>
+        <a href="{{ route('sos-alerts') }}">
+            <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
+            @if(($pendingSosCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('mapview') }}">Map View</a>
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
@@ -499,6 +505,6 @@ tfPicker.addEventListener('change', () => renderTrend(currentRange));
 populatePicker(currentRange);
 renderTrend(currentRange);
 </script>
-
+@include('partials.sos-alert-overlay')
 </body>
 </html>

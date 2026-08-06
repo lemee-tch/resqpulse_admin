@@ -356,10 +356,17 @@
     <nav class="sidebar-nav">
         <a href="{{ route('dashboard') }}" class="active">Dashboard</a>
         <a href="{{ route('incident') }}">Incidents</a>
+        <a href="{{ route('sos-alerts') }}">
+            <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
+            @if(($pendingSosCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('mapview') }}">Map View</a>
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
         <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
+        <a href="{{ route('responder-verification') }}">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
         <a href="#">Settings</a>
@@ -433,6 +440,12 @@
                 </a>
             </div>
         </div>
+        <a href="{{ route('sos-alerts') }}" style="color:#ffb4a8;">
+            <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
+            @if(($pendingSosCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
+            @endif
+        </a>
 
         <!-- ── MAP + RECENT INCIDENTS ── -->
         <div class="row g-3 mb-3">
@@ -541,7 +554,7 @@
             </div>
         </div>
         <div class="card panel" style="margin-top:18px;">
-    <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px; padding-left:5px;">
         <div class="panel-title" style="font-weight:700;font-size:15.5px;">Recent Alerts</div>
         <a href="{{ route('alerts') }}" style="font-size:13px;color:#1a3c8f;font-weight:600;text-decoration:none;">View all →</a>
     </div>
@@ -632,6 +645,6 @@ new Chart(document.getElementById('lineChart'), {
     }
 });
 </script>
-
+@include('partials.sos-alert-overlay')
 </body>
 </html>

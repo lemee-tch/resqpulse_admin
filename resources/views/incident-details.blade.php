@@ -85,12 +85,13 @@
         .action-panel { display: flex; flex-direction: column; gap: 8px; }
         .btn-action { width: 100%; border: none; border-radius: 8px; padding: 10px 14px; font-family: 'Barlow', sans-serif; font-weight: 700; font-size: .85rem; cursor: pointer; transition: opacity .2s, box-shadow .2s; }
         .btn-action:hover { opacity: .88; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
-        .btn-assign       { background: #1a3c8f; color: #fff; }
         .btn-responding   { background: #f97316; color: #fff; }
         .btn-resolved     { background: #10b981; color: #fff; }
         .btn-note { width: 100%; background: #fff; color: #374151; border: 1.5px solid #d1d5db; border-radius: 8px; padding: 10px 14px; font-family: 'Barlow', sans-serif; font-weight: 700; font-size: .85rem; cursor: pointer; transition: border-color .2s; }
         .btn-note:hover { border-color: #1a3c8f; color: #1a3c8f; }
         .current-status { font-size: .75rem; color: #6b7280; text-align: center; margin-top: 2px; }
+        .dispatch-note { display: flex; align-items: flex-start; gap: 8px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 12px; font-size: .74rem; color: #1e40af; line-height: 1.5; margin-bottom: 4px; }
+        .dispatch-note i { margin-top: 1px; flex-shrink: 0; }
 
         /* Timeline */
         .timeline-title { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1rem; color: #111827; margin-bottom: 14px; }
@@ -123,10 +124,17 @@
     <nav class="sidebar-nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>
         <a href="{{ route('incident') }}" class="active">Incidents</a>
+        <a href="{{ route('sos-alerts') }}">
+            <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
+            @if(($pendingSosCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('mapview') }}">Map View</a>
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
         <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
+        <a href="{{ route('responder-verification') }}">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
         <a href="#">Settings</a>
@@ -242,49 +250,57 @@
                     </div>
                 @endif
 
+                @if($incident->ai_detected_type)
+                    <div class="detail-sub" style="margin-top:14px;">AI Photo Analysis</div>
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                        <span style="background:#eef2ff;color:#4338ca;font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">
+                            <i class="bi bi-stars"></i> Likely: {{ $incident->ai_detected_type }}
+                        </span>
+                        <span style="font-size:.72rem;color:#9ca3af;text-transform:capitalize;">
+                            {{ $incident->ai_confidence }} confidence
+                        </span>
+                    </div>
+                    @if($incident->ai_analysis)
+                        <div class="detail-val" style="font-style:italic;">{{ $incident->ai_analysis }}</div>
+                    @endif
+                @endif
+
                 @if($incident->admin_notes)
                     <div class="detail-sub" style="margin-top:14px;">Admin Notes</div>
                     <div class="admin-notes-box">{{ $incident->admin_notes }}</div>
                 @endif
             </div>
 
-            <!-- ACTION -->
+            <!-- STATUS (read-only) -->
             <div class="panel-card">
-                <div class="panel-label">Update Status</div>
+                <div class="panel-label">Status</div>
                 <div class="action-panel">
-                    <p class="current-status">Current: <strong>{{ ucfirst($incident->status) }}</strong></p>
+                    @php
+                        $statusMeta = match($incident->status) {
+                            'responding' => ['bg' => '#e0f2fe', 'border' => '#bae6fd', 'text' => '#0369a1', 'icon' => 'bi-lightning-charge-fill', 'label' => 'Responding'],
+                            'resolved'   => ['bg' => '#ecfdf5', 'border' => '#a7f3d0', 'text' => '#065f46', 'icon' => 'bi-check-circle-fill', 'label' => 'Resolved'],
+                            default      => ['bg' => '#fef3c7', 'border' => '#fde68a', 'text' => '#92400e', 'icon' => 'bi-hourglass-split', 'label' => 'Pending'],
+                        };
+                    @endphp
 
-                    {{-- Assign Responder --}}
-                    <form method="POST" action="{{ route('incident.status', $incident->id) }}">
-                        @csrf @method('PATCH')
-                        <input type="hidden" name="status" value="Pending">
-                        <button type="submit" class="btn-action btn-assign"
-                                {{ $incident->status === 'Pending' ? 'disabled' : '' }}>
-                            Assign Responder
-                        </button>
-                    </form>
+                    <div style="display:flex; align-items:center; gap:8px; background:{{ $statusMeta['bg'] }}; border:1px solid {{ $statusMeta['border'] }}; border-radius:8px; padding:12px 14px;">
+                        <i class="bi {{ $statusMeta['icon'] }}" style="color:{{ $statusMeta['text'] }}; font-size:1.1rem;"></i>
+                        <span style="font-size:.85rem; font-weight:700; color:{{ $statusMeta['text'] }};">{{ $statusMeta['label'] }}</span>
+                    </div>
 
-                    {{-- Responding --}}
-                    <form method="POST" action="{{ route('incident.status', $incident->id) }}">
-                        @csrf @method('PATCH')
-                        <input type="hidden" name="status" value="responding">
-                        <button type="submit" class="btn-action btn-responding"
-                                {{ $incident->status === 'responding' ? 'disabled' : '' }}>
-                            Mark as Responding
-                        </button>
-                    </form>
+                    @if($incident->status !== 'resolved')
+                        {{-- Responders were already notified automatically the
+                             moment this incident was created (see
+                             PushNotificationService::dispatchToRespondersForIncident).
+                             Status here is informational only — it's updated by
+                             responders themselves, not set manually from admin. --}}
+                        <div class="dispatch-note">
+                            <i class="bi bi-broadcast"></i>
+                            <span>Responders for this emergency type were automatically notified when it was reported. Status updates as they act on it.</span>
+                        </div>
+                    @endif
 
-                    {{-- Resolved --}}
-                    <form method="POST" action="{{ route('incident.status', $incident->id) }}">
-                        @csrf @method('PATCH')
-                        <input type="hidden" name="status" value="resolved">
-                        <button type="submit" class="btn-action btn-resolved"
-                                {{ $incident->status === 'resolved' ? 'disabled' : '' }}>
-                            Mark as Resolved
-                        </button>
-                    </form>
-
-                    {{-- Add Note --}}
+                    {{-- Add Note (unrelated to status — stays available regardless) --}}
                     <button class="btn-note" data-bs-toggle="modal" data-bs-target="#noteModal">
                         <i class="bi bi-pencil-square me-1"></i> Add Note
                     </button>
@@ -410,5 +426,6 @@
         carousel.to(index);
     }
 </script>
+@include('partials.sos-alert-overlay')
 </body>
 </html>

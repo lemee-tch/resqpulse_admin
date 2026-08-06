@@ -37,7 +37,7 @@
             font-family: 'Barlow', sans-serif; font-weight: 800;
             font-size: .85rem; color: #fff; letter-spacing: .5px; line-height: 1.1;
         }
-        .sidebar-brand-text .sub { font-size: .65rem; color: rgba(255,255,255,.6); }
+        .sidebar-brand-text .sub { font-size: .65rem; color: rgba(255,255,255,.6); letter-spacing: .5px; }
         .sidebar-nav { flex: 1; padding: 18px 0; }
         .sidebar-nav a {
             display: block; padding: 10px 20px;
@@ -115,8 +115,6 @@
             display: flex; align-items: center; justify-content: center;
             font-size: 1.3rem;
         }
-        .icon-alerts  { background: #fee2e2; }
-        .icon-updates { background: #dbeafe; }
 
         .alert-body { flex: 1; }
         .alert-title {
@@ -205,8 +203,7 @@
         .history-table tr:hover td { background: #f9fafb; }
 
         .badge-sent { background: #d1fae5; color: #065f46; font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-        .badge-type-alerts  { background: #fee2e2; color: #991b1b; font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-        .badge-type-updates { background: #dbeafe; color: #1e40af; font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+        .badge-audience { font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; color: #1f2937; }
 
         /* Toast */
         .toast-wrap {
@@ -215,6 +212,18 @@
     </style>
 </head>
 <body>
+
+@php
+    // Audience the broadcast is targeted at — replaces the old
+    // "Alerts / Updates" category. Determines both who receives the
+    // push notification (see Admin\AlertController::store) and how
+    // it's displayed here.
+    $audienceMeta = [
+        'Citizens'   => ['emoji' => '👥', 'bg' => '#dbeafe', 'label' => 'Citizens'],
+        'Responders' => ['emoji' => '🚨', 'bg' => '#ffedd5', 'label' => 'Responders'],
+        'Both'       => ['emoji' => '📢', 'bg' => '#ede9fe', 'label' => 'Both'],
+    ];
+@endphp
 
 <!-- ════ SIDEBAR ════ -->
 <aside class="sidebar">
@@ -228,6 +237,12 @@
     <nav class="sidebar-nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>
         <a href="{{ route('incident') }}">Incidents</a>
+        <a href="{{ route('sos-alerts') }}">
+            <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
+            @if(($pendingSosCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
+            @endif
+        </a>        
         <a href="{{ route('mapview') }}">Map View</a>
         <a href="{{ route('alerts') }}" class="active">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
@@ -263,9 +278,10 @@
             <div class="section-title">Recent Broadcasts</div>
 
             @forelse($alerts->take(5) as $alert)
+                @php $meta = $audienceMeta[$alert->type] ?? $audienceMeta['Citizens']; @endphp
                 <div class="alert-card">
-                    <div class="alert-icon {{ $alert->type === 'Alerts' ? 'icon-alerts' : 'icon-updates' }}">
-                        {{ $alert->type === 'Alerts' ? '⚠️' : 'ℹ️' }}
+                    <div class="alert-icon" style="background: {{ $meta['bg'] }};">
+                        {{ $meta['emoji'] }}
                     </div>
                     <div class="alert-body">
                         <div class="alert-title">{{ $alert->title }}</div>
@@ -273,7 +289,7 @@
                             <div class="alert-desc" style="font-weight:600;color:#374151;">{{ $alert->subtitle }}</div>
                         @endif
                         <div class="alert-desc">{{ $alert->body }}</div>
-                        <div class="alert-time">{{ $alert->created_at->format('M d, Y g:i A') }} · Sent to all citizens</div>
+                        <div class="alert-time">{{ $alert->created_at->format('M d, Y g:i A') }} · Sent to {{ $meta['label'] }}</div>
                     </div>
                 </div>
             @empty
@@ -348,10 +364,11 @@
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label-s">Type</label>
+                            <label class="form-label-s">Send To</label>
                             <select name="type" class="form-input-s" required>
-                                <option value="Alerts">Alerts</option>
-                                <option value="Updates">Updates</option>
+                                <option value="Citizens">Citizens</option>
+                                <option value="Responders">Responders</option>
+                                <option value="Both">Both</option>
                             </select>
                         </div>
 
@@ -389,7 +406,7 @@
 
                     <div class="push-note">
                         <i class="bi bi-info-circle"></i>
-                        This sends a real push notification to every registered citizen's phone and adds it to their Alerts feed.
+                        This sends a real push notification to whichever audience you select above, and adds it to their Alerts feed.
                     </div>
                 </form>
             </div>
@@ -404,7 +421,7 @@
                         <tr>
                             <th>Title</th>
                             <th>Message</th>
-                            <th>Type</th>
+                            <th>Sent To</th>
                             <th>Sent By</th>
                             <th>Date &amp; Time</th>
                             <th>Status</th>
@@ -412,12 +429,13 @@
                     </thead>
                     <tbody>
                         @forelse($alerts as $alert)
+                        @php $meta = $audienceMeta[$alert->type] ?? $audienceMeta['Citizens']; @endphp
                         <tr>
                             <td style="font-weight:600;color:#111827;">{{ $alert->title }}</td>
                             <td>{{ \Illuminate\Support\Str::limit($alert->body, 60) }}</td>
                             <td>
-                                <span class="{{ $alert->type === 'Alerts' ? 'badge-type-alerts' : 'badge-type-updates' }}">
-                                    {{ $alert->type }}
+                                <span class="badge-audience" style="background: {{ $meta['bg'] }};">
+                                    {{ $meta['emoji'] }} {{ $meta['label'] }}
                                 </span>
                             </td>
                             <td>{{ $alert->user->name ?? 'MDRRMO Admin' }}</td>
