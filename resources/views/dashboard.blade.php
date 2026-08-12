@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -283,7 +284,8 @@
             position: relative;
         }
 
-        .map-placeholder iframe {
+        .map-placeholder iframe,
+        .map-placeholder #dashboardMap {
             width: 100%; height: 100%;
             border: none;
             pointer-events: none; /* clicks fall through to the wrapping link */
@@ -415,7 +417,7 @@
             <div class="col-6 col-md-3">
                 <a href="{{ route('incident') }}" class="stat-card-link">
                     <div class="stat-card">
-                        <div class="stat-label" style="color:#dc2626;">Critical</div>
+                        <div class="stat-label text-danger">Critical</div>
                         <div class="stat-value" style="color:#dc2626;">{{ $criticalIncidents }}</div>
                         <div class="stat-badge text-danger">High Priority</div>
                     </div>
@@ -439,6 +441,16 @@
                     </div>
                 </a>
             </div>
+            <div class="col-6 col-md-3">
+                <a href="{{ route('sos-alerts') }}" class="stat-card-link">
+                    <div class="stat-card">
+                        <div class="stat-label text-danger">SOS Alerts</div>
+                        <div class="stat-value">@if(( $pendingSosCount ?? 0 ) > 0){{ $pendingSosCount }}</div>
+                        <div class="stat-badge text-danger">Pending</div>
+                        @endif
+                    </div>
+                </a>
+            </div>
         </div>
         <a href="{{ route('sos-alerts') }}" style="color:#ffb4a8;">
             <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
@@ -457,10 +469,7 @@
                             <span class="panel-link">Open Map View →</span>
                         </div>
                         <div class="map-placeholder">
-                            <iframe
-                                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d30677.!2d120.6!3d15.9!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3391117d0e8a8dbd%3A0x7cb4f8be3b6ea563!2sRosales%2C%20Pangasinan!5e0!3m2!1sen!2sph!4v1"
-                                allowfullscreen loading="lazy" tabindex="-1">
-                            </iframe>
+                            <div id="dashboardMap"></div>
                             <div class="map-overlay-hint">
                                 <i class="bi bi-map"></i> View Full Map
                             </div>
@@ -580,6 +589,7 @@
 </div><!-- /main-wrap -->
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // Donut chart
 new Chart(document.getElementById('donutChart'), {
@@ -644,6 +654,60 @@ new Chart(document.getElementById('lineChart'), {
         }
     }
 });
+
+// Dashboard preview map — non-interactive, click-through to full Map View
+(function () {
+    const incidents = @json($mapIncidents);
+    const rosalesCenter = [15.8952, 120.6263];
+
+    const map = L.map('dashboardMap', {
+        zoomControl: false,
+        dragging: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false,
+        touchZoom: false,
+        attributionControl: false,
+    }).setView(rosalesCenter, 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+    }).addTo(map);
+
+    const statusColor = { pending: '#92400e', responding: '#1e40af', acknowledged: '#1e40af' };
+    const typeEmoji = {
+        Fire: '🔥', Flood: '🌊', Earthquake: '🏚️', Accident: '🚗',
+        'Medical Emergency': '🚑', Landslide: '⛰️', 'SOS Emergency': '🆘',
+    };
+
+    function pinIcon(emoji, color) {
+        return L.divIcon({
+            className: '',
+            html: `<div style="width:26px;height:26px;border-radius:50%;background:${color};
+                        border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);
+                        display:flex;align-items:center;justify-content:center;font-size:13px;">${emoji}</div>`,
+            iconSize: [26, 26],
+            iconAnchor: [13, 13],
+        });
+    }
+
+    const points = [];
+    incidents.forEach(inc => {
+        const lat = parseFloat(inc.latitude);
+        const lng = parseFloat(inc.longitude);
+        if (isNaN(lat) || isNaN(lng)) return;
+        points.push([lat, lng]);
+
+        const emoji = typeEmoji[inc.emergency_type] || '⚠️';
+        const color = statusColor[inc.status] || '#92400e';
+        L.marker([lat, lng], { icon: pinIcon(emoji, color) }).addTo(map);
+    });
+
+    if (points.length) {
+        map.fitBounds(points, { padding: [24, 24], maxZoom: 15 });
+    }
+})();
 </script>
 @include('partials.sos-alert-overlay')
 </body>

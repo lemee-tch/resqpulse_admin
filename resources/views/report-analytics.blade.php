@@ -268,7 +268,7 @@ canvas{max-width:100%;}
         <span class="stat-label">Total Incidents</span>
         <span class="stat-icon" style="background:var(--primary-soft);color:var(--primary);"><i class="bi bi-clipboard2-pulse"></i></span>
       </div>
-      <div class="stat-value">128</div>
+      <div class="stat-value">{{ $totalIncidents }}</div>
       <span class="trend up"><i class="bi bi-arrow-up-short"></i>12%<span class="trend-note">&nbsp;from last week</span></span>
     </div>
     <div class="card stat-card">
@@ -276,7 +276,7 @@ canvas{max-width:100%;}
         <span class="stat-label">Resolved</span>
         <span class="stat-icon" style="background:#E7F7EE;color:var(--up);"><i class="bi bi-check2-circle"></i></span>
       </div>
-      <div class="stat-value">60</div>
+      <div class="stat-value">{{ $resolvedIncidents }}</div>
       <span class="trend up"><i class="bi bi-arrow-up-short"></i>10%<span class="trend-note">&nbsp;from last week</span></span>
     </div>
     <div class="card stat-card">
@@ -303,19 +303,25 @@ canvas{max-width:100%;}
       <div class="panel-head">
         <div>
           <div class="panel-title">Incidents by Type</div>
-          <div class="panel-sub">Breakdown of 113 classified reports</div>
+          <div class="panel-sub">Breakdown of {{ $reportsByType->sum() }} classified reports</div>
         </div>
       </div>
       <div class="donut-wrap">
         <div style="width:190px;height:190px;flex-shrink:0;">
           <canvas id="typePie" width="190" height="190"></canvas>
         </div>
-        <div class="legend-list">
-          <div class="legend-row"><span class="legend-dot" style="background:var(--flood);"></span><span class="legend-name">Flood</span><span class="legend-pct">25%</span></div>
-          <div class="legend-row"><span class="legend-dot" style="background:var(--fire);"></span><span class="legend-name">Fire</span><span class="legend-pct">25%</span></div>
-          <div class="legend-row"><span class="legend-dot" style="background:var(--accident);"></span><span class="legend-name">Accident</span><span class="legend-pct">25%</span></div>
-          <div class="legend-row"><span class="legend-dot" style="background:var(--others);"></span><span class="legend-name">Others</span><span class="legend-pct">25%</span></div>
-        </div>
+          @php $pieColors = ['#2F6FED','#F0703A','#E63946','#C9CDD6','#8b5cf6','#ec4899','#10b981']; @endphp
+          <div class="legend-list">
+              @forelse($reportsByType as $type => $count)
+                  <div class="legend-row">
+                      <span class="legend-dot" style="background:{{ $pieColors[$loop->index % count($pieColors)] }};"></span>
+                      <span class="legend-name">{{ $type }}</span>
+                      <span class="legend-pct">{{ $reportsByType->sum() > 0 ? round($count / $reportsByType->sum() * 100) : 0 }}%</span>
+                  </div>
+              @empty
+                  <div style="color:var(--muted);font-size:13px;">No incidents reported yet.</div>
+              @endforelse
+          </div>
       </div>
     </div>
 
@@ -323,7 +329,7 @@ canvas{max-width:100%;}
       <div class="panel-head">
         <div>
           <div class="panel-title">Incidents by Location</div>
-          <div class="panel-sub">Top 5 barangays this period</div>
+          <div class="panel-sub">Top {{ $reportsByLocation->count() }} locations this period</div>
         </div>
       </div>
       <div class="loc-chart-wrap">
@@ -337,16 +343,15 @@ canvas{max-width:100%;}
     <div class="panel-head">
       <div>
         <div class="panel-title">Incidents over Time</div>
-        <div class="panel-sub" id="trendSub">Daily volume, May 22 – May 28</div>
+        <div class="panel-sub" id="trendSub"></div>
       </div>
-      <div class="time-filter">
-        <select class="tf-picker" id="tfPickerValue"></select>
-        <div class="tf-tabs" id="tfTabs">
-          <button type="button" class="tf-tab" data-range="day">Day</button>
-          <button type="button" class="tf-tab active" data-range="month">Month</button>
-          <button type="button" class="tf-tab" data-range="year">Year</button>
+        <div class="time-filter">
+          <div class="tf-tabs" id="tfTabs">
+            <button type="button" class="tf-tab active" data-range="week">Week</button>
+            <button type="button" class="tf-tab" data-range="month">Month</button>
+            <button type="button" class="tf-tab" data-range="year">Year</button>
+          </div>
         </div>
-      </div>
     </div>
     <canvas id="trendLine" height="90"></canvas>
   </div>
@@ -355,33 +360,35 @@ canvas{max-width:100%;}
 
 <script>
 // ── Incidents by Type — Pie Chart ──────────────────────────────────────
-const typeCtx = document.getElementById('typePie');
-new Chart(typeCtx, {
+const typeLabels = @json($reportsByType->keys());
+const typeData = @json($reportsByType->values());
+const pieColors = ['#2F6FED','#F0703A','#E63946','#C9CDD6','#8b5cf6','#ec4899','#10b981'];
+
+new Chart(document.getElementById('typePie'), {
   type: 'pie',
   data: {
-    labels: ['Flood','Fire','Accident','Others'],
+    labels: typeLabels,
     datasets: [{
-      data: [25,25,25,25],
-      backgroundColor: ['#2F6FED','#F0703A','#E63946','#C9CDD6'],
+      data: typeData,
+      backgroundColor: pieColors.slice(0, Math.max(typeLabels.length, 1)),
       borderWidth: 3,
       borderColor: '#fff',
       hoverOffset: 6
     }]
   },
   options: {
-    plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.label + ': ' + c.raw + '%' } } }
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.label + ': ' + c.raw } } }
   }
 });
 
 // ── Incidents by Location — Bar Chart ──────────────────────────────────
-const locCtx = document.getElementById('locationBar');
-new Chart(locCtx, {
+new Chart(document.getElementById('locationBar'), {
   type: 'bar',
   data: {
-    labels: ['Poblacion', 'San Vicente', 'Malico', 'Others'],
+    labels: @json($reportsByLocation->keys()),
     datasets: [{
       label: 'Incidents',
-      data: [45, 25, 15, 28],
+      data: @json($reportsByLocation->values()),
       backgroundColor: '#1A3C8F',
       borderRadius: 6,
       maxBarThickness: 46
@@ -401,25 +408,22 @@ new Chart(locCtx, {
   }
 });
 
-// ── Incidents over Time — Line Chart with Day / Month / Year filter ────
-
-// Demo datasets. Replace with real data from the Incident model —
-// e.g. group by hour/day/month depending on the selected range.
+// ── Incidents over Time — Line Chart with Week / Month / Year filter ────
 const trendDatasets = {
-  day: {
-    label: (val) => `Hourly volume, ${val}`,
-    labels: ['12am','2am','4am','6am','8am','10am','12pm','2pm','4pm','6pm','8pm','10pm'],
-    data:   [1, 0, 1, 2, 4, 6, 8, 7, 9, 6, 3, 2],
+  week: {
+    sub: 'Daily volume, last 7 days',
+    labels: @json($trendWeek->keys()),
+    data:   @json($trendWeek->values()),
   },
   month: {
-    label: (val) => `Daily volume, ${val}`,
-    labels: ['Wk 1','Wk 2','Wk 3','Wk 4','Wk 5'],
-    data:   [22, 30, 18, 26, 12],
+    sub: 'Weekly volume, last 5 weeks',
+    labels: @json($trendMonth->keys()),
+    data:   @json($trendMonth->values()),
   },
   year: {
-    label: (val) => `Monthly volume, ${val}`,
-    labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
-    data:   [40, 35, 52, 48, 60, 55, 62, 58, 45, 50, 47, 53],
+    sub: 'Monthly volume, last 12 months',
+    labels: @json($trendYear->keys()),
+    data:   @json($trendYear->values()),
   }
 };
 
@@ -428,14 +432,14 @@ const grad = trendCtx.getContext('2d').createLinearGradient(0,0,0,160);
 grad.addColorStop(0, 'rgba(26,60,143,0.22)');
 grad.addColorStop(1, 'rgba(26,60,143,0)');
 
-let currentRange = 'month';
+let currentRange = 'week';
 
 const trendChart = new Chart(trendCtx, {
   type: 'line',
   data: {
-    labels: trendDatasets.month.labels,
+    labels: trendDatasets.week.labels,
     datasets: [{
-      data: trendDatasets.month.data,
+      data: trendDatasets.week.data,
       borderColor: '#1A3C8F',
       backgroundColor: grad,
       fill: true,
@@ -457,36 +461,15 @@ const trendChart = new Chart(trendCtx, {
   }
 });
 
-// ── Picker options per range (Day → specific dates, Month → months, Year → years) ──
-const pickerOptions = {
-  day:   ['May 28, 2025', 'May 27, 2025', 'May 26, 2025', 'May 25, 2025'],
-  month: ['May 2025', 'April 2025', 'March 2025', 'February 2025'],
-  year:  ['2025', '2024', '2023'],
-};
-
-const tfPicker = document.getElementById('tfPickerValue');
 const tfTabs = document.getElementById('tfTabs');
 const trendSub = document.getElementById('trendSub');
 
-function populatePicker(range) {
-  tfPicker.innerHTML = '';
-  pickerOptions[range].forEach(opt => {
-    const el = document.createElement('option');
-    el.value = opt;
-    el.textContent = opt;
-    tfPicker.appendChild(el);
-  });
-}
-
 function renderTrend(range) {
   const dataset = trendDatasets[range];
-  const pickerVal = tfPicker.value || pickerOptions[range][0];
-
   trendChart.data.labels = dataset.labels;
   trendChart.data.datasets[0].data = dataset.data;
   trendChart.update();
-
-  trendSub.textContent = dataset.label(pickerVal);
+  trendSub.textContent = dataset.sub;
 }
 
 tfTabs.querySelectorAll('.tf-tab').forEach(btn => {
@@ -494,15 +477,10 @@ tfTabs.querySelectorAll('.tf-tab').forEach(btn => {
     tfTabs.querySelectorAll('.tf-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentRange = btn.dataset.range;
-    populatePicker(currentRange);
     renderTrend(currentRange);
   });
 });
 
-tfPicker.addEventListener('change', () => renderTrend(currentRange));
-
-// Initial state
-populatePicker(currentRange);
 renderTrend(currentRange);
 </script>
 @include('partials.sos-alert-overlay')

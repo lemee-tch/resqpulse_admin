@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -277,7 +278,7 @@
         <div id="tab-active" class="tab-panel active">
             <div class="section-title">Recent Broadcasts</div>
 
-            @forelse($alerts->take(5) as $alert)
+           @forelse($recentAlerts->take(5) as $alert)
                 @php $meta = $audienceMeta[$alert->type] ?? $audienceMeta['Citizens']; @endphp
                 <div class="alert-card">
                     <div class="alert-icon" style="background: {{ $meta['bg'] }};">
@@ -300,7 +301,7 @@
             <div class="broadcast-card">
                 <div class="broadcast-title">Quick Broadcast</div>
 
-                <form method="POST" action="{{ route('alerts.store') }}">
+                <form method="POST" action="{{ route('alerts.store') }}" id="broadcastForm">
                     @csrf
 
                     @php
@@ -403,6 +404,7 @@
                     <button type="submit" class="btn-send">
                         <i class="bi bi-broadcast"></i> Send Broadcast
                     </button>
+
 
                     <div class="push-note">
                         <i class="bi bi-info-circle"></i>
@@ -507,6 +509,33 @@
             toast.show();
         });
     @endif
+</script>
+<script>
+    const broadcastForm = document.getElementById('broadcastForm');
+
+    broadcastForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        const audience = this.querySelector('select[name="type"]').value;
+        const audienceLabel = audience === 'Both'
+            ? 'citizens and responders'
+            : audience.toLowerCase();
+
+        Swal.fire({
+            icon: 'question',
+            title: 'Send this broadcast?',
+            text: `This will send a real push notification to ${audienceLabel}.`,
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Send',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#1a3c8f',
+            cancelButtonColor: '#6b7280',
+        }).then((result) => {
+            if (result.isConfirmed) {
+                broadcastForm.submit();
+            }
+        });
+    });
 </script>
 </body>
 </html>

@@ -109,28 +109,41 @@ class AuthController extends Controller
 
     public function dashboard()
     {
-        $recentAlerts = \App\Models\Alert::orderByDesc('created_at')->take(5)->get();
+        $recentAlerts = \App\Models\Alert::where('created_at', '>=', now()->subDays(3))
+            ->orderByDesc('created_at')->take(5)->get();
         $totalIncidents = \App\Models\Incident::count();
-        $totalIncidents      = \App\Models\Incident::count();
         $incidentsToday      = \App\Models\Incident::whereDate('created_at', today())->count();
         $criticalIncidents   = \App\Models\Incident::where('priority', 'critical')->count();
         $respondingIncidents = \App\Models\Incident::where('status', 'responding')->count();
         $resolvedIncidents   = \App\Models\Incident::where('status', 'resolved')->count();
-        
+
         $reportsByType = \App\Models\Incident::selectRaw('COALESCE(ai_detected_type, emergency_type) as type, COUNT(*) as total')
             ->groupBy('type')
             ->orderByDesc('total')
             ->pluck('total', 'type');
 
-       $recentIncidents = \App\Models\Incident::with('citizen')
+        $recentIncidents = \App\Models\Incident::with('citizen')
             ->orderByDesc('created_at')
             ->whereDate('created_at', today())
             ->take(4)
             ->get();
 
-        return view('dashboard', compact('recentAlerts', 'totalIncidents', 'incidentsToday', 'criticalIncidents', 'respondingIncidents', 'resolvedIncidents', 'reportsByType', 'recentIncidents'));
+        // Pins for the dashboard's mini preview map — same "still-active"
+        // filter as MapViewController, capped to a small count since this
+        // is just a glance-preview (the full Map View has everything).
+        $mapIncidents = \App\Models\Incident::whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->where('status', '!=', 'resolved')
+            ->select('id', 'emergency_type', 'location', 'latitude', 'longitude', 'status')
+            ->orderByDesc('created_at')
+            ->take(15)
+            ->get();
 
-
+            return view('dashboard', compact(
+                'recentAlerts', 'totalIncidents', 'incidentsToday', 'criticalIncidents',
+                'respondingIncidents', 'resolvedIncidents', 'reportsByType', 'recentIncidents',
+                'mapIncidents'
+        ));
     }
     public function incident()
     {
@@ -156,7 +169,48 @@ class AuthController extends Controller
     }
     public function reportsAnalytics()
     {
-        return view('report-analytics');
+        $totalIncidents = \App\Models\Incident::count();
+        $resolvedIncidents = \App\Models\Incident::where('status', 'resolved')->count();
+
+        $reportsByType = \App\Models\Incident::selectRaw('COALESCE(ai_detected_type, emergency_type) as type, COUNT(*) as total')
+            ->groupBy('type')
+            ->orderByDesc('total')
+            ->pluck('total', 'type');
+
+        $reportsByLocation = \App\Models\Incident::selectRaw('location, COUNT(*) as total')
+            ->whereNotNull('location')
+            ->groupBy('location')
+            ->orderByDesc('total')
+            ->take(5)
+            ->pluck('total', 'location');
+
+        // Last 7 days, one bucket per day
+        $trendWeek = collect(range(6, 0))->mapWithKeys(function ($daysAgo) {
+            $date = now()->subDays($daysAgo);
+            return [$date->format('D') => \App\Models\Incident::whereDate('created_at', $date->toDateString())->count()];
+        });
+
+        // Last 5 weeks, one bucket per week
+        $trendMonth = collect(range(4, 0))->mapWithKeys(function ($weeksAgo) {
+            $start = now()->subWeeks($weeksAgo)->startOfWeek();
+            $end = now()->subWeeks($weeksAgo)->endOfWeek();
+            $label = 'Wk ' . (5 - $weeksAgo);
+            return [$label => \App\Models\Incident::whereBetween('created_at', [$start, $end])->count()];
+        });
+
+        // Last 12 months, one bucket per month
+        $trendYear = collect(range(11, 0))->mapWithKeys(function ($monthsAgo) {
+            $date = now()->subMonths($monthsAgo);
+            return [$date->format('M') => \App\Models\Incident::whereYear('created_at', $date->year)
+                ->whereMonth('created_at', $date->month)
+                ->count()];
+        });
+
+        return view('report-analytics', compact(
+            'totalIncidents', 'resolvedIncidents',
+            'reportsByType', 'reportsByLocation',
+            'trendWeek', 'trendMonth', 'trendYear'
+        ));
     }
 
     public function logout(Request $request)

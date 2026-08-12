@@ -44,7 +44,7 @@ class ResponderAuthController extends Controller
             'last_name'    => ['required', 'string', 'max:255'],
             'suffix'       => ['nullable', 'string', 'max:20'],
             'badge_number' => ['required', 'string', 'unique:responders,badge_number'],
-            'agency'       => ['required', 'in:PNP,BFP,SARS,HCU'],
+            'agency'       => ['required', 'in:PNP,BFP,SARS,HCU,MSWD'],
             'unit_station' => ['nullable', 'string'],
             'mobile'       => ['nullable', 'string', 'unique:responders,mobile'],
             'email'        => ['required', 'email', 'unique:responders,email'],

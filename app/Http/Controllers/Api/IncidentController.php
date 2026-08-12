@@ -4,112 +4,63 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Incident;
+use App\Models\Responder;
 use App\Services\ImageAnalysisService;
 use App\Services\PushNotificationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class IncidentController extends Controller
 {
-    public function store(Request $request, PushNotificationService $push)
+    public function store(Request $request, ImageAnalysisService $imageAnalysis, PushNotificationService $push)
     {
         $validator = Validator::make($request->all(), [
-            'emergency_type' => ['required', 'string'],
-            'location'       => ['required', 'string'],
+            'emergency_type' => ['required', 'string', 'max:255'],
+            'location'       => ['required', 'string', 'max:255'],
             'description'    => ['required', 'string'],
-            // Expect an array of images, each max 5MB
-            'photos'         => ['required', 'array', 'min:3', 'max:5'],
-            'photos.*'       => ['file', 'image', 'max:5120'],
-            // Sent by the app whenever it resolved GPS or a barangay lookup
-            // (see report_incident.dart) — optional because a person can
-            // submit a report before either finishes resolving.
             'latitude'       => ['nullable', 'numeric', 'between:-90,90'],
             'longitude'      => ['nullable', 'numeric', 'between:-180,180'],
+            'photos'         => ['required', 'array', 'min:1'],
+            'photos.*'       => ['file', 'image', 'max:5120'],
         ]);
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        // Process and store multiple photos
         $photoPaths = [];
-        if ($request->hasFile('photos')) {
-            foreach ($request->file('photos') as $file) {
-                $photoPaths[] = $file->store('incident_photos', 'public');
-            }
+        foreach ($request->file('photos', []) as $photo) {
+            $photoPaths[] = $photo->store('incident_photos', 'public');
         }
 
         $incident = Incident::create([
-            'citizen_id'     => $request->user()->id,
+            'citizen_id'     => $request->user()?->id,
             'emergency_type' => $request->emergency_type,
             'location'       => $request->location,
             'latitude'       => $request->latitude,
             'longitude'      => $request->longitude,
             'description'    => $request->description,
-            // Save paths as JSON array string (Ensure your Incident model casts 'photo_path' to array/json)
-            'photo_path'     => json_encode($photoPaths),
+            'photo_path'     => $photoPaths ? json_encode($photoPaths) : null,
             'status'         => 'pending',
         ]);
 
-        // Notify the responder agency (or agencies) that handle this
-        // emergency type — see PushNotificationService::AGENCY_MAP for
-        // the routing rules. Best-effort: failures here never block the
-        // report from having been saved successfully above.
-        $push->dispatchToRespondersForIncident($incident);
-
-        return response()->json(['message' => 'Report submitted', 'incident' => $incident], 201);
-    }
-
-    public function mine(Request $request)
-    {
-        $incidents = Incident::where('citizen_id', $request->user()->id)
-            ->orderByDesc('created_at')
-            ->get();
-
-        return response()->json($incidents);
-    }
-
-    /**
-     * Incidents relevant to the logged-in responder's agency — uses the
-     * exact same routing rules as push dispatch (PushNotificationService
-     * ::agenciesFor()) so what a responder sees in-app always matches what
-     * they were pushed for. Excludes resolved incidents since those no
-     * longer need active response.
-     *
-     * Eager-loads `citizen` so the responder app's incident detail screen
-     * ("Reported By" / "Contact") has real data instead of falling back
-     * to "Not available" for every incident.
-     */
-    public function assignedToResponder(Request $request)
-    {
-        $responder = $request->user();
-
-        if (! $responder instanceof \App\Models\Responder) {
-            return response()->json(['message' => 'This endpoint is for responder accounts only.'], 403);
+        if ($photoPaths) {
+            $analysis = $imageAnalysis->classify($photoPaths[0]);
+            if ($analysis) {
+                $incident->update([
+                    'ai_detected_type' => $analysis['type'],
+                    'ai_confidence'    => $analysis['confidence'],
+                    'ai_analysis'      => $analysis['notes'],
+                ]);
+            }
         }
 
-        $incidents = Incident::with('citizen')
-            ->where('status', '!=', 'resolved')
-            ->orderByDesc('created_at')
-            ->get()
-            ->filter(function ($incident) use ($responder) {
-                $routingType = $incident->ai_detected_type ?? $incident->emergency_type;
-                return in_array($responder->agency, PushNotificationService::agenciesFor($routingType), true);
-            })
-            ->values();
+        $push->dispatchToRespondersForIncident($incident);
 
-        return response()->json($incidents);
+        return response()->json(['message' => 'Report submitted.', 'incident' => $incident], 201);
     }
 
-    /**
-     * SOS panic button — one photo (optional), GPS coordinates required.
-     * If a photo was captured, it's run through AI classification so
-     * admins get a suggested emergency type before they even open it.
-     * Classification failure never blocks the SOS from saving.
-     */
-    public function sos(Request $request, PushNotificationService $push)
+    public function sos(Request $request, ImageAnalysisService $imageAnalysis, PushNotificationService $push)
     {
         $validator = Validator::make($request->all(), [
             'latitude'  => ['required', 'numeric', 'between:-90,90'],
@@ -122,96 +73,64 @@ class IncidentController extends Controller
         }
 
         $photoPath = $request->hasFile('photo')
-            ? $request->file('photo')->store('sos_photos', 'public')
-            : null;
-
-        $lat = $request->latitude;
-        $lng = $request->longitude;
-
-        $aiResult = $photoPath
-            ? app(ImageAnalysisService::class)->classify($photoPath)
+            ? $request->file('photo')->store('incident_photos', 'public')
             : null;
 
         $incident = Incident::create([
-            'citizen_id'       => $request->user()->id,
-            'emergency_type'   => 'SOS Emergency',
-            'ai_detected_type' => $aiResult['type'] ?? null,
-            'ai_confidence'    => $aiResult['confidence'] ?? null,
-            'ai_analysis'      => $aiResult['notes'] ?? null,
-            'location'         => $this->resolveSosLocationLabel($lat, $lng),
-            'latitude'         => $lat,
-            'longitude'        => $lng,
-            'description'      => 'Emergency SOS triggered from the mobile app. Immediate response required.',
-            'photo_path'       => $photoPath,
-            'status'           => 'pending',
-            'priority'         => 'critical',
+            'citizen_id'     => $request->user()?->id,
+            'emergency_type' => 'SOS Emergency',
+            'location'       => '',
+            'latitude'       => $request->latitude,
+            'longitude'      => $request->longitude,
+            'description'    => 'SOS panic-button alert.',
+            'photo_path'     => $photoPath ? json_encode([$photoPath]) : null,
+            'status'         => 'pending',
+            'priority'       => 'critical',
         ]);
 
-        // Routes by AI-detected type when a photo was classified (e.g. a
-        // photo that looks like a fire also notifies BFP); otherwise falls
-        // back to MDRRMO as the general dispatcher. See
-        // PushNotificationService::AGENCY_MAP for the full routing table.
+        if ($photoPath) {
+            $analysis = $imageAnalysis->classify($photoPath);
+            if ($analysis) {
+                $incident->update([
+                    'ai_detected_type' => $analysis['type'],
+                    'ai_confidence'    => $analysis['confidence'],
+                    'ai_analysis'      => $analysis['notes'],
+                ]);
+            }
+        }
+
         $push->dispatchToRespondersForIncident($incident);
 
-        return response()->json(['message' => 'SOS sent', 'incident' => $incident], 201);
+        return response()->json(['message' => 'SOS sent.', 'incident' => $incident], 201);
     }
 
-    /**
-     * Turns raw SOS coordinates into a human-readable label for the
-     * admin panel (e.g. "SOS Alert near San Vicente, Rosales — Lat
-     * 15.89..., Lng 120.62...") instead of just bare numbers, so an
-     * MDRRMO staffer glancing at the SOS list doesn't have to open Google
-     * Maps just to know roughly where it is.
-     *
-     * Best-effort only: a short timeout (3s) and a hard try/catch mean a
-     * slow/unreachable geocoding service NEVER blocks or fails an SOS —
-     * it just falls back to the raw coordinates, same as before this
-     * feature existed. The exact lat/lng are always saved regardless, so
-     * responders never lose precision even if this lookup fails.
-     */
-    private function resolveSosLocationLabel(float $lat, float $lng): string
+    public function mine(Request $request)
     {
-        $fallback = "SOS Alert — Lat {$lat}, Lng {$lng}";
+        $incidents = Incident::where('citizen_id', $request->user()->id)
+            ->orderByDesc('created_at')
+            ->get();
 
-        try {
-            $response = Http::withHeaders(['User-Agent' => 'ResQPulse-MDRRMO-Rosales/1.0'])
-                ->timeout(3)
-                ->get('https://nominatim.openstreetmap.org/reverse', [
-                    'format'      => 'json',
-                    'lat'         => $lat,
-                    'lon'         => $lng,
-                    'zoom'        => 18,
-                    'addressdetails' => 1,
-                ]);
+        return response()->json($incidents);
+    }
 
-            if (! $response->successful()) {
-                return $fallback;
-            }
+    public function assignedToResponder(Request $request)
+    {
+        $responder = $request->user();
 
-            $address = $response->json('address');
-            if (! is_array($address)) {
-                return $fallback;
-            }
-
-            $place = $address['suburb']
-                ?? $address['village']
-                ?? $address['neighbourhood']
-                ?? $address['road']
-                ?? null;
-
-            if (! $place) {
-                return $fallback;
-            }
-
-            return "SOS Alert (approx. {$place} area), — Lat {$lat}, Lng {$lng}";
-        } catch (\Throwable $e) {
-            Log::warning('SOS reverse geocode failed, falling back to raw coordinates', [
-                'lat' => $lat,
-                'lng' => $lng,
-                'error' => $e->getMessage(),
-            ]);
-
-            return $fallback;
+        if (! $responder instanceof Responder) {
+            return response()->json(['message' => 'Not a responder account.'], 403);
         }
+
+        $incidents = Incident::with('citizen')
+            ->where('status', '!=', 'resolved')
+            ->orderByDesc('created_at')
+            ->get()
+            ->filter(function (Incident $incident) use ($responder) {
+                $routingType = $incident->ai_detected_type ?? $incident->emergency_type;
+                return in_array($responder->agency, PushNotificationService::agenciesFor($routingType), true);
+            })
+            ->values();
+
+        return response()->json($incidents);
     }
 }

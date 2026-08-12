@@ -35,4 +35,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/responder/me', [ResponderAuthController::class, 'me']);
     Route::post('/responder/logout', [ResponderAuthController::class, 'logout']); 
     Route::get('/responder/incidents', [IncidentController::class, 'assignedToResponder']);
+
+    Route::post('/evacuation-centers', [EvacuationCenterController::class, 'store']);
 });

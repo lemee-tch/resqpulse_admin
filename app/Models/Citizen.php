@@ -17,7 +17,7 @@ class Citizen extends Authenticatable
         'verification_status', 'rejection_reason', 'verified_at',
         'reset_otp', 'reset_otp_expires_at',
         'verification_otp', 'verification_otp_expires_at',
-        'email_verified_at',
+        'email_verified_at','fcm_token',
     ];
     protected $hidden = ['password', 'remember_token'];
 

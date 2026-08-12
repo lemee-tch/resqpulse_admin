@@ -19,7 +19,6 @@ class PushNotificationService
      * Rescue) and acts as the fallback for anything not explicitly mapped —
      * MDRRMO is the admin/dispatcher side (the Laravel admin panel), not a
      * field agency that registers responders or receives pushes.
-     *
      * Adjust freely — this is the single place that controls routing.
      */
     protected const AGENCY_MAP = [

@@ -12,7 +12,12 @@ class AlertController extends Controller
     public function index()
     {
         $alerts = Alert::orderByDesc('created_at')->get();
-        return view('alerts', compact('alerts'));
+
+        $recentAlerts = Alert::where('created_at', '>=', now()->subDays(3))
+            ->orderByDesc('created_at')
+            ->get();
+
+        return view('alerts', compact('alerts', 'recentAlerts'));
     }
 
     public function store(Request $request, PushNotificationService $push)
