@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Mail\EmailVerificationOtp;
+use App\Mail\PasswordResetOtp;
 use App\Models\Responder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -308,6 +309,87 @@ class ResponderAuthController extends Controller
     public function me(Request $request)
     {
         return response()->json($request->user());
+    }
+
+    // ── Forgot Password (OTP) ───────────────────────────────────────────
+    // Same two-step pattern as the citizen app (Api\AuthController::
+    // forgotPassword / resetPassword) and the admin panel
+    // (AuthController::sendResetOtp / resetPassword): request a code,
+    // then submit the code + new password. Requires `reset_otp` and
+    // `reset_otp_expires_at` columns on `responders` — see the migration
+    // / phpMyAdmin SQL that ships alongside this file.
+
+    public function forgotPassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => ['required', 'email'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+        }
+
+        $responder = Responder::where('email', $request->email)->first();
+
+        // Don't reveal whether the email exists — same response either way.
+        if (! $responder) {
+            return response()->json(['message' => 'If that email is registered, a code has been sent.']);
+        }
+
+        $otp = (string) random_int(100000, 999999);
+
+        $responder->update([
+            'reset_otp'            => $otp,
+            'reset_otp_expires_at' => now()->addMinutes(10),
+        ]);
+
+        try {
+            Mail::to($responder->email)->send(new PasswordResetOtp($otp, $responder->full_name));
+        } catch (\Throwable $e) {
+            Log::error('Responder password reset OTP email failed to send', [
+                'email' => $responder->email,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['message' => 'Could not send the reset code right now. Please try again.'], 500);
+        }
+
+        return response()->json(['message' => 'If that email is registered, a code has been sent.']);
+    }
+
+    public function resetPassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email'    => ['required', 'email'],
+            'otp'      => ['required', 'string'],
+            'password' => ['required', 'string', 'min:6'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+        }
+
+        $responder = Responder::where('email', $request->email)
+            ->where('reset_otp', $request->otp)
+            ->first();
+
+        if (! $responder) {
+            return response()->json(['message' => 'Invalid code.'], 422);
+        }
+
+        if ($responder->reset_otp_expires_at === null || now()->greaterThan($responder->reset_otp_expires_at)) {
+            return response()->json(['message' => 'This code has expired. Please request a new one.'], 422);
+        }
+
+        $responder->update([
+            'password'             => Hash::make($request->password),
+            'reset_otp'            => null,
+            'reset_otp_expires_at' => null,
+            // Ends any other "remember me" style session tied to the old
+            // password on other devices — a reset should invalidate those.
+            'remember_token'       => null,
+        ]);
+
+        return response()->json(['message' => 'Password reset successful. Please log in.']);
     }
 
     public function logout(Request $request)

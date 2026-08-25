@@ -209,4 +209,24 @@ class PushNotificationService
             }
         }
     }
+        /**
+     * Suggests an incident priority from the AI-detected type and its
+     * confidence. Low-confidence detections are stepped down one level —
+     * an uncertain "Fire" guess shouldn't automatically page critical
+     * the same way a high-confidence one does.
+     */
+    public static function priorityFor(string $type, string $confidence): string
+    {
+        $base = self::TYPE_PRIORITY[$type] ?? 'moderate';
+
+        if (strtolower($confidence) !== 'low') {
+            return $base;
+        }
+
+        return match ($base) {
+            'critical' => 'high',
+            'high'     => 'moderate',
+            default    => 'low',
+        };
+    }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Alert;
 use App\Services\PushNotificationService;
+use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 
 class AlertController extends Controller
@@ -36,6 +37,8 @@ class AlertController extends Controller
             'type'     => $request->type,
             'user_id'  => auth()->id(),
         ]);
+
+        AuditLogService::log('created', "Sent broadcast \"{$alert->title}\" to {$label}.", $alert);
 
         $audience = $request->type;
 

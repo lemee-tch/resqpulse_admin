@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\PasswordResetOtp;
 use App\Models\User;
+use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -25,7 +26,11 @@ class AuthController extends Controller
 
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
+            
+            AuditLogService::log('login', auth()->user()->name . ' logged in.');
+
             return redirect()->route('dashboard');
+
         }
 
         return back()->withErrors([
@@ -215,6 +220,7 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
+        AuditLogService::log('logout', auth()->user()->name . ' logged out.');
         Auth::logout();
 
         $request->session()->invalidate();

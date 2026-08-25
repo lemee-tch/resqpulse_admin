@@ -14,7 +14,7 @@
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 170px; min-height: 100vh; background: #1a3c8f;
+            width: 200px; min-height: 100vh; background: #1a3c8f;
             display: flex; flex-direction: column;
             position: fixed; top: 0; left: 0; z-index: 100;
         }
@@ -31,7 +31,7 @@
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 170px; flex: 1; display: flex; flex-direction: column; }
+        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 28px 32px; flex: 1; }
 
         /* ── PAGE HEADER ── */
@@ -137,7 +137,7 @@
         <a href="{{ route('responder-verification') }}">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
-        <a href="#">Settings</a>
+
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
@@ -254,7 +254,7 @@
                     <div class="detail-sub" style="margin-top:14px;">AI Photo Analysis</div>
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
                         <span style="background:#eef2ff;color:#4338ca;font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">
-                            <i class="bi bi-stars"></i> Likely: {{ $incident->ai_detected_type }}
+                            <i></i> Likely: {{ $incident->ai_detected_type }}
                         </span>
                         <span style="font-size:.72rem;color:#9ca3af;text-transform:capitalize;">
                             {{ $incident->ai_confidence }} confidence
@@ -348,7 +348,7 @@
     </div>
 </div>
 
-{{-- Photo Modal (carousel — supports 1 or many photos, plus legacy single photo) --}}
+{{-- Photo Modal (carousel — supports 3 or many photos, plus legacy single photo) --}}
 @if($detailPhotos->count())
 <div class="modal fade" id="photoModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">

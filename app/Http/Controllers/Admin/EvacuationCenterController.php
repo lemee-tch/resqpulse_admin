@@ -10,7 +10,7 @@ class EvacuationCenterController extends Controller
 {
     public function index()
     {
-        $centers = EvacuationCenter::orderBy('name')->get();
+        $centers = EvacuationCenter::orderByDesc('created_at')->get();
 
         return view('evacuation', compact('centers'));
     }
@@ -22,7 +22,6 @@ class EvacuationCenterController extends Controller
             'barangay'  => ['required', 'string', 'max:255'],
             'latitude'  => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
-            'capacity'  => ['required', 'integer', 'min:1'],
             'status'    => ['required', 'in:open,full,closed'],
         ]);
 

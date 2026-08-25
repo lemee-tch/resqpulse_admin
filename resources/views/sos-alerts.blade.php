@@ -13,7 +13,7 @@
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 170px; min-height: 100vh; background: #1a3c8f;
+            width: 200px; min-height: 100vh; background: #1a3c8f;
             display: flex; flex-direction: column; position: fixed; top: 0; left: 0; z-index: 100;
         }
         .sidebar-brand {
@@ -76,7 +76,7 @@
         }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 170px; flex: 1; display: flex; flex-direction: column; }
+        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 28px 32px; flex: 1; }
 
         .page-header { 
@@ -129,6 +129,26 @@
         .sos-card.is-new-alert { 
             animation: sosFlicker 1s ease-in-out infinite; 
         }
+
+        /* ── TABS (same as Alerts & Broadcast) ── */
+        .tab-bar {
+            display: flex; gap: 0;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            background: none; border: none;
+            padding: 10px 20px;
+            font-size: .85rem; font-weight: 600;
+            color: #6b7280; cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: color .2s, border-color .2s;
+        }
+        .tab-btn.active { color: #1a3c8f; border-bottom-color: #1a3c8f; }
+        .tab-btn:hover { color: #1a3c8f; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
 
         /* ── SOS CARD ── */
         .sos-card {
@@ -209,9 +229,9 @@
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
         <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
+        <a href="{{ route('responder-verification') }}">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
-        <a href="#">Settings</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
@@ -242,74 +262,195 @@
             </div>
         @endif
 
-        @forelse($sosAlerts as $sos)
-            @php
-                $statusClass = 'badge-' . $sos->status;
-                $statusLabel = ucfirst($sos->status);
-                $reporter = $sos->citizen?->full_name ?? 'Unknown';
-                $mobile = $sos->citizen?->mobile;
-                $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
-            @endphp
-                <div class="sos-card {{ $sos->status === 'resolved' ? 'status-resolved' : '' }}"
+        @php
+            $activeSos   = $sosAlerts->where('status', '!=', 'resolved')->values();
+            $resolvedSos = $sosAlerts->where('status', '=', 'resolved')->values();
+        @endphp
+
+        <!-- TABS -->
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab('active', this)">Active SOS ({{ $activeSos->count() }})</button>
+            <button class="tab-btn" onclick="switchTab('history', this)">Resolved History ({{ $resolvedSos->count() }})</button>
+        </div>
+
+        <!-- ══ TAB: ACTIVE SOS ══ -->
+        <div id="tab-active" class="tab-panel active">
+            @forelse($activeSos as $sos)
+                @php
+                    $statusClass = 'badge-' . $sos->status;
+                    $statusLabel = ucfirst($sos->status);
+                    $reporter = $sos->citizen?->full_name ?? 'Unknown';
+                    $mobile = $sos->citizen?->mobile;
+                    $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
+                @endphp
+                <div class="sos-card"
                     data-id="{{ $sos->id }}"
                     onclick="window.location.href='{{ route('incident.detail', $sos->id) }}'">
 
-                @if($sos->photo_path)
-                    <img src="{{ Storage::url($sos->photo_path) }}" class="sos-photo" alt="SOS photo">
-                @else
-                    <div class="sos-photo-placeholder"><i class="bi bi-camera-video-off"></i></div>
-                @endif
-
-                <div class="sos-body">
-                    <div class="sos-top-row">
-                        <div class="sos-title">
-                            🆘 SOS Emergency
-                            <span class="badge-status {{ $statusClass }}">{{ $statusLabel }}</span>
-                            @if($sos->ai_detected_type)
-                                <span class="badge-ai"><i class="bi bi-stars"></i> {{ $sos->ai_detected_type }}</span>
-                            @endif
-                        </div>
-                        <div class="sos-time">{{ $sos->created_at->diffForHumans() }} · {{ $sos->created_at->format('M d, g:i A') }}</div>
-                    </div>
-
-                    <div class="sos-meta-row">
-                        <div class="sos-meta-item">
-                            <i class="bi bi-person-fill"></i>
-                            <span class="sos-reporter">{{ $reporter }}</span>
-                            @if($mobile) <span>· {{ $mobile }}</span> @endif
-                        </div>
-                        <div class="sos-meta-item">
-                            <i class="bi bi-geo-alt-fill"></i>
-                            <a href="{{ $mapsUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#1a3c8f;text-decoration:none;font-weight:600;">
-                                {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
-                            </a>
-                        </div>
-                    </div>
-
-                    @if($sos->ai_analysis)
-                        <div style="margin-top:8px;font-size:.8rem;color:#6b7280;font-style:italic;">
-                            "{{ $sos->ai_analysis }}"
-                        </div>
+                    @if($sos->photo_path)
+                        <img src="{{ Storage::url($sos->photo_path) }}" class="sos-photo" alt="SOS photo">
+                    @else
+                        <div class="sos-photo-placeholder"><i class="bi bi-camera-video-off"></i></div>
                     @endif
+
+                    <div class="sos-body">
+                        <div class="sos-top-row">
+                            <div class="sos-title">
+                                🆘 SOS Emergency
+                                <span class="badge-status {{ $statusClass }}">{{ $statusLabel }}</span>
+                                @if($sos->ai_detected_type)
+                                    <span class="badge-ai text-danger">{{ $sos->ai_detected_type }}</span>
+                                @endif
+                            </div>
+                            <div class="sos-time">{{ $sos->created_at->diffForHumans() }} · {{ $sos->created_at->format('M d, g:i A') }}</div>
+                        </div>
+
+                        <div class="sos-meta-row">
+                            <div class="sos-meta-item">
+                                <i class="bi bi-person-fill"></i>
+                                <span class="sos-reporter">{{ $reporter }}</span>
+                                @if($mobile) <span>· {{ $mobile }}</span> @endif
+                            </div>
+                            <div class="sos-meta-item">
+                                <i class="bi bi-geo-alt-fill"></i>
+                                <a href="{{ $mapsUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#1a3c8f;text-decoration:none;font-weight:600;">
+                                    {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
+                                </a>
+                            </div>
+                        </div>
+
+                        @if($sos->ai_analysis)
+                            <div style="margin-top:8px;font-size:.8rem;color:#6b7280;font-style:italic;">
+                                "{{ $sos->ai_analysis }}"
+                            </div>
+                        @endif
+                    </div>
                 </div>
+            @empty
+                <div class="empty-state">
+                    <i class="bi bi-shield-check"></i>
+                    No active SOS alerts. All clear.
+                </div>
+            @endforelse
+        </div>
+
+        <!-- ══ TAB: RESOLVED HISTORY ══ -->
+        <div id="tab-history" class="tab-panel">
+
+            @if($resolvedSos->count())
+            <!-- FILTER BAR -->
+            <div class="filter-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                <input type="date" class="filter-date" id="filterDateH" title="Filter by date"
+                       style="border:1.5px solid #d1d5db;border-radius:8px;padding:9px 14px;font-size:.82rem;font-family:'Inter',sans-serif;color:#374151;background:#fff;">
+
+                <select class="filter-select" id="filterAiH"
+                        style="appearance:none;-webkit-appearance:none;background:#fff url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E&quot;) no-repeat right 12px center;border:1.5px solid #d1d5db;border-radius:8px;padding:9px 34px 9px 14px;font-size:.82rem;color:#374151;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">
+                    <option value="">All AI Types</option>
+                    @foreach($resolvedSos->pluck('ai_detected_type')->filter()->unique()->sort() as $aiType)
+                        <option value="{{ $aiType }}">{{ $aiType }}</option>
+                    @endforeach
+                </select>
+
+                <div style="position:relative;flex:1;min-width:180px;max-width:280px;">
+                    <i class="bi bi-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:.9rem;"></i>
+                    <input type="text" id="searchInputH" placeholder="Search resolved SOS..."
+                           style="width:100%;border:1.5px solid #d1d5db;border-radius:8px;padding:9px 14px 9px 34px;font-size:.82rem;color:#374151;font-family:'Inter',sans-serif;background:#fff;">
+                </div>
+
+                <button id="btnClearH"
+                        style="background:#fff;color:#6b7280;border:1.5px solid #d1d5db;border-radius:8px;padding:9px 18px;font-size:.82rem;font-family:'Inter',sans-serif;font-weight:600;cursor:pointer;">
+                    Clear Filters
+                </button>
             </div>
-        @empty
-            <div class="empty-state">
-                <i class="bi bi-shield-check"></i>
-                No SOS alerts. All clear.
+            <div class="results-count" id="resultsCountH" style="font-size:.8rem;color:#6b7280;margin-bottom:14px;"></div>
+            @endif
+
+            @forelse($resolvedSos as $sos)
+                @php
+                    $reporter = $sos->citizen?->full_name ?? 'Unknown';
+                    $mobile = $sos->citizen?->mobile;
+                    $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
+                @endphp
+                <div class="sos-card status-resolved history-row"
+                    data-date="{{ $sos->created_at->format('Y-m-d') }}"
+                    data-ai="{{ $sos->ai_detected_type }}"
+                    data-search="{{ strtolower($reporter.' '.$sos->location.' '.$sos->ai_detected_type.' '.$sos->ai_analysis) }}"
+                    onclick="window.location.href='{{ route('incident.detail', $sos->id) }}'">
+
+                    @if($sos->photo_path)
+                        <img src="{{ Storage::url($sos->photo_path) }}" class="sos-photo" alt="SOS photo">
+                    @else
+                        <div class="sos-photo-placeholder"><i class="bi bi-camera-video-off"></i></div>
+                    @endif
+
+                    <div class="sos-body">
+                        <div class="sos-top-row">
+                            <div class="sos-title">
+                                🆘 SOS Emergency
+                                <span class="badge-status badge-resolved">Resolved</span>
+                                @if($sos->ai_detected_type)
+                                    <span class="badge-ai text-danger">{{ $sos->ai_detected_type }}</span>
+                                @endif
+                            </div>
+                            <div class="sos-time">{{ $sos->created_at->diffForHumans() }} · {{ $sos->created_at->format('M d, g:i A') }}</div>
+                        </div>
+
+                        <div class="sos-meta-row">
+                            <div class="sos-meta-item">
+                                <i class="bi bi-person-fill"></i>
+                                <span class="sos-reporter">{{ $reporter }}</span>
+                                @if($mobile) <span>· {{ $mobile }}</span> @endif
+                            </div>
+                            <div class="sos-meta-item">
+                                <i class="bi bi-geo-alt-fill"></i>
+                                <a href="{{ $mapsUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#1a3c8f;text-decoration:none;font-weight:600;">
+                                    {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
+                                </a>
+                            </div>
+                        </div>
+
+                        @if($sos->ai_analysis)
+                            <div style="margin-top:8px;font-size:.8rem;color:#6b7280;font-style:italic;">
+                                "{{ $sos->ai_analysis }}"
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            @empty
+                <div class="empty-state">
+                    <i class="bi bi-inbox"></i>
+                    No resolved SOS alerts yet.
+                </div>
+            @endforelse
+
+            @if($resolvedSos->count())
+            <div id="historyNoMatch" class="empty-state" style="display:none;">
+                <i class="bi bi-search"></i>
+                No resolved SOS alerts match these filters.
             </div>
-        @endforelse
+            @endif
+        </div>
 
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    // Tab switching
+    function switchTab(id, btn) {
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('tab-' + id).classList.add('active');
+        btn.classList.add('active');
+    }
+
     (function () {
         const params = new URLSearchParams(window.location.search);
         const highlightId = params.get('highlight');
         if (!highlightId) return;
 
+        // The highlighted alert is always still-active (that's why it fired
+        // the overlay), so the Active SOS tab is already showing by default.
         const card = document.querySelector('.sos-card[data-id="' + highlightId + '"]');
         if (card) {
             card.classList.add('is-new-alert');
@@ -326,6 +467,49 @@
                 localStorage.setItem(KEY, JSON.stringify(ids));
             }
         } catch (e) {}
+    })();
+
+    // Resolved History tab filters (date / AI type / search)
+    (function () {
+        const dateFilter   = document.getElementById('filterDateH');
+        if (!dateFilter) return; // nothing resolved yet — no filter bar rendered
+
+        const aiFilter      = document.getElementById('filterAiH');
+        const searchInput   = document.getElementById('searchInputH');
+        const btnClear      = document.getElementById('btnClearH');
+        const cards         = Array.from(document.querySelectorAll('#tab-history .history-row'));
+        const resultsCount  = document.getElementById('resultsCountH');
+        const noMatch       = document.getElementById('historyNoMatch');
+        const totalCount    = cards.length;
+
+        function applyFilters() {
+            const date   = dateFilter.value;
+            const ai     = aiFilter.value;
+            const search = searchInput.value.trim().toLowerCase();
+            let visible  = 0;
+
+            cards.forEach(card => {
+                const ok = (!date   || card.dataset.date === date)
+                        && (!ai     || card.dataset.ai   === ai)
+                        && (!search || card.dataset.search.includes(search));
+                card.style.display = ok ? '' : 'none';
+                if (ok) visible++;
+            });
+
+            resultsCount.innerHTML = `Showing <strong>${visible}</strong> of <strong>${totalCount}</strong> resolved SOS alerts`;
+            noMatch.style.display = (visible === 0 && totalCount > 0) ? 'block' : 'none';
+        }
+
+        dateFilter.addEventListener('change', applyFilters);
+        aiFilter.addEventListener('change', applyFilters);
+        searchInput.addEventListener('input', applyFilters);
+        btnClear.addEventListener('click', () => {
+            aiFilter.value = '';
+            dateFilter.value = searchInput.value = '';
+            applyFilters();
+        });
+
+        applyFilters();
     })();
 </script>
 @include('partials.sos-alert-overlay')

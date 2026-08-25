@@ -20,6 +20,8 @@ Route::post('/responder/login', [ResponderAuthController::class, 'login']);
 Route::post('/responder/verify-email', [ResponderAuthController::class, 'verifyEmail']);
 Route::post('/responder/resend-verification-otp', [ResponderAuthController::class, 'resendVerificationOtp']);
 Route::post('/responder/confirm-registration', [ResponderAuthController::class, 'confirmRegistration']);
+Route::post('/responder/forgot-password', [ResponderAuthController::class, 'forgotPassword']);
+Route::post('/responder/reset-password', [ResponderAuthController::class, 'resetPassword']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {

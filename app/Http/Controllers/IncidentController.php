@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Incident;
+use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 
 class IncidentController extends Controller
@@ -41,8 +42,17 @@ class IncidentController extends Controller
             'priority' => ['required', 'in:critical,high,moderate,low'],
         ]);
 
+        $old=$incident->priority;
         $incident->update(['priority' => $request->priority]);
 
+        AuditLogService::Log(
+            'updated',
+            "Set priority of Incident #{$incident->id} to {$request->priority}.",
+            $incident,
+            ['priority' => $old],
+            ['priority' => $request->priority]
+        );
+        
         return back()->with('success', 'Priority updated.');
     }
 
@@ -52,7 +62,16 @@ class IncidentController extends Controller
             'status' => ['required', 'in:pending,acknowledged,responding,resolved'],
         ]);
 
+        $old=$incident->status;
         $incident->update(['status' => $request->status]);
+        
+        AuditLogService::log(
+            'updated',
+            "Set status of Incident #{$incident->id} to {$request->status}.",
+            $incident,
+            ['status' => $old],
+            ['status' => $request->status]
+        );
 
         return back()->with('success', 'Status updated.');
     }
@@ -64,6 +83,8 @@ class IncidentController extends Controller
         ]);
 
         $incident->update(['admin_notes' => $request->admin_notes]);
+
+        AuditLogService::log('updated', "Updated admin notes on Incident #{$incident->id}.", $incident);
 
         return back()->with('success', 'Note saved.');
     }

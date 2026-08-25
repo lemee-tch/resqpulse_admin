@@ -20,7 +20,7 @@
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 170px;
+            width: 200px;
             min-height: 100vh;
             background: #1a3c8f;
             display: flex;
@@ -71,7 +71,7 @@
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 170px; flex: 1; display: flex; flex-direction: column; }
+        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 28px 32px; flex: 1; }
 
         .page-title {
@@ -209,9 +209,9 @@
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
         <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
+        <a href="{{ route('responder-verification') }}">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
-        <a href="#">User</a>
-        <a href="#">Settings</a>
+        <a href="{{ route('users') }}">User</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"

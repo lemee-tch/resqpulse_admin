@@ -13,7 +13,7 @@
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 170px; min-height: 100vh; background: #1a3c8f;
+            width: 200px; min-height: 100vh; background: #1a3c8f;
             display: flex; flex-direction: column;
             position: fixed; top: 0; left: 0; z-index: 100;
         }
@@ -50,7 +50,7 @@
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 170px; flex: 1; display: flex; flex-direction: column; }
+        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 32px 36px; flex: 1; }
 
         .page-header {
@@ -161,7 +161,6 @@
         <a href="{{ route('responder-verification') }}" class="active">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
-        <a href="#">Settings</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"

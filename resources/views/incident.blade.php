@@ -13,7 +13,7 @@
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 170px; min-height: 100vh; background: #1a3c8f;
+            width: 200px; min-height: 100vh; background: #1a3c8f;
             display: flex; flex-direction: column; position: fixed; top: 0; left: 0; z-index: 100;
         }
         .sidebar-brand {
@@ -47,9 +47,29 @@
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 170px; flex: 1; display: flex; flex-direction: column; }
+        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 32px 36px; flex: 1; }
-        .page-title { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1.6rem; color: #111827; margin-bottom: 24px; }
+        .page-title { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1.6rem; color: #111827; margin-bottom: 20px; }
+
+        /* ── TABS (same as Alerts & Broadcast) ── */
+        .tab-bar {
+            display: flex; gap: 0;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            background: none; border: none;
+            padding: 10px 20px;
+            font-size: .85rem; font-weight: 600;
+            color: #6b7280; cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: color .2s, border-color .2s;
+        }
+        .tab-btn.active { color: #1a3c8f; border-bottom-color: #1a3c8f; }
+        .tab-btn:hover { color: #1a3c8f; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
 
         /* ── FILTERS ── */
         .filter-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -133,9 +153,9 @@
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
         <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
+        <a href="{{ route('responder-verification') }}">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
-        <a href="#">Settings</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
@@ -159,108 +179,118 @@
             </div>
         @endif
 
-        <!-- FILTER BAR -->
-        <div class="filter-bar">
-            <select class="filter-select" id="filterPriority">
-                <option value="">All Priorities</option>
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="moderate">Moderate</option>
-                <option value="low">Low</option>
-                <option value="unset">Not Set</option>
-            </select>
+        @php
+            $activeIncidents   = $incidents->where('status', '!=', 'resolved')->values();
+            $resolvedIncidents = $incidents->where('status', '=', 'resolved')->values();
 
-            <select class="filter-select" id="filterStatus">
-                <option value="">All Status</option>
-                <option value="pending">Pending</option>
-                <option value="responding">Responding</option>
-                <option value="resolved">Resolved</option>
-            </select>
+            // Shared row-rendering data, computed once per incident.
+            $rowData = function ($inc) {
+                $priorityVal   = $inc->priority ?? 'unset';
+                $priorityClass = 'priority-'.$priorityVal;
+                $priorityLabel = $inc->priority ? ucfirst($inc->priority) : 'Not Set';
+                $isResolved    = $inc->status === 'resolved';
+                $statusBadge   = match($inc->status) {
+                    'responding' => 'badge-responding',
+                    'resolved'   => 'badge-resolved',
+                    default      => 'badge-pending',
+                };
+                $statusLabel = match($inc->status) {
+                    'responding' => 'Responding',
+                    'resolved'   => 'Resolved',
+                    default      => 'Pending',
+                };
+                $reporterName = $inc->citizen?->full_name ?? 'Unknown';
 
-            <select class="filter-select" id="filterType">
-                <option value="">All Types</option>
-                <option value="Fire">Fire</option>
-                <option value="Flood">Flood</option>
-                <option value="Earthquake">Earthquake</option>
-                <option value="Accident">Accident</option>
-                <option value="Medical Emergency">Medical Emergency</option>
-                <option value="Landslide">Landslide</option>
-                <option value="Other">Other</option>
-            </select>
+                $incPhotos = collect();
+                if ($inc->photo_path) {
+                    $decoded = json_decode($inc->photo_path, true);
+                    $incPhotos = is_array($decoded) ? collect($decoded) : collect([$inc->photo_path]);
+                }
 
-            <input type="date" class="filter-date" id="filterDate" title="Filter by date">
+                return compact('priorityVal', 'priorityClass', 'priorityLabel', 'isResolved', 'statusBadge', 'statusLabel', 'reporterName', 'incPhotos');
+            };
+        @endphp
 
-            <div class="search-wrap">
-                <i class="bi bi-search"></i>
-                <input type="text" class="search-input" id="searchInput" placeholder="Search reports...">
-            </div>
-
-            <button class="btn-clear" id="btnClear">Clear Filters</button>
+        <!-- TABS -->
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab('active', this)">Active Incidents ({{ $activeIncidents->count() }})</button>
+            <button class="tab-btn" onclick="switchTab('history', this)">Resolved History ({{ $resolvedIncidents->count() }})</button>
         </div>
 
-        <div class="results-count" id="resultsCount"></div>
+        <!-- ══ TAB: ACTIVE INCIDENTS ══ -->
+        <div id="tab-active" class="tab-panel active">
 
-        <!-- TABLE -->
-        <div class="table-card">
-            <table class="incidents-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Priority</th>
-                        <th>Type</th>
-                        <th>Location</th>
-                        <th>Reporter</th>
-                        <th>Description</th>
-                        <th>Photo</th>
-                        <th>Status</th>
-                        <th>Date</th>
-                    </tr>
-                </thead>
-                <tbody id="incidentsBody">
-                    @forelse($incidents as $inc)
-                    @php
-                        $priorityVal   = $inc->priority ?? 'unset';
-                        $priorityClass = $inc->priority ? 'priority-'.$inc->priority : 'priority-unset';
-                        $priorityLabel = $inc->priority ? ucfirst($inc->priority) : 'Not Set';
-                        $isResolved    = $inc->status === 'resolved';
-                        $statusBadge   = match($inc->status) {
-                            'responding'   => 'badge-responding',
-                            'resolved'     => 'badge-resolved',
-                            default        => 'badge-pending',
-                        };
-                        $statusLabel = match($inc->status) {
-                            'responding'   => 'Responding',
-                            'resolved'     => 'Resolved',
-                            default        => 'Pending',
-                        };
-                        $reporterName = $inc->citizen?->full_name ?? 'Unknown';
+            <!-- FILTER BAR -->
+            <div class="filter-bar">
+                <select class="filter-select" id="filterPriority">
+                    <option value="">All Priorities</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="moderate">Moderate</option>
+                    <option value="low">Low</option>
+                    <option value="unset">Not Set</option>
+                </select>
 
-                        // `photo_path` stores a JSON-encoded array of paths (e.g. '["a.jpg","b.jpg"]').
-                        // Some very old rows may still have a single plain path string instead — handle both.
-                        $incPhotos = collect();
-                        if ($inc->photo_path) {
-                            $decoded = json_decode($inc->photo_path, true);
-                            $incPhotos = is_array($decoded) ? collect($decoded) : collect([$inc->photo_path]);
-                        }
-                    @endphp
-                    <tr
-                        class="incident-row"
-                        data-priority="{{ $priorityVal }}"
-                        data-status="{{ $inc->status }}"
-                        data-type="{{ $inc->emergency_type }}"
-                        data-date="{{ $inc->created_at->format('Y-m-d') }}"
-                        data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
-                        data-href="{{ route('incident.detail', $inc->id) }}"
-                    >
-                        <td class="td-id">#{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }}</td>
+                <select class="filter-select" id="filterStatus">
+                    <option value="">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="responding">Responding</option>
+                </select>
 
-                        {{-- Priority: editable dropdown normally, but once an incident
-                             is resolved it's just shown as plain text — no dropdown,
-                             no icon, nothing to click. --}}
-                        <td onclick="event.stopPropagation()">
-                            @if($isResolved)
-                                <span class="{{ $priorityClass }}">{{ $priorityLabel }}</span>
-                            @else
+                <select class="filter-select" id="filterType">
+                    <option value="">All Types</option>
+                    <option value="Fire">Fire</option>
+                    <option value="Flood">Flood</option>
+                    <option value="Earthquake">Earthquake</option>
+                    <option value="Accident">Accident</option>
+                    <option value="Medical Emergency">Medical Emergency</option>
+                    <option value="Landslide">Landslide</option>
+                    <option value="Other">Other</option>
+                </select>
+
+                <input type="date" class="filter-date" id="filterDate" title="Filter by date">
+
+                <div class="search-wrap">
+                    <i class="bi bi-search"></i>
+                    <input type="text" class="search-input" id="searchInput" placeholder="Search reports...">
+                </div>
+
+                <button class="btn-clear" id="btnClear">Clear Filters</button>
+            </div>
+
+            <div class="results-count" id="resultsCount"></div>
+
+            <!-- TABLE -->
+            <div class="table-card">
+                <table class="incidents-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Priority</th>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Reporter</th>
+                            <th>Description</th>
+                            <th>Photo</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="incidentsBody">
+                        @forelse($activeIncidents as $inc)
+                        @php extract($rowData($inc)); @endphp
+                        <tr
+                            class="incident-row"
+                            data-priority="{{ $priorityVal }}"
+                            data-status="{{ $inc->status }}"
+                            data-type="{{ $inc->emergency_type }}"
+                            data-date="{{ $inc->created_at->format('Y-m-d') }}"
+                            data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
+                            data-href="{{ route('incident.detail', $inc->id) }}"
+                        >
+                            <td class="td-id">#{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }}</td>
+
+                            <td onclick="event.stopPropagation()">
                                 <form method="POST" action="{{ route('incident.priority', $inc->id) }}">
                                     @csrf @method('PATCH')
                                     <select class="inline-select {{ $priorityClass }}"
@@ -273,143 +303,325 @@
                                         <option value="low"      {{ $inc->priority === 'low'      ? 'selected' : '' }}>Low</option>
                                     </select>
                                 </form>
-                            @endif
-                        </td>
+                            </td>
 
-                        <td>
-                            {{ $inc->emergency_type }}
-                            @if($inc->ai_detected_type)
-                                <div style="font-size:.68rem;color:#4338ca;font-weight:600;margin-top:2px;">
-                                    <i class="bi bi-stars"></i> AI: {{ $inc->ai_detected_type }}
-                                </div>
-                            @endif
-                        </td>                        <td>{{ $inc->location }}</td>
-                        <td>{{ $reporterName }}</td>
-                        <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ $inc->description }}">
-                            {{ $inc->description }}
-                        </td>
+                            <td>{{ $inc->emergency_type }}</td>
+                            <td>{{ $inc->location }}</td>
+                            <td>{{ $reporterName }}</td>
+                            <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ $inc->description }}">
+                                {{ $inc->description }}
+                            </td>
 
-                        {{-- Photo thumbnail (single preview — click shouldn't navigate; full set is on the details page) --}}
-                        <td onclick="event.stopPropagation()">
-                            @if($incPhotos->count())
-                                <img src="{{ Storage::url($incPhotos->first()) }}"
-                                     class="photo-thumb"
-                                     data-bs-toggle="modal"
-                                     data-bs-target="#photoModal{{ $inc->id }}"
-                                     alt="Photo"
-                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
-                                <i class="bi bi-image thumb-broken-icon" style="display:none;"></i>
-                            @else
-                                <span style="color:#d1d5db;font-size:.75rem;">None</span>
-                            @endif
-                        </td>
-
-                        {{-- Status (read-only here — status can only be changed on the incident details page) --}}
-                        <td>
-                            <span class="badge-{{ $inc->status }}">{{ ucfirst($inc->status) }}</span>
-                        </td>
-
-                        <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
-                    </tr>
-
-                    {{-- Photo preview modal (single photo — see the incident details page for all photos) --}}
-                    @if($incPhotos->count())
-                    <div class="modal fade" id="photoModal{{ $inc->id }}" tabindex="-1">
-                        <div class="modal-dialog modal-dialog-centered">
-                            <div class="modal-content" style="border-radius:14px;border:none;">
-                                <div class="modal-header border-0 pb-0">
-                                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
-                                        Incident #{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }} — Photo
-                                    </h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                </div>
-                                <div class="modal-body pt-2">
+                            <td onclick="event.stopPropagation()">
+                                @if($incPhotos->count())
                                     <img src="{{ Storage::url($incPhotos->first()) }}"
-                                         style="width:100%;border-radius:10px;border:1px solid #e5e7eb;"
-                                         alt="Incident photo">
-                                    @if($incPhotos->count() > 1)
-                                        <p style="text-align:center;font-size:.78rem;color:#6b7280;margin-top:10px;">
-                                            This incident has {{ $incPhotos->count() }} photos —
-                                            <a href="{{ route('incident.detail', $inc->id) }}" style="color:#1a3c8f;font-weight:600;">view all on the incident details page</a>.
-                                        </p>
-                                    @endif
+                                         class="photo-thumb"
+                                         data-bs-toggle="modal"
+                                         data-bs-target="#photoModal{{ $inc->id }}"
+                                         alt="Photo"
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+                                    <i class="bi bi-image thumb-broken-icon" style="display:none;"></i>
+                                @else
+                                    <span style="color:#d1d5db;font-size:.75rem;">None</span>
+                                @endif
+                            </td>
+
+                            <td>
+                                <span class="{{ $statusBadge }}">{{ $statusLabel }}</span>
+                            </td>
+
+                            <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
+                        </tr>
+
+                        @if($incPhotos->count())
+                        <div class="modal fade" id="photoModal{{ $inc->id }}" tabindex="-1">
+                            <div class="modal-dialog modal-dialog-centered">
+                                <div class="modal-content" style="border-radius:14px;border:none;">
+                                    <div class="modal-header border-0 pb-0">
+                                        <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
+                                            Incident #{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }} — Photo
+                                        </h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body pt-2">
+                                        <img src="{{ Storage::url($incPhotos->first()) }}"
+                                             style="width:100%;border-radius:10px;border:1px solid #e5e7eb;"
+                                             alt="Incident photo">
+                                        @if($incPhotos->count() > 1)
+                                            <p style="text-align:center;font-size:.78rem;color:#6b7280;margin-top:10px;">
+                                                This incident has {{ $incPhotos->count() }} photos —
+                                                <a href="{{ route('incident.detail', $inc->id) }}" style="color:#1a3c8f;font-weight:600;">view all on the incident details page</a>.
+                                            </p>
+                                        @endif
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    @endif
+                        @endif
 
-                    @empty
-                    <tr>
-                        <td colspan="9">
-                            <div class="no-results">
-                                <i class="bi bi-inbox"></i>
-                                No incidents reported yet.
-                            </div>
-                        </td>
-                    </tr>
-                    @endforelse
-                </tbody>
-            </table>
+                        @empty
+                        <tr>
+                            <td colspan="9">
+                                <div class="no-results">
+                                    <i class="bi bi-inbox"></i>
+                                    No active incidents right now.
+                                </div>
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
         </div>
+
+        <!-- ══ TAB: RESOLVED HISTORY ══ -->
+        <div id="tab-history" class="tab-panel">
+
+            <!-- FILTER BAR -->
+            <div class="filter-bar">
+                <select class="filter-select" id="filterPriorityH">
+                    <option value="">All Priorities</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="moderate">Moderate</option>
+                    <option value="low">Low</option>
+                    <option value="unset">Not Set</option>
+                </select>
+
+                <select class="filter-select" id="filterTypeH">
+                    <option value="">All Types</option>
+                    <option value="Fire">Fire</option>
+                    <option value="Flood">Flood</option>
+                    <option value="Earthquake">Earthquake</option>
+                    <option value="Accident">Accident</option>
+                    <option value="Medical Emergency">Medical Emergency</option>
+                    <option value="Landslide">Landslide</option>
+                    <option value="Other">Other</option>
+                </select>
+
+                <input type="date" class="filter-date" id="filterDateH" title="Filter by date">
+
+                <div class="search-wrap">
+                    <i class="bi bi-search"></i>
+                    <input type="text" class="search-input" id="searchInputH" placeholder="Search resolved reports...">
+                </div>
+
+                <button class="btn-clear" id="btnClearH">Clear Filters</button>
+            </div>
+
+            <div class="results-count" id="resultsCountH"></div>
+
+            <div class="table-card">
+                <table class="incidents-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Priority</th>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Reporter</th>
+                            <th>Description</th>
+                            <th>Photo</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody">
+                        @forelse($resolvedIncidents as $inc)
+                        @php extract($rowData($inc)); @endphp
+                        <tr class="incident-row history-row"
+                            data-priority="{{ $priorityVal }}"
+                            data-type="{{ $inc->emergency_type }}"
+                            data-date="{{ $inc->created_at->format('Y-m-d') }}"
+                            data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
+                            data-href="{{ route('incident.detail', $inc->id) }}"
+                            onclick="window.location.href='{{ route('incident.detail', $inc->id) }}'">
+                            <td class="td-id">#{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }}</td>
+                            <td><span class="{{ $priorityClass }}">{{ $priorityLabel }}</span></td>
+                            <td>{{ $inc->emergency_type }}</td>
+                            <td>{{ $inc->location }}</td>
+                            <td>{{ $reporterName }}</td>
+                            <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ $inc->description }}">
+                                {{ $inc->description }}
+                            </td>
+
+                            <td onclick="event.stopPropagation()">
+                                @if($incPhotos->count())
+                                    <img src="{{ Storage::url($incPhotos->first()) }}"
+                                         class="photo-thumb"
+                                         data-bs-toggle="modal"
+                                         data-bs-target="#photoModalH{{ $inc->id }}"
+                                         alt="Photo"
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+                                    <i class="bi bi-image thumb-broken-icon" style="display:none;"></i>
+                                @else
+                                    <span style="color:#d1d5db;font-size:.75rem;">None</span>
+                                @endif
+                            </td>
+
+                            <td><span class="{{ $statusBadge }}">{{ $statusLabel }}</span></td>
+                            <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
+                        </tr>
+
+                        @if($incPhotos->count())
+                        <div class="modal fade" id="photoModalH{{ $inc->id }}" tabindex="-1">
+                            <div class="modal-dialog modal-dialog-centered">
+                                <div class="modal-content" style="border-radius:14px;border:none;">
+                                    <div class="modal-header border-0 pb-0">
+                                        <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
+                                            Incident #{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }} — Photo
+                                        </h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body pt-2">
+                                        <img src="{{ Storage::url($incPhotos->first()) }}"
+                                             style="width:100%;border-radius:10px;border:1px solid #e5e7eb;"
+                                             alt="Incident photo">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        @endif
+
+                        @empty
+                        <tr>
+                            <td colspan="9">
+                                <div class="no-results">
+                                    <i class="bi bi-check2-circle"></i>
+                                    No resolved incidents yet.
+                                </div>
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+                <div id="historyNoMatch" class="no-results" style="display:none;">
+                    <i class="bi bi-search"></i>
+                    No resolved incidents match these filters.
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-(function () {
-    const priorityFilter = document.getElementById('filterPriority');
-    const statusFilter   = document.getElementById('filterStatus');
-    const typeFilter     = document.getElementById('filterType');
-    const dateFilter     = document.getElementById('filterDate');
-    const searchInput    = document.getElementById('searchInput');
-    const btnClear       = document.getElementById('btnClear');
-    const rows           = Array.from(document.querySelectorAll('#incidentsBody tr.incident-row'));
-    const resultsCount   = document.getElementById('resultsCount');
-    const totalCount     = rows.length;
-
-    function applyFilters() {
-        const priority = priorityFilter.value;
-        const status   = statusFilter.value;
-        const type     = typeFilter.value;
-        const date     = dateFilter.value;
-        const search   = searchInput.value.trim().toLowerCase();
-        let visible    = 0;
-
-        rows.forEach(row => {
-            const ok = (!priority || row.dataset.priority === priority)
-                    && (!status   || row.dataset.status   === status)
-                    && (!type     || row.dataset.type     === type)
-                    && (!date     || row.dataset.date     === date)
-                    && (!search   || row.dataset.search.includes(search));
-            row.style.display = ok ? '' : 'none';
-            if (ok) visible++;
-        });
-
-        resultsCount.innerHTML = `Showing <strong>${visible}</strong> of <strong>${totalCount}</strong> incidents`;
+    // Tab switching
+    function switchTab(id, btn) {
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('tab-' + id).classList.add('active');
+        btn.classList.add('active');
     }
 
-    priorityFilter.addEventListener('change', applyFilters);
-    statusFilter.addEventListener('change', applyFilters);
-    typeFilter.addEventListener('change', applyFilters);
-    dateFilter.addEventListener('change', applyFilters);
-    searchInput.addEventListener('input', applyFilters);
-    btnClear.addEventListener('click', () => {
-        [priorityFilter, statusFilter, typeFilter].forEach(s => s.value = '');
-        dateFilter.value = searchInput.value = '';
-        applyFilters();
-    });
+    (function () {
+        const priorityFilter = document.getElementById('filterPriority');
+        const statusFilter   = document.getElementById('filterStatus');
+        const typeFilter     = document.getElementById('filterType');
+        const dateFilter     = document.getElementById('filterDate');
+        const searchInput    = document.getElementById('searchInput');
+        const btnClear       = document.getElementById('btnClear');
+        const rows           = Array.from(document.querySelectorAll('#incidentsBody tr.incident-row'));
+        const resultsCount   = document.getElementById('resultsCount');
+        const totalCount     = rows.length;
 
-    // Click anywhere on a row (outside the interactive cells) to open the detail page
-    rows.forEach(row => {
-        row.addEventListener('click', () => {
-            const href = row.dataset.href;
-            if (href) window.location.href = href;
+        function applyFilters() {
+            const priority = priorityFilter.value;
+            const status   = statusFilter.value;
+            const type     = typeFilter.value;
+            const date     = dateFilter.value;
+            const search   = searchInput.value.trim().toLowerCase();
+            let visible    = 0;
+
+            rows.forEach(row => {
+                const ok = (!priority || row.dataset.priority === priority)
+                        && (!status   || row.dataset.status   === status)
+                        && (!type     || row.dataset.type     === type)
+                        && (!date     || row.dataset.date     === date)
+                        && (!search   || row.dataset.search.includes(search));
+                row.style.display = ok ? '' : 'none';
+                if (ok) visible++;
+            });
+
+            resultsCount.innerHTML = `Showing <strong>${visible}</strong> of <strong>${totalCount}</strong> active incidents`;
+        }
+
+        priorityFilter.addEventListener('change', applyFilters);
+        statusFilter.addEventListener('change', applyFilters);
+        typeFilter.addEventListener('change', applyFilters);
+        dateFilter.addEventListener('change', applyFilters);
+        searchInput.addEventListener('input', applyFilters);
+        btnClear.addEventListener('click', () => {
+            [priorityFilter, statusFilter, typeFilter].forEach(s => s.value = '');
+            dateFilter.value = searchInput.value = '';
+            applyFilters();
         });
-    });
 
-    applyFilters();
-})();
+        // Click anywhere on an active-tab row (outside interactive cells) to open the detail page
+        rows.forEach(row => {
+            row.addEventListener('click', () => {
+                const href = row.dataset.href;
+                if (href) window.location.href = href;
+            });
+        });
+
+        applyFilters();
+    })();
+
+    // Resolved History tab filters (priority / type / date / search)
+    (function () {
+        const priorityFilter = document.getElementById('filterPriorityH');
+        if (!priorityFilter) return; // nothing was resolved yet — no filter bar rendered
+
+        const typeFilter    = document.getElementById('filterTypeH');
+        const dateFilter     = document.getElementById('filterDateH');
+        const searchInput    = document.getElementById('searchInputH');
+        const btnClear       = document.getElementById('btnClearH');
+        const rows           = Array.from(document.querySelectorAll('#historyBody tr.history-row'));
+        const resultsCount   = document.getElementById('resultsCountH');
+        const noMatch        = document.getElementById('historyNoMatch');
+        const totalCount     = rows.length;
+
+        function applyFilters() {
+            const priority = priorityFilter.value;
+            const type     = typeFilter.value;
+            const date     = dateFilter.value;
+            const search   = searchInput.value.trim().toLowerCase();
+            let visible    = 0;
+
+            rows.forEach(row => {
+                const ok = (!priority || row.dataset.priority === priority)
+                        && (!type     || row.dataset.type     === type)
+                        && (!date     || row.dataset.date     === date)
+                        && (!search   || row.dataset.search.includes(search));
+                row.style.display = ok ? '' : 'none';
+                if (ok) visible++;
+            });
+
+            resultsCount.innerHTML = `Showing <strong>${visible}</strong> of <strong>${totalCount}</strong> resolved incidents`;
+            noMatch.style.display = (visible === 0 && totalCount > 0) ? 'block' : 'none';
+        }
+
+        priorityFilter.addEventListener('change', applyFilters);
+        typeFilter.addEventListener('change', applyFilters);
+        dateFilter.addEventListener('change', applyFilters);
+        searchInput.addEventListener('input', applyFilters);
+        btnClear.addEventListener('click', () => {
+            [priorityFilter, typeFilter].forEach(s => s.value = '');
+            dateFilter.value = searchInput.value = '';
+            applyFilters();
+        });
+
+        rows.forEach(row => {
+            row.addEventListener('click', () => {
+                const href = row.dataset.href;
+                if (href) window.location.href = href;
+            });
+        });
+
+        applyFilters();
+    })();
 </script>
 @include('partials.sos-alert-overlay')
 </body>

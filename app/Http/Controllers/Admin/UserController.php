@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -38,6 +39,9 @@ class UserController extends Controller
             'password'    => Hash::make($validated['password']),
         ]);
 
+        AuditLogService::log('created', "Added admin user {$this->buildFullName($validated)}.");
+
+
         return back()->with('success', "{$this->buildFullName($validated)} was added as an admin user.");
     }
 
@@ -65,6 +69,8 @@ class UserController extends Controller
 
         $user->save();
 
+        AuditLogService::log('updated', "Updated admin user {$user->name}.", $user);
+
         return back()->with('success', "{$user->name}'s account was updated.");
     }
 
@@ -75,6 +81,7 @@ class UserController extends Controller
         }
 
         $name = $user->name;
+        AuditLogService::log('deleted', "Removed admin user {$name}.");
         $user->delete();
 
         return back()->with('success', "{$name} was removed.");

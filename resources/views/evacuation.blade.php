@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+v<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -7,13 +7,14 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 170px; min-height: 100vh; background: #1a3c8f;
+            width: 200px; min-height: 100vh; background: #1a3c8f;
             display: flex; flex-direction: column;
             position: fixed; top: 0; left: 0; z-index: 100;
         }
@@ -50,7 +51,7 @@
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 170px; flex: 1; display: flex; flex-direction: column; }
+        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 32px 36px; flex: 1; }
 
         .page-header {
@@ -166,9 +167,9 @@
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}" class="active">Evacuation Centers</a>
         <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
+        <a href="{{ route('responder-verification') }}">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
-        <a href="#">Settings</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
@@ -196,6 +197,16 @@
                 {{ session('success') }}
             </div>
         @endif
+        @if($errors->any())
+            <div class="alert alert-danger" style="border-radius:10px;font-size:.85rem;margin-bottom:16px;">
+                <strong>Couldn't save:</strong>
+                <ul style="margin:6px 0 0;padding-left:18px;">
+                    @foreach($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
 
         <div class="table-card">
             <table class="evac-table">
@@ -218,17 +229,17 @@
                     <tr>
                         <td class="td-name">{{ $c->name }}</td>
                         <td>{{ $c->barangay }}</td>
-                        <td>
-                        </td>
-                        <td>{{ $dist !== null ? $dist . 'km' : '—' }}</td>
+                        <td>{{ $dist !== null ? $dist . ' km' : '—' }}</td>
                         <td><span class="{{ $badge }}">{{ $label }}</span></td>
                         <td>
-                            <button class="action-btn" title="View details"><i class="bi bi-eye"></i></button>
+                            <button class="action-btn" title="View details" data-bs-toggle="modal" data-bs-target="#viewModal{{ $c->id }}">
+                                <i class="bi bi-eye"></i>
+                            </button>
                         </td>
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="7">
+                        <td colspan="5">
                             <div class="empty-state">
                                 No evacuation centers added yet. Use "Add Center" to add the first one.
                             </div>
@@ -238,6 +249,45 @@
                 </tbody>
             </table>
         </div>
+
+        {{-- View-location modals — kept outside <table> since a modal/form
+            isn't valid inside <tbody> (browsers "foster parent" it, breaking
+            the DOM), same pattern as citizen-verification.blade.php --}}
+        @foreach($centers as $c)
+        <div class="modal fade" id="viewModal{{ $c->id }}" tabindex="-1"
+            data-lat="{{ $c->latitude }}" data-lng="{{ $c->longitude }}"
+            data-map-id="viewMap{{ $c->id }}" data-name="{{ $c->name }}">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content" style="border-radius:14px;border:none;">
+                    <div class="modal-header border-0 pb-0">
+                        <h5 class="modal-title-custom">{{ $c->name }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body pt-2">
+                        <div id="viewMap{{ $c->id }}" style="width:100%;height:220px;border-radius:10px;margin-bottom:14px;background:#eef1f6;"></div>
+
+                        <div style="display:flex;flex-direction:column;gap:8px;font-size:.85rem;color:#374151;">
+                            <div><i class="bi bi-geo-alt-fill" style="color:#1a3c8f;width:16px;"></i> Brgy. {{ $c->barangay }}</div>
+                            <div><i class="bi bi-signpost-split" style="color:#1a3c8f;width:16px;"></i>
+                                {{ $c->distance_from_hq !== null ? $c->distance_from_hq . ' km from MDRRMO HQ' : 'Distance unavailable' }}
+                            </div>
+                            <div><i class="bi bi-people-fill" style="color:#1a3c8f;width:16px;"></i>
+                                Occupancy: {{ $c->occupancy }} / {{ $c->capacity }} ({{ $c->occupancy_percent }}%)
+                            </div>
+                            <div><span class="badge-{{ $c->status }}">{{ ucfirst($c->status) }}</span></div>
+                        </div>
+
+                        <a href="https://www.google.com/maps?q={{ $c->latitude }},{{ $c->longitude }}" target="_blank"
+                        style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;width:100%;
+                                border:1.5px solid #d1d5db;border-radius:8px;padding:9px;font-size:.82rem;font-weight:600;
+                                color:#374151;text-decoration:none;">
+                            <i class="bi bi-map"></i> Open in Google Maps
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        @endforeach
 
     </div>
 </div>
@@ -273,7 +323,7 @@
                                     'Guiling','Palakipak','Pangaoan','Rabago','Rizal','Salvacion','San Angel',
                                     'San Antonio','San Bartolome','San Isidro','San Luis','San Pedro East',
                                     'San Pedro West','San Vicente','Station District','Tomana East','Tomana West',
-                                    'Poblacion','Zone I (Poblacion)','Zone II (Poblacion)','Zone III (Poblacion)',
+                                    'Zone I (Poblacion)','Zone II (Poblacion)','Zone III (Poblacion)',
                                     'Zone IV (Poblacion)','Zone V (Poblacion)',
                                 ] as $brgy)
                                     <option value="{{ $brgy }}">{{ $brgy }}</option>
@@ -304,56 +354,99 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // ── Barangay → coordinates, via Nominatim (OpenStreetMap), same pattern
-    // used elsewhere in the app for citizen registration / incident location.
-    // Cached in-memory per barangay, with a Rosales town-center fallback if
-    // the lookup fails or returns nothing.
-    const ROSALES_FALLBACK = { lat: 15.8952, lng: 120.6263 };
-    const geocodeCache = {};
+    // Static, verified barangay centroids — computed from official PSGC
+    // boundary polygons, same table used by the citizen app's report form
+    // (report_incident.dart). No live geocoding: every barangay listed
+    // in the dropdown above has a known-accurate coordinate here, so
+    // there's no "couldn't pinpoint" fallback path anymore.
+    const BARANGAY_COORDINATES = {
+        'Acop': { lat: 15.867531, lng: 120.652154 },
+        'Bakitbakit': { lat: 15.878026, lng: 120.650273 },
+        'Balingcanaway': { lat: 15.892046, lng: 120.651996 },
+        'Cabalaoangan Norte': { lat: 15.884509, lng: 120.626134 },
+        'Cabalaoangan Sur': { lat: 15.876132, lng: 120.633595 },
+        'Calanutan': { lat: 15.864204, lng: 120.633487 },
+        'Camangaan': { lat: 15.849665, lng: 120.635914 },
+        'Capitan Tomas': { lat: 15.908782, lng: 120.644112 },
+        'Carmay East': { lat: 15.914305, lng: 120.637743 },
+        'Carmay West': { lat: 15.911984, lng: 120.625233 },
+        'Carmen East': { lat: 15.891492, lng: 120.601517 },
+        'Carmen West': { lat: 15.888648, lng: 120.594245 },
+        'Casanicolasan': { lat: 15.924801, lng: 120.642405 },
+        'Coliling': { lat: 15.854561, lng: 120.620069 },
+        'Don Antonio Village': { lat: 15.899285, lng: 120.621318 },
+        'Guiling': { lat: 15.849206, lng: 120.621911 },
+        'Palakipak': { lat: 15.862663, lng: 120.617815 },
+        'Pangaoan': { lat: 15.838011, lng: 120.641362 },
+        'Rabago': { lat: 15.856993, lng: 120.634730 },
+        'Rizal': { lat: 15.923404, lng: 120.630220 },
+        'Salvacion': { lat: 15.846088, lng: 120.659706 },
+        'San Angel': { lat: 15.860160, lng: 120.656112 },
+        'San Antonio': { lat: 15.853902, lng: 120.658100 },
+        'San Bartolome': { lat: 15.875859, lng: 120.611195 },
+        'San Isidro': { lat: 15.838424, lng: 120.623979 },
+        'San Luis': { lat: 15.842845, lng: 120.650298 },
+        'San Pedro East': { lat: 15.896897, lng: 120.645530 },
+        'San Pedro West': { lat: 15.896184, lng: 120.636969 },
+        'San Vicente': { lat: 15.847728, lng: 120.671759 },
+        'Station District': { lat: 15.892017, lng: 120.620915 },
+        'Tomana East': { lat: 15.895439, lng: 120.613376 },
+        'Tomana West': { lat: 15.892375, lng: 120.608154 },
+        'Zone I (Poblacion)': { lat: 15.888483, lng: 120.623073 },
+        'Zone II (Poblacion)': { lat: 15.897089, lng: 120.629352 },
+        'Zone III (Poblacion)': { lat: 15.904627, lng: 120.621300 },
+        'Zone IV (Poblacion)': { lat: 15.904928, lng: 120.629206 },
+        'Zone V (Poblacion)': { lat: 15.890244, lng: 120.629699 },
+    };
 
     const latInput = document.getElementById('centerLat');
     const lngInput = document.getElementById('centerLng');
     const statusEl = document.getElementById('geocodeStatus');
     const barangaySelect = document.getElementById('barangaySelect');
 
-    async function geocodeBarangay(barangay) {
-        if (geocodeCache[barangay]) return geocodeCache[barangay];
-
-        const query = encodeURIComponent(`${barangay}, Rosales, Pangasinan, Philippines`);
-        const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`;
-
-        const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
-        const data = await response.json();
-
-        if (Array.isArray(data) && data.length > 0) {
-            const coords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-            geocodeCache[barangay] = coords;
-            return coords;
-        }
-
-        throw new Error('No results');
-    }
-
-    barangaySelect.addEventListener('change', async () => {
+    barangaySelect.addEventListener('change', () => {
         const barangay = barangaySelect.value;
-        if (!barangay) return;
+        const coords = BARANGAY_COORDINATES[barangay];
 
-        statusEl.classList.remove('resolved');
-        statusEl.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Locating ${barangay}...`;
-
-        try {
-            const coords = await geocodeBarangay(barangay);
-            latInput.value = coords.lat;
-            lngInput.value = coords.lng;
-            statusEl.classList.add('resolved');
-            statusEl.innerHTML = `<i class="bi bi-geo-alt-fill"></i> Located at ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`;
-        } catch (e) {
-            latInput.value = ROSALES_FALLBACK.lat;
-            lngInput.value = ROSALES_FALLBACK.lng;
+        if (!coords) {
+            // Should never happen — every option in the dropdown exists
+            // in the table above — but guard against it anyway.
             statusEl.classList.remove('resolved');
-            statusEl.innerHTML = `<i class="bi bi-exclamation-triangle"></i> Couldn't pinpoint ${barangay} — using Rosales town center. You can fine-tune this later.`;
+            statusEl.innerHTML = `<i class="bi bi-exclamation-triangle"></i> Unrecognized barangay.`;
+            return;
         }
+
+        latInput.value = coords.lat;
+        lngInput.value = coords.lng;
+        statusEl.classList.add('resolved');
+        statusEl.innerHTML = `<i class="bi bi-geo-alt-fill"></i> Pinned at Brgy. ${barangay} (${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`;
+    });
+
+    // Lazy-init each view-location map only when its modal actually opens —
+    // initializing Leaflet inside a display:none element gives a blank/grey
+    // map, and invalidateSize() after a short delay fixes the tile sizing
+    // once the modal transition finishes.
+    document.querySelectorAll('[id^="viewModal"]').forEach(modalEl => {
+        let map = null;
+        modalEl.addEventListener('shown.bs.modal', function () {
+            const lat = parseFloat(this.dataset.lat);
+            const lng = parseFloat(this.dataset.lng);
+            const mapId = this.dataset.mapId;
+            const name = this.dataset.name;
+
+            if (!lat || !lng) return;
+
+            if (!map) {
+                map = L.map(mapId).setView([lat, lng], 15);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+                }).addTo(map);
+                L.marker([lat, lng]).addTo(map).bindPopup(name).openPopup();
+            }
+            setTimeout(() => map.invalidateSize(), 200);
+        });
     });
 </script>
 @include('partials.sos-alert-overlay')

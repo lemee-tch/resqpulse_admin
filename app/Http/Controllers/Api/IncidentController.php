@@ -51,6 +51,12 @@ class IncidentController extends Controller
                     'ai_detected_type' => $analysis['type'],
                     'ai_confidence'    => $analysis['confidence'],
                     'ai_analysis'      => $analysis['notes'],
+                    // AI-suggested priority — best-effort only. If classify()
+                    // returned null (no API key, timeout, etc.) this whole
+                    // block is skipped and priority stays unset, same as
+                    // before; an admin sets it manually from the Incidents
+                    // table exactly like today.
+                    'priority'         => $analysis['priority'],
                 ]);
             }
         }

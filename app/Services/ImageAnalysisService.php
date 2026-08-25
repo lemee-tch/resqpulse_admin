@@ -13,11 +13,27 @@ class ImageAnalysisService
     ];
 
     /**
+     * Baseline priority per emergency type, mirroring the urgency already
+     * implied by PushNotificationService::AGENCY_MAP (life-threat types
+     * route to faster-response agencies). Confidence adjusts this down
+     * one notch when the AI wasn't sure — see priorityFor().
+     */
+    protected const TYPE_PRIORITY = [
+        'Fire'              => 'critical',
+        'Earthquake'        => 'critical',
+        'Medical Emergency' => 'critical',
+        'Accident'          => 'high',
+        'Flood'             => 'high',
+        'Landslide'         => 'high',
+        'Other'             => 'moderate',
+    ];
+
+    /**
      * Classifies an incident photo already saved on the 'public' disk.
      * Returns null on any failure — this is best-effort and must never
      * block an incident/SOS from being saved.
      *
-     * @return array{type: string, confidence: string, notes: string}|null
+     * @return array{type: string, confidence: string, notes: string, priority: string}|null
      */
     public function classify(string $storagePath): ?array
     {
@@ -146,15 +162,38 @@ class ImageAnalysisService
                 ->first(fn ($type) => strcasecmp(trim((string) $parsed['type']), $type) === 0);
 
             $parsed['type'] = $matchedType ?? 'Other';
+            $parsed['confidence'] = $parsed['confidence'] ?? 'low';
 
             return [
                 'type'       => $parsed['type'],
-                'confidence' => $parsed['confidence'] ?? 'low',
+                'confidence' => $parsed['confidence'],
                 'notes'      => $parsed['notes'] ?? '',
+                'priority'   => self::priorityFor($parsed['type'], $parsed['confidence']),
             ];
         } catch (\Throwable $e) {
             Log::warning('Image analysis threw an exception', ['error' => $e->getMessage()]);
             return null;
         }
+    }
+
+    /**
+     * Suggests an incident priority from the AI-detected type and its
+     * confidence. A low-confidence guess is stepped down one level —
+     * an uncertain "Fire" detection shouldn't page critical the same
+     * way a high-confidence one does.
+     */
+    public static function priorityFor(string $type, string $confidence): string
+    {
+        $base = self::TYPE_PRIORITY[$type] ?? 'moderate';
+
+        if (strtolower($confidence) !== 'low') {
+            return $base;
+        }
+
+        return match ($base) {
+            'critical' => 'high',
+            'high'     => 'moderate',
+            default    => 'low',
+        };
     }
 }

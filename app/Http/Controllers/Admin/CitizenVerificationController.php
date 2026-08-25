@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Mail\CitizenRejected;
 use App\Models\Citizen;
+use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
@@ -31,6 +32,8 @@ class CitizenVerificationController extends Controller
             'rejection_reason' => null,
         ]);
 
+        AuditLogService::log('approved', "Verified citizen {$citizen->full_name}.", $citizen);
+
         return back()->with('success', "{$citizen->full_name} has been verified.");
     }
 
@@ -43,6 +46,8 @@ class CitizenVerificationController extends Controller
         $name = $citizen->full_name;
         $email = $citizen->email;
         $reason = $request->rejection_reason;
+
+        AuditLogService::log('rejected', "Rejected citizen {$name}'s ID — {$reason}.");
 
         // Revoke any active login tokens before deleting, so any session
         // currently logged in on the phone gets immediately invalidated.

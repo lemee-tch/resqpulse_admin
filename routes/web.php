@@ -55,5 +55,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/incidents/{incident}', [IncidentController::class, 'show'])->name('incident.detail');
 
     Route::get('/sos-alerts/latest', [IncidentController::class, 'latestSos'])->name('sos-alerts.latest');
+    Route::get('/audit-log', [\App\Http\Controllers\Admin\AuditLogController::class, 'index'])->name('audit-log');
 
-});
+}); 

@@ -21,7 +21,7 @@
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 170px;
+            width: 200px;
             min-height: 100vh;
             background: #1a3c8f;
             display: flex;
@@ -109,7 +109,7 @@
 
         /* ── MAIN ── */
         .main-wrap {
-            margin-left: 170px;
+            margin-left: 200px  ;
             flex: 1;
             display: flex;
             flex-direction: column;
@@ -342,6 +342,16 @@
         .chart-link-card:hover .panel-card {
             border-color: #1a3c8f;
         }
+
+        .stat-grid-5 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        @media (min-width: 768px) {
+            .stat-grid-5 { grid-template-columns: repeat(5, 1fr); }
+        }
     </style>
 </head>
 <body>
@@ -371,7 +381,6 @@
         <a href="{{ route('responder-verification') }}">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
-        <a href="#">Settings</a>
     </nav>
 
     <div class="sidebar-logout">
@@ -394,8 +403,11 @@
         <div class="topbar-right">
             <div class="topbar-bell"><i class="bi bi-bell"></i></div>
             <div class="topbar-user">
-                <i class="bi bi-person-circle"></i>
-                MDRRMO Admin
+    
+                <a href="{{ route('audit-log') }}" style="text-decoration:none;color:inherit;">
+                    <i class="bi bi-person-circle"></i>
+                     {{ auth()->user()->name }}
+                </a>
             </div>
         </div>
     </div>
@@ -403,61 +415,51 @@
     <!-- CONTENT -->
     <div class="content">
 
-        <!-- ── STAT CARDS ROW (linked to Incidents, filtered by status) ── -->
-        <div class="row g-3 mb-3">
-            <div class="col-6 col-md-3">
-                <a href="{{ route('incident') }}" class="stat-card-link">
-                    <div class="stat-card">
-                        <div class="stat-label">Total Incidents</div>
-                        <div class="stat-value">{{ $totalIncidents }}</div>
-                        <div class="stat-badge text-success">+{{ $incidentsToday }} today</div>
+        <div class="stat-grid-5">
+            <a href="{{ route('incident') }}" class="stat-card-link">
+                <div class="stat-card">
+                    <div class="stat-label">Total Incidents</div>
+                    <div class="stat-value">{{ $totalIncidents }}</div>
+                    <div class="stat-badge text-success">+{{ $incidentsToday }} today</div>
+                </div>
+            </a>
+
+            <a href="{{ route('incident') }}" class="stat-card-link">
+                <div class="stat-card">
+                    <div class="stat-label text-danger">Critical</div>
+                    <div class="stat-value" style="color:#dc2626;">{{ $criticalIncidents }}</div>
+                    <div class="stat-badge text-danger">High Priority</div>
+                </div>
+            </a>
+            
+            <a href="{{ route('sos-alerts') }}" class="stat-card-link">
+                <div class="stat-card">
+                    <div class="stat-label text-danger">SOS Alerts</div>
+                    <div class="stat-value" style="color:#dc2626;">{{ $pendingSosCount ?? 0 }}</div>
+                    <div class="stat-badge text-danger">
+                        {{ ($pendingSosCount ?? 0) > 0 ? 'Pending' : 'All Clear' }}
                     </div>
-                </a>
-            </div>
-            <div class="col-6 col-md-3">
-                <a href="{{ route('incident') }}" class="stat-card-link">
-                    <div class="stat-card">
-                        <div class="stat-label text-danger">Critical</div>
-                        <div class="stat-value" style="color:#dc2626;">{{ $criticalIncidents }}</div>
-                        <div class="stat-badge text-danger">High Priority</div>
-                    </div>
-                </a>
-            </div>
-            <div class="col-6 col-md-3">
-                <a href="{{ route('incident') }}" class="stat-card-link">
-                    <div class="stat-card">
-                        <div class="stat-label">Responding</div>
-                        <div class="stat-value">{{ $respondingIncidents }}</div>
-                        <div class="stat-badge text-primary">Active</div>
-                    </div>
-                </a>
-            </div>
-            <div class="col-6 col-md-3">
-                <a href="{{ route('incident') }}" class="stat-card-link">
-                    <div class="stat-card">
-                        <div class="stat-label">Resolved</div>
-                        <div class="stat-value">{{ $resolvedIncidents }}</div>
-                        <div class="stat-badge text-success">Completed</div>
-                    </div>
-                </a>
-            </div>
-            <div class="col-6 col-md-3">
-                <a href="{{ route('sos-alerts') }}" class="stat-card-link">
-                    <div class="stat-card">
-                        <div class="stat-label text-danger">SOS Alerts</div>
-                        <div class="stat-value">@if(( $pendingSosCount ?? 0 ) > 0){{ $pendingSosCount }}</div>
-                        <div class="stat-badge text-danger">Pending</div>
-                        @endif
-                    </div>
-                </a>
-            </div>
+                </div>
+            </a>
+
+            <a href="{{ route('incident') }}" class="stat-card-link">
+                <div class="stat-card">
+                    <div class="stat-label">Responding</div>
+                    <div class="stat-value">{{ $respondingIncidents }}</div>
+                    <div class="stat-badge text-primary">Active</div>
+                </div>
+            </a>
+
+            <a href="{{ route('incident') }}" class="stat-card-link">
+                <div class="stat-card">
+                    <div class="stat-label">Resolved</div>
+                    <div class="stat-value">{{ $resolvedIncidents }}</div>
+                    <div class="stat-badge text-success">Completed</div>
+                </div>
+            </a>
+
+
         </div>
-        <a href="{{ route('sos-alerts') }}" style="color:#ffb4a8;">
-            <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
-            @if(($pendingSosCount ?? 0) > 0)
-                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
-            @endif
-        </a>
 
         <!-- ── MAP + RECENT INCIDENTS ── -->
         <div class="row g-3 mb-3">

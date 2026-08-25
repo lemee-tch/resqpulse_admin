@@ -13,7 +13,7 @@
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 170px; min-height: 100vh; background: #1a3c8f;
+            width: 200px; min-height: 100vh; background: #1a3c8f;
             display: flex; flex-direction: column;
             position: fixed; top: 0; left: 0; z-index: 100;
         }
@@ -50,7 +50,7 @@
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 170px; flex: 1; display: flex; flex-direction: column; }
+        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 32px 36px; flex: 1; }
 
         .page-header {
@@ -142,7 +142,7 @@
     <nav class="sidebar-nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>
         <a href="{{ route('incident') }}">Incidents</a>
-        <a href="{{ route('sos-alerts') }}" class="active">
+        <a href="{{ route('sos-alerts') }}">
             <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
             @if(($pendingSosCount ?? 0) > 0)
                 <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
@@ -155,7 +155,6 @@
         <a href="{{ route('responder-verification') }}">Responder Verification</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}" class="active">User</a>
-        <a href="#">Settings</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
