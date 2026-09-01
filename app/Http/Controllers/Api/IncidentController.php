@@ -130,12 +130,7 @@ class IncidentController extends Controller
         $incidents = Incident::with('citizen')
             ->where('status', '!=', 'resolved')
             ->orderByDesc('created_at')
-            ->get()
-            ->filter(function (Incident $incident) use ($responder) {
-                $routingType = $incident->ai_detected_type ?? $incident->emergency_type;
-                return in_array($responder->agency, PushNotificationService::agenciesFor($routingType), true);
-            })
-            ->values();
+            ->get();
 
         return response()->json($incidents);
     }

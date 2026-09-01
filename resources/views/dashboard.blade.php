@@ -378,7 +378,7 @@
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
         <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
-        <a href="{{ route('responder-verification') }}">Responder Verification</a>
+        <a href="{{ route('responder-accounts') }}">Responder Accounts</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
     </nav>

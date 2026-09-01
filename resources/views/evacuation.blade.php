@@ -167,7 +167,7 @@ v<!DOCTYPE html>
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}" class="active">Evacuation Centers</a>
         <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
-        <a href="{{ route('responder-verification') }}">Responder Verification</a>
+        <a href="{{ route('responder-accounts') }}">Responder Accounts</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
     </nav>
@@ -270,9 +270,6 @@ v<!DOCTYPE html>
                             <div><i class="bi bi-geo-alt-fill" style="color:#1a3c8f;width:16px;"></i> Brgy. {{ $c->barangay }}</div>
                             <div><i class="bi bi-signpost-split" style="color:#1a3c8f;width:16px;"></i>
                                 {{ $c->distance_from_hq !== null ? $c->distance_from_hq . ' km from MDRRMO HQ' : 'Distance unavailable' }}
-                            </div>
-                            <div><i class="bi bi-people-fill" style="color:#1a3c8f;width:16px;"></i>
-                                Occupancy: {{ $c->occupancy }} / {{ $c->capacity }} ({{ $c->occupancy_percent }}%)
                             </div>
                             <div><span class="badge-{{ $c->status }}">{{ ucfirst($c->status) }}</span></div>
                         </div>

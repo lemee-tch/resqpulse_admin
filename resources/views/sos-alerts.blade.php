@@ -229,7 +229,7 @@
         <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}">Evacuation Centers</a>
         <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
-        <a href="{{ route('responder-verification') }}">Responder Verification</a>
+        <a href="{{ route('responder-accounts') }}">Responder Accounts</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
     </nav>
@@ -282,13 +282,23 @@
                     $reporter = $sos->citizen?->full_name ?? 'Unknown';
                     $mobile = $sos->citizen?->mobile;
                     $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
+
+                    // `photo_path` stores a JSON-encoded array of paths (e.g.
+                    // '["a.jpg","b.jpg"]') — same pattern as incident.blade.php /
+                    // incident-details.blade.php. Some very old rows may still
+                    // have a single plain path string instead — handle both.
+                    $sosPhoto = null;
+                    if ($sos->photo_path) {
+                        $decodedSosPhotos = json_decode($sos->photo_path, true);
+                        $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
+                    }
                 @endphp
                 <div class="sos-card"
                     data-id="{{ $sos->id }}"
                     onclick="window.location.href='{{ route('incident.detail', $sos->id) }}'">
 
-                    @if($sos->photo_path)
-                        <img src="{{ Storage::url($sos->photo_path) }}" class="sos-photo" alt="SOS photo">
+                    @if($sosPhoto)
+                        <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo">
                     @else
                         <div class="sos-photo-placeholder"><i class="bi bi-camera-video-off"></i></div>
                     @endif
@@ -370,6 +380,14 @@
                     $reporter = $sos->citizen?->full_name ?? 'Unknown';
                     $mobile = $sos->citizen?->mobile;
                     $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
+
+                    // `photo_path` stores a JSON-encoded array of paths — same
+                    // decoding as the Active SOS tab above.
+                    $sosPhoto = null;
+                    if ($sos->photo_path) {
+                        $decodedSosPhotos = json_decode($sos->photo_path, true);
+                        $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
+                    }
                 @endphp
                 <div class="sos-card status-resolved history-row"
                     data-date="{{ $sos->created_at->format('Y-m-d') }}"
@@ -377,8 +395,8 @@
                     data-search="{{ strtolower($reporter.' '.$sos->location.' '.$sos->ai_detected_type.' '.$sos->ai_analysis) }}"
                     onclick="window.location.href='{{ route('incident.detail', $sos->id) }}'">
 
-                    @if($sos->photo_path)
-                        <img src="{{ Storage::url($sos->photo_path) }}" class="sos-photo" alt="SOS photo">
+                    @if($sosPhoto)
+                        <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo">
                     @else
                         <div class="sos-photo-placeholder"><i class="bi bi-camera-video-off"></i></div>
                     @endif

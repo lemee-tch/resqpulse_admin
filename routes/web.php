@@ -8,16 +8,21 @@ use App\Http\Controllers\Admin\AlertController;
 use App\Http\Controllers\Admin\EvacuationCenterController;
 use App\Http\Controllers\MapViewController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\ResponderAccountController;
 
 Route::middleware('auth')->group(function () {
     Route::get('/citizen-verification', [CitizenVerificationController::class, 'index'])->name('citizen-verification');
     Route::post('/citizen-verification/{citizen}/approve', [CitizenVerificationController::class, 'approve'])->name('citizen-verification.approve');
     Route::post('/citizen-verification/{citizen}/reject', [CitizenVerificationController::class, 'reject'])->name('citizen-verification.reject');
-    Route::get('/responder-verification', [\App\Http\Controllers\Admin\ResponderVerificationController::class, 'index'])->name('responder-verification');
-    Route::post('/responder-verification/{responder}/approve', 
-        [\App\Http\Controllers\Admin\ResponderVerificationController::class, 'approve'])->name('responder-verification.approve');
-    Route::post('/responder-verification/{responder}/reject', 
-        [\App\Http\Controllers\Admin\ResponderVerificationController::class, 'reject'])->name('responder-verification.reject');
+
+    // Responder accounts are pre-built, one per agency — this page
+    // replaces the old individual-responder verification workflow
+    // (approve/reject an uploaded ID) since there's no self-registration
+    // to verify anymore. Manage credentials/contact details here instead.
+    Route::get('/responder-accounts', [ResponderAccountController::class, 'index'])->name('responder-accounts');
+    Route::patch('/responder-accounts/{responder}', [ResponderAccountController::class, 'update'])->name('responder-accounts.update');
+    Route::post('/responder-accounts/{responder}/reset-password', [ResponderAccountController::class, 'resetPassword'])->name('responder-accounts.reset-password');
+    Route::post('/responder-accounts/{responder}/toggle-status', [ResponderAccountController::class, 'toggleStatus'])->name('responder-accounts.toggle-status');
 });
 
 Route::get('/', fn() => redirect()->route('login'));
@@ -57,4 +62,4 @@ Route::middleware('auth')->group(function () {
     Route::get('/sos-alerts/latest', [IncidentController::class, 'latestSos'])->name('sos-alerts.latest');
     Route::get('/audit-log', [\App\Http\Controllers\Admin\AuditLogController::class, 'index'])->name('audit-log');
 
-}); 
+});

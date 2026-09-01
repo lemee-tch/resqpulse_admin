@@ -38,9 +38,15 @@ class AlertController extends Controller
             'user_id'  => auth()->id(),
         ]);
 
-        AuditLogService::log('created', "Sent broadcast \"{$alert->title}\" to {$label}.", $alert);
-
         $audience = $request->type;
+
+        $label = match ($audience) {
+            'Both'       => 'citizens and responders',
+            'Responders' => 'responders',
+            default      => 'citizens',
+        };
+
+        AuditLogService::log('created', "Sent broadcast \"{$alert->title}\" to {$label}.", $alert);
 
         if (in_array($audience, ['Citizens', 'Both'], true)) {
             $push->broadcastToAllCitizens($alert->title, $alert->body);
@@ -49,12 +55,6 @@ class AlertController extends Controller
         if (in_array($audience, ['Responders', 'Both'], true)) {
             $push->broadcastToAllResponders($alert->title, $alert->body);
         }
-
-        $label = match ($audience) {
-            'Both'       => 'citizens and responders',
-            'Responders' => 'responders',
-            default      => 'citizens',
-        };
 
         return back()->with('success', "Broadcast sent to {$label}.");
     }
