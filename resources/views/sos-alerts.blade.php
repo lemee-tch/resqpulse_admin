@@ -241,137 +241,11 @@
             background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;
             font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;
         }
-    
-        /* ── RESPONSIVE (mobile / tablet) ── */
-        .mobile-menu-btn {
-            display: none;
-            position: fixed;
-            top: 14px; left: 14px;
-            z-index: 300;
-            width: 42px; height: 42px;
-            border-radius: 10px;
-            border: none;
-            background: #1a3c8f;
-            color: #fff;
-            font-size: 1.2rem;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,.25);
-            cursor: pointer;
-        }
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,.45);
-            z-index: 150;
-        }
-        .sidebar-overlay.show { display: block; }
-
-        @media (max-width: 900px) {
-            .mobile-menu-btn { display: flex; }
-            .sidebar {
-                transform: translateX(-100%) !important;
-                transition: transform .25s ease;
-                z-index: 200;
-                width: 230px !important;
-                min-width: 230px !important;
-                max-width: 230px !important;
-            }
-            .sidebar.open { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,.3); }
-            .sidebar-nav a { white-space: normal !important; }
-            .main-wrap {
-                margin-left: 0 !important;
-                padding: 20px 16px 32px !important;
-                padding-top: 66px !important;
-                padding-bottom: 88px !important;
-            }
-            table { display: block; overflow-x: auto; white-space: nowrap; }
-            img, svg, canvas, iframe { max-width: 100%; }
-        }
-
-        @media (max-width: 560px) {
-            .main-wrap {
-                padding: 16px 12px 28px !important;
-                padding-top: 62px !important;
-                padding-bottom: 88px !important;
-            }
-        }
-    
-        /* ── App-style nav polish ── */
-        .sidebar-nav a {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 2px 10px;
-            border-radius: 10px;
-            border-left: none !important;
-        }
-        .sidebar-nav a i { font-size: 1rem; width: 18px; text-align: center; flex-shrink: 0; }
-        .sidebar-nav a.active { border-left: none !important; background: rgba(255,255,255,.16) !important; }
-
-        /* ── Bottom app tab bar (mobile only) ── */
-        .bottom-tab-bar {
-            display: none;
-            position: fixed;
-            left: 0; right: 0; bottom: 0;
-            background: #fff;
-            border-top: 1px solid #e5e7eb;
-            box-shadow: 0 -2px 14px rgba(0,0,0,.08);
-            z-index: 250;
-            padding-bottom: env(safe-area-inset-bottom, 0);
-        }
-        .bottom-tab-bar a {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 2px;
-            padding: 8px 2px 7px;
-            color: #8a93a6;
-            text-decoration: none;
-            font-size: .62rem;
-            font-weight: 700;
-            letter-spacing: .2px;
-            position: relative;
-        }
-        .bottom-tab-bar a i { font-size: 1.15rem; }
-        .bottom-tab-bar a.active { color: #1a3c8f; }
-        .bottom-tab-bar .tab-badge {
-            position: absolute;
-            top: 3px; right: calc(50% - 20px);
-            background: #dc2626;
-            color: #fff;
-            font-size: .58rem;
-            font-weight: 800;
-            line-height: 1;
-            padding: 2px 5px;
-            border-radius: 20px;
-        }
-
-        @media (max-width: 900px) {
-            .bottom-tab-bar { display: flex; }
-        }
     </style>
 </head>
 <body>
 
 <!-- ════ SIDEBAR ════ -->
-<div class="sidebar-overlay" id="sidebarOverlay"></div>
-<nav class="bottom-tab-bar">
-    <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i><span>Home</span></a>
-    <a href="{{ route('incident') }}"><i class="bi bi-clipboard2-pulse"></i><span>Incidents</span>
-        @if(($pendingIncidentsCount ?? 0) > 0)
-            <span class="tab-badge">{{ $pendingIncidentsCount }}</span>
-        @endif</a>
-    <a href="{{ route('sos-alerts') }}" class="active"><i class="bi bi-exclamation-octagon-fill"></i><span>SOS</span>
-        @if(($pendingSosCount ?? 0) > 0)
-            <span class="tab-badge">{{ $pendingSosCount }}</span>
-        @endif</a>
-    <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i><span>Map</span></a>
-    <a href="javascript:void(0)" id="mobileMenuBtn"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
-</nav>
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
         <img src="{{ asset('images/logo.png') }}" alt="Logo">
@@ -397,7 +271,7 @@
         <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
         <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Citizen Verification</a>
+        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Residents Verification</a>
         <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
         <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
         <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
@@ -762,32 +636,5 @@
         applyFilters();
     })();
 </script>
-@include('partials.sos-alert-overlay')
-
-<script>
-(function () {
-    var btn = document.getElementById('mobileMenuBtn');
-    var sidebar = document.getElementById('sidebar');
-    var overlay = document.getElementById('sidebarOverlay');
-    if (!btn || !sidebar || !overlay) return;
-
-    function closeSidebar() {
-        sidebar.classList.remove('open');
-        overlay.classList.remove('show');
-    }
-    function openSidebar() {
-        sidebar.classList.add('open');
-        overlay.classList.add('show');
-    }
-
-    btn.addEventListener('click', function () {
-        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
-    });
-    overlay.addEventListener('click', closeSidebar);
-    sidebar.querySelectorAll('a').forEach(function (a) {
-        a.addEventListener('click', closeSidebar);
-    });
-})();
-</script>
-</body>
+@include('partials.sos-alert-overlay')</body>
 </html>

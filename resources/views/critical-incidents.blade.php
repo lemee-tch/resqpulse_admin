@@ -90,7 +90,7 @@
         <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
         <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Citizen Verification</a>
+        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Residents Verification</a>
         <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
         <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
         <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
@@ -179,6 +179,5 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-@include('partials.sos-alert-overlay')
-</body>
+@include('partials.sos-alert-overlay')</body>
 </html>
