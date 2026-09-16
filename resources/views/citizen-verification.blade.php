@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RESQPULSE – Citizen Verification</title>
+    <title>RESQPULSE – Residents Verification</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -306,7 +306,7 @@
         <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
         <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
         <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}" class="active"><i class="bi bi-person-check-fill"></i> Citizen Verification</a>
+        <a href="{{ route('citizen-verification') }}" class="active"><i class="bi bi-person-check-fill"></i> Residents Verification</a>
         <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
         <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
         <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
@@ -327,7 +327,7 @@
     <div class="content">
 
         <div class="page-header">
-            <div class="page-title">Citizen Verification</div>
+            <div class="page-title">Residents Verification</div>
         </div>
         <div class="page-sub">Review uploaded IDs and confirm residency before marking accounts verified.</div>
 
