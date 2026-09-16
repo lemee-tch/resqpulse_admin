@@ -25,7 +25,7 @@ class ImageAnalysisService
         'Accident'          => 'high',
         'Flood'             => 'high',
         'Landslide'         => 'high',
-        'Other'             => 'moderate',
+        'Other'             => 'low',
     ];
 
     /**
@@ -184,7 +184,7 @@ class ImageAnalysisService
      */
     public static function priorityFor(string $type, string $confidence): string
     {
-        $base = self::TYPE_PRIORITY[$type] ?? 'moderate';
+        $base = self::TYPE_PRIORITY[$type] ?? 'low';
 
         if (strtolower($confidence) !== 'low') {
             return $base;
@@ -192,7 +192,6 @@ class ImageAnalysisService
 
         return match ($base) {
             'critical' => 'high',
-            'high'     => 'moderate',
             default    => 'low',
         };
     }

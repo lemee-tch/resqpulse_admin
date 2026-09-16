@@ -56,13 +56,33 @@
 
         .page-header {
             display: flex; align-items: center; justify-content: space-between;
-            margin-bottom: 24px;
+            margin-bottom: 6px;
         }
         .page-title {
             font-family: 'Barlow', sans-serif; font-weight: 800;
             font-size: 1.6rem; color: #111827;
         }
-        .page-sub { font-size: .82rem; color: #6b7280; margin-top: 2px; }
+        .page-sub { font-size: .82rem; color: #6b7280; margin-bottom: 20px; }
+
+        /* ── TABS (same pattern as Incidents / SOS Alerts) ── */
+        .tab-bar {
+            display: flex; gap: 0;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            background: none; border: none;
+            padding: 10px 20px;
+            font-size: .85rem; font-weight: 600;
+            color: #6b7280; cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: color .2s, border-color .2s;
+        }
+        .tab-btn.active { color: #1a3c8f; border-bottom-color: #1a3c8f; }
+        .tab-btn:hover { color: #1a3c8f; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
 
         /* ── TABLE ── */
         .table-card {
@@ -107,6 +127,8 @@
         .action-btn.approve:hover { color: #10b981; background: #d1fae5; }
         .action-btn.reject:hover { color: #ef4444; background: #fee2e2; }
 
+        .empty-state { text-align: center; padding: 40px; color: #9ca3af; font-size: .85rem; }
+
         /* Modal */
         .modal-title-custom { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1.1rem; }
         .form-label-m { font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 5px; }
@@ -129,11 +151,137 @@
         }
         .btn-reject-confirm:hover { background: #dc2626; }
         .id-preview-img { width: 100%; border-radius: 10px; border: 1px solid #e5e7eb; }
+    
+        /* ── RESPONSIVE (mobile / tablet) ── */
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 14px; left: 14px;
+            z-index: 300;
+            width: 42px; height: 42px;
+            border-radius: 10px;
+            border: none;
+            background: #1a3c8f;
+            color: #fff;
+            font-size: 1.2rem;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,.25);
+            cursor: pointer;
+        }
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.45);
+            z-index: 150;
+        }
+        .sidebar-overlay.show { display: block; }
+
+        @media (max-width: 900px) {
+            .mobile-menu-btn { display: flex; }
+            .sidebar {
+                transform: translateX(-100%) !important;
+                transition: transform .25s ease;
+                z-index: 200;
+                width: 230px !important;
+                min-width: 230px !important;
+                max-width: 230px !important;
+            }
+            .sidebar.open { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,.3); }
+            .sidebar-nav a { white-space: normal !important; }
+            .main-wrap {
+                margin-left: 0 !important;
+                padding: 20px 16px 32px !important;
+                padding-top: 66px !important;
+                padding-bottom: 88px !important;
+            }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            img, svg, canvas, iframe { max-width: 100%; }
+        }
+
+        @media (max-width: 560px) {
+            .main-wrap {
+                padding: 16px 12px 28px !important;
+                padding-top: 62px !important;
+                padding-bottom: 88px !important;
+            }
+        }
+    
+        /* ── App-style nav polish ── */
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 2px 10px;
+            border-radius: 10px;
+            border-left: none !important;
+        }
+        .sidebar-nav a i { font-size: 1rem; width: 18px; text-align: center; flex-shrink: 0; }
+        .sidebar-nav a.active { border-left: none !important; background: rgba(255,255,255,.16) !important; }
+
+        /* ── Bottom app tab bar (mobile only) ── */
+        .bottom-tab-bar {
+            display: none;
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            background: #fff;
+            border-top: 1px solid #e5e7eb;
+            box-shadow: 0 -2px 14px rgba(0,0,0,.08);
+            z-index: 250;
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+        .bottom-tab-bar a {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            padding: 8px 2px 7px;
+            color: #8a93a6;
+            text-decoration: none;
+            font-size: .62rem;
+            font-weight: 700;
+            letter-spacing: .2px;
+            position: relative;
+        }
+        .bottom-tab-bar a i { font-size: 1.15rem; }
+        .bottom-tab-bar a.active { color: #1a3c8f; }
+        .bottom-tab-bar .tab-badge {
+            position: absolute;
+            top: 3px; right: calc(50% - 20px);
+            background: #dc2626;
+            color: #fff;
+            font-size: .58rem;
+            font-weight: 800;
+            line-height: 1;
+            padding: 2px 5px;
+            border-radius: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .bottom-tab-bar { display: flex; }
+        }
     </style>
 </head>
 <body>
 
-<aside class="sidebar">
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<nav class="bottom-tab-bar">
+    <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i><span>Home</span></a>
+    <a href="{{ route('incident') }}"><i class="bi bi-clipboard2-pulse"></i><span>Incidents</span>
+        @if(($pendingIncidentsCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingIncidentsCount }}</span>
+        @endif</a>
+    <a href="{{ route('sos-alerts') }}"><i class="bi bi-exclamation-octagon-fill"></i><span>SOS</span>
+        @if(($pendingSosCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingSosCount }}</span>
+        @endif</a>
+    <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i><span>Map</span></a>
+    <a href="javascript:void(0)" id="mobileMenuBtn" class="active"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
+</nav>
+<aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
         <img src="{{ asset('images/logo.png') }}" alt="Logo">
         <div class="sidebar-brand-text">
@@ -142,21 +290,27 @@
         </div>
     </div>
     <nav class="sidebar-nav">
-        <a href="{{ route('dashboard') }}">Dashboard</a>
-        <a href="{{ route('incident') }}">Incidents</a>
+        <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
+        <a href="{{ route('incident') }}">
+            <i class="bi bi-clipboard2-pulse"></i> Incidents
+            @if(($pendingIncidentsCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingIncidentsCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('sos-alerts') }}">
             <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
             @if(($pendingSosCount ?? 0) > 0)
                 <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
             @endif
         </a>
-        <a href="{{ route('mapview') }}">Map View</a>
-        <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
-        <a href="{{ route('evacuation') }}">Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}" class="active">Citizen Verification</a>
-        <a href="{{ route('responder-accounts') }}">Responder Accounts</a>
-        <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
-        <a href="{{ route('users') }}">User</a>
+        <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
+        <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
+        <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
+        <a href="{{ route('citizen-verification') }}" class="active"><i class="bi bi-person-check-fill"></i> Citizen Verification</a>
+        <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
+        <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
+        <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
+        <a href="{{ route('users') }}"><i class="bi bi-people-fill"></i> User</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
@@ -173,97 +327,179 @@
     <div class="content">
 
         <div class="page-header">
-            <div>
-                <div class="page-title">Citizen Verification</div>
-                <div class="page-sub">Review uploaded IDs and confirm residency before marking accounts verified.</div>
-            </div>
+            <div class="page-title">Citizen Verification</div>
+        </div>
+        <div class="page-sub">Review uploaded IDs and confirm residency before marking accounts verified.</div>
+
+        @php
+            // Rejected citizens are deleted immediately in the controller
+            // (CitizenVerificationController::reject), so in practice this
+            // only ever splits into "still needs review" vs "verified" —
+            // but the badge/status logic stays generic in case that
+            // behavior changes later.
+            $pendingCitizens  = $citizens->where('verification_status', '!=', 'verified')->values();
+            $verifiedCitizens = $citizens->where('verification_status', '=', 'verified')->values();
+        @endphp
+
+        <!-- TABS -->
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab('pending', this)">Pending Review ({{ $pendingCitizens->count() }})</button>
+            <button class="tab-btn" onclick="switchTab('verified', this)">Verified ({{ $verifiedCitizens->count() }})</button>
         </div>
 
-        <div class="table-card">
-            <table class="evac-table">
-                <thead>
-                    <tr>
-                        <th>Citizen</th>
-                        <th>Contact</th>
-                        <th>Municipality / Barangay</th>
-                        <th>Valid ID</th>
-                        <th>Registered</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($citizens as $citizen)
-                    <tr>
-                        <td class="td-name">{{ $citizen->full_name }}</td>
-                        <td>
-                            {{ $citizen->email }}
-                            @if($citizen->mobile)
-                                <div class="td-sub">{{ $citizen->mobile }}</div>
-                            @endif
-                        </td>
-                        <td>
-                            {{ $citizen->municipality ?? '—' }}
-                            @if($citizen->barangay)
-                                <div class="td-sub">Brgy. {{ $citizen->barangay }}</div>
-                            @endif
-                        </td>
-                        <td>
-                            @if($citizen->valid_id_path)
-                                <img src="{{ Storage::url($citizen->valid_id_path) }}"
-                                     class="id-thumb"
-                                     data-bs-toggle="modal"
-                                     data-bs-target="#idModal{{ $citizen->id }}"
-                                     alt="ID">
-                            @else
-                                <span class="id-none">No ID uploaded</span>
-                            @endif
-                        </td>
-                        <td>{{ $citizen->created_at->format('M d, Y') }}</td>
-                        <td>
-                            @if($citizen->verification_status === 'verified')
-                                <span class="badge-verified">Verified</span>
-                            @elseif($citizen->verification_status === 'rejected')
-                                <span class="badge-rejected">Rejected</span>
-                            @else
-                                <span class="badge-pending">Pending</span>
-                            @endif
-                        </td>
-                        <td>
-                            @if($citizen->verification_status !== 'verified')
+        @php
+            // Shared row markup, rendered once per tab via a Blade component-ish closure.
+            $renderTable = function ($rows, $emptyMessage) {
+                return view('partials.citizen-verification-table', [
+                    'citizens' => $rows,
+                    'emptyMessage' => $emptyMessage,
+                ])->render();
+            };
+        @endphp
+
+        <!-- ══ TAB: PENDING REVIEW ══ -->
+        <div id="tab-pending" class="tab-panel active">
+            <div class="table-card">
+                <table class="evac-table">
+                    <thead>
+                        <tr>
+                            <th>Citizen</th>
+                            <th>Contact</th>
+                            <th>Municipality / Barangay</th>
+                            <th>Valid ID</th>
+                            <th>Registered</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($pendingCitizens as $citizen)
+                        <tr>
+                            <td class="td-name">{{ $citizen->full_name }}</td>
+                            <td>
+                                {{ $citizen->email }}
+                                @if($citizen->mobile)
+                                    <div class="td-sub">{{ $citizen->mobile }}</div>
+                                @endif
+                            </td>
+                            <td>
+                                {{ $citizen->municipality ?? '—' }}
+                                @if($citizen->barangay)
+                                    <div class="td-sub">Brgy. {{ $citizen->barangay }}</div>
+                                @endif
+                            </td>
+                            <td>
+                                @if($citizen->valid_id_path)
+                                    <img src="{{ Storage::url($citizen->valid_id_path) }}"
+                                         class="id-thumb"
+                                         data-bs-toggle="modal"
+                                         data-bs-target="#idModal{{ $citizen->id }}"
+                                         alt="ID">
+                                @else
+                                    <span class="id-none">No ID uploaded</span>
+                                @endif
+                            </td>
+                            <td>{{ $citizen->created_at->format('M d, Y') }}</td>
+                            <td>
+                                @if($citizen->verification_status === 'rejected')
+                                    <span class="badge-rejected">Rejected</span>
+                                @else
+                                    <span class="badge-pending">Pending</span>
+                                @endif
+                            </td>
+                            <td>
                                 <form action="{{ route('citizen-verification.approve', $citizen) }}" method="POST" style="display:inline;" class="approve-form">
                                     @csrf
                                     <button type="submit" class="action-btn approve" title="Approve">
                                         <i class="bi bi-check-circle"></i>
                                     </button>
                                 </form>
-                            @endif
-                            @if($citizen->verification_status !== 'rejected')
                                 <button class="action-btn reject" title="Reject"
                                         data-bs-toggle="modal" data-bs-target="#rejectModal{{ $citizen->id }}">
                                     <i class="bi bi-x-circle"></i>
                                 </button>
-                            @endif
-                        </td>
-                    </tr>
-                    @empty
-                    <tr>
-                        <td colspan="7" style="text-align:center; padding:40px; color:#9ca3af;">
-                            No citizen registrations yet.
-                        </td>
-                    </tr>
-                    @endforelse
-                </tbody>
-            </table>
+                            </td>
+                        </tr>
+                        @empty
+                        <tr>
+                            <td colspan="7" class="empty-state">
+                                No citizens waiting for review right now.
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
         </div>
 
-        {{-- Modals live OUTSIDE the table on purpose: a <form> (or any non-tr
-             content) placed directly inside <tbody> is invalid HTML, and
-             browsers apply special "foster parenting" / form-pointer rules
-             when parsing it — which silently breaks the form's internal
-             structure (e.g. the <select> ends up not actually contained
-             within the <form> in the parsed DOM, even though the source
-             looks nested correctly). Keeping modals here avoids that. --}}
+        <!-- ══ TAB: VERIFIED ══ -->
+        <div id="tab-verified" class="tab-panel">
+            <div class="table-card">
+                <table class="evac-table">
+                    <thead>
+                        <tr>
+                            <th>Citizen</th>
+                            <th>Contact</th>
+                            <th>Municipality / Barangay</th>
+                            <th>Valid ID</th>
+                            <th>Registered</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($verifiedCitizens as $citizen)
+                        <tr>
+                            <td class="td-name">{{ $citizen->full_name }}</td>
+                            <td>
+                                {{ $citizen->email }}
+                                @if($citizen->mobile)
+                                    <div class="td-sub">{{ $citizen->mobile }}</div>
+                                @endif
+                            </td>
+                            <td>
+                                {{ $citizen->municipality ?? '—' }}
+                                @if($citizen->barangay)
+                                    <div class="td-sub">Brgy. {{ $citizen->barangay }}</div>
+                                @endif
+                            </td>
+                            <td>
+                                @if($citizen->valid_id_path)
+                                    <img src="{{ Storage::url($citizen->valid_id_path) }}"
+                                         class="id-thumb"
+                                         data-bs-toggle="modal"
+                                         data-bs-target="#idModal{{ $citizen->id }}"
+                                         alt="ID">
+                                @else
+                                    <span class="id-none">No ID uploaded</span>
+                                @endif
+                            </td>
+                            <td>{{ $citizen->created_at->format('M d, Y') }}</td>
+                            <td><span class="badge-verified">Verified</span></td>
+                            <td>
+                                <button class="action-btn reject" title="Reject"
+                                        data-bs-toggle="modal" data-bs-target="#rejectModal{{ $citizen->id }}">
+                                    <i class="bi bi-x-circle"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        @empty
+                        <tr>
+                            <td colspan="7" class="empty-state">
+                                No verified citizens yet.
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {{-- Modals live OUTSIDE the tables on purpose — see the original
+             note: a <form> placed directly inside <tbody> is invalid HTML
+             and browsers "foster parent" it, breaking the form's internal
+             structure. Loop over ALL citizens once here so both tabs'
+             rows can open the right modal by id. --}}
         @foreach($citizens as $citizen)
             <div class="modal fade" id="idModal{{ $citizen->id }}" tabindex="-1">
                 <div class="modal-dialog modal-dialog-centered">
@@ -321,6 +557,14 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    // Tab switching — same pattern as incident.blade.php / sos-alerts.blade.php
+    function switchTab(id, btn) {
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('tab-' + id).classList.add('active');
+        btn.classList.add('active');
+    }
+
     const swalTheme = {
         confirmButtonColor: '#1a3c8f',
         cancelButtonColor: '#6b7280',
@@ -411,5 +655,31 @@
     @endif
 </script>
 @include('partials.sos-alert-overlay')
+
+<script>
+(function () {
+    var btn = document.getElementById('mobileMenuBtn');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebarOverlay');
+    if (!btn || !sidebar || !overlay) return;
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('show');
+    }
+    function openSidebar() {
+        sidebar.classList.add('open');
+        overlay.classList.add('show');
+    }
+
+    btn.addEventListener('click', function () {
+        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+    overlay.addEventListener('click', closeSidebar);
+    sidebar.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', closeSidebar);
+    });
+})();
+</script>
 </body>
 </html>

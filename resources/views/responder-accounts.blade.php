@@ -2,11 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RESQPULSE – Responder Accounts</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
@@ -58,8 +60,6 @@
             border-radius: 6px; transition: color .2s, background .2s;
         }
         .action-btn:hover { color: #1a3c8f; background: #eff2fb; }
-        .action-btn.danger:hover { color: #ef4444; background: #fee2e2; }
-        .action-btn.success:hover { color: #10b981; background: #d1fae5; }
 
         /* Modal */
         .modal-title-custom { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1.1rem; }
@@ -91,11 +91,137 @@
             margin-bottom: 20px;
         }
         .info-note i { margin-top: 1px; flex-shrink: 0; }
+    
+        /* ── RESPONSIVE (mobile / tablet) ── */
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 14px; left: 14px;
+            z-index: 300;
+            width: 42px; height: 42px;
+            border-radius: 10px;
+            border: none;
+            background: #1a3c8f;
+            color: #fff;
+            font-size: 1.2rem;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,.25);
+            cursor: pointer;
+        }
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.45);
+            z-index: 150;
+        }
+        .sidebar-overlay.show { display: block; }
+
+        @media (max-width: 900px) {
+            .mobile-menu-btn { display: flex; }
+            .sidebar {
+                transform: translateX(-100%) !important;
+                transition: transform .25s ease;
+                z-index: 200;
+                width: 230px !important;
+                min-width: 230px !important;
+                max-width: 230px !important;
+            }
+            .sidebar.open { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,.3); }
+            .sidebar-nav a { white-space: normal !important; }
+            .main-wrap {
+                margin-left: 0 !important;
+                padding: 20px 16px 32px !important;
+                padding-top: 66px !important;
+                padding-bottom: 88px !important;
+            }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            img, svg, canvas, iframe { max-width: 100%; }
+        }
+
+        @media (max-width: 560px) {
+            .main-wrap {
+                padding: 16px 12px 28px !important;
+                padding-top: 62px !important;
+                padding-bottom: 88px !important;
+            }
+        }
+    
+        /* ── App-style nav polish ── */
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 2px 10px;
+            border-radius: 10px;
+            border-left: none !important;
+        }
+        .sidebar-nav a i { font-size: 1rem; width: 18px; text-align: center; flex-shrink: 0; }
+        .sidebar-nav a.active { border-left: none !important; background: rgba(255,255,255,.16) !important; }
+
+        /* ── Bottom app tab bar (mobile only) ── */
+        .bottom-tab-bar {
+            display: none;
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            background: #fff;
+            border-top: 1px solid #e5e7eb;
+            box-shadow: 0 -2px 14px rgba(0,0,0,.08);
+            z-index: 250;
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+        .bottom-tab-bar a {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            padding: 8px 2px 7px;
+            color: #8a93a6;
+            text-decoration: none;
+            font-size: .62rem;
+            font-weight: 700;
+            letter-spacing: .2px;
+            position: relative;
+        }
+        .bottom-tab-bar a i { font-size: 1.15rem; }
+        .bottom-tab-bar a.active { color: #1a3c8f; }
+        .bottom-tab-bar .tab-badge {
+            position: absolute;
+            top: 3px; right: calc(50% - 20px);
+            background: #dc2626;
+            color: #fff;
+            font-size: .58rem;
+            font-weight: 800;
+            line-height: 1;
+            padding: 2px 5px;
+            border-radius: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .bottom-tab-bar { display: flex; }
+        }
     </style>
 </head>
 <body>
 
-<aside class="sidebar">
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<nav class="bottom-tab-bar">
+    <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i><span>Home</span></a>
+    <a href="{{ route('incident') }}"><i class="bi bi-clipboard2-pulse"></i><span>Incidents</span>
+        @if(($pendingIncidentsCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingIncidentsCount }}</span>
+        @endif</a>
+    <a href="{{ route('sos-alerts') }}"><i class="bi bi-exclamation-octagon-fill"></i><span>SOS</span>
+        @if(($pendingSosCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingSosCount }}</span>
+        @endif</a>
+    <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i><span>Map</span></a>
+    <a href="javascript:void(0)" id="mobileMenuBtn" class="active"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
+</nav>
+<aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
         <img src="{{ asset('images/logo.png') }}" alt="Logo">
         <div class="sidebar-brand-text">
@@ -104,21 +230,27 @@
         </div>
     </div>
     <nav class="sidebar-nav">
-        <a href="{{ route('dashboard') }}">Dashboard</a>
-        <a href="{{ route('incident') }}">Incidents</a>
+        <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
+        <a href="{{ route('incident') }}">
+            <i class="bi bi-clipboard2-pulse"></i> Incidents
+            @if(($pendingIncidentsCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingIncidentsCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('sos-alerts') }}">
             <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
             @if(($pendingSosCount ?? 0) > 0)
                 <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
             @endif
         </a>
-        <a href="{{ route('mapview') }}">Map View</a>
-        <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
-        <a href="{{ route('evacuation') }}">Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
-        <a href="{{ route('responder-accounts') }}" class="active">Responder Accounts</a>
-        <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
-        <a href="{{ route('users') }}">User</a>
+        <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
+        <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
+        <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
+        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Citizen Verification</a>
+        <a href="{{ route('responder-accounts') }}" class="active"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
+        <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
+        <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
+        <a href="{{ route('users') }}"><i class="bi bi-people-fill"></i> User</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
@@ -145,6 +277,12 @@
             </div>
         @endif
 
+        @error('otp')
+            <div class="alert alert-danger" style="border-radius:10px;font-size:.85rem;margin-bottom:16px;">
+                {{ $message }}
+            </div>
+        @enderror
+
         <div class="info-note">
             <i class="bi bi-info-circle"></i>
             <span>These accounts are pre-built — there's no self-registration anymore. To hand a login to an agency, reset its password below and share the new credentials directly with the team.</span>
@@ -156,8 +294,6 @@
                     <tr>
                         <th>Agency</th>
                         <th>Login Email</th>
-                        <th>Mobile</th>
-                        <th>Unit / Station</th>
                         <th>Status</th>
                         <th>Action</th>
                     </tr>
@@ -166,12 +302,7 @@
                     @forelse($responders as $r)
                     <tr>
                         <td><span class="agency-badge">{{ $r->agency }}</span></td>
-                        <td>
-                            {{ $r->email }}
-                            <div class="td-sub">Badge/ref: {{ $r->badge_number }}</div>
-                        </td>
-                        <td>{{ $r->mobile ?? '—' }}</td>
-                        <td>{{ $r->unit_station ?? '—' }}</td>
+                        <td>{{ $r->email }}</td>
                         <td>
                             @if($r->status === 'active')
                                 <span class="badge-active">Active</span>
@@ -188,19 +319,11 @@
                                     data-bs-toggle="modal" data-bs-target="#resetModal{{ $r->id }}">
                                 <i class="bi bi-key-fill"></i>
                             </button>
-                            <form action="{{ route('responder-accounts.toggle-status', $r) }}" method="POST" style="display:inline;">
-                                @csrf
-                                <button type="submit"
-                                        class="action-btn {{ $r->status === 'active' ? 'danger' : 'success' }}"
-                                        title="{{ $r->status === 'active' ? 'Deactivate' : 'Activate' }}">
-                                    <i class="bi {{ $r->status === 'active' ? 'bi-toggle-on' : 'bi-toggle-off' }}"></i>
-                                </button>
-                            </form>
                         </td>
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="6" style="text-align:center; padding:40px; color:#9ca3af;">
+                        <td colspan="4" style="text-align:center; padding:40px; color:#9ca3af;">
                             No responder accounts yet. Run the ResponderSeeder to create the 5 agency accounts.
                         </td>
                     </tr>
@@ -227,16 +350,23 @@
                     <div class="row g-3">
                         <div class="col-12">
                             <label class="form-label-m">Login Email</label>
-                            <input type="email" name="email" class="form-control-m" value="{{ $r->email }}" required>
+                            <div style="display:flex;gap:8px;align-items:flex-start;">
+                                <input type="email" name="email" id="editEmail{{ $r->id }}" class="form-control-m"
+                                       value="{{ $r->email }}" required style="flex:1;">
+                                <button type="button" id="getCodeBtn{{ $r->id }}" onclick="sendEmailOtp({{ $r->id }})"
+                                        style="white-space:nowrap;background:#1a3c8f;color:#fff;border:none;
+                                               border-radius:8px;padding:0 14px;font-size:.82rem;font-weight:700;cursor:pointer;">
+                                    Get Code
+                                </button>
+                            </div>
                             <div class="form-hint">This is what the team uses to sign in — changing it doesn't affect the password.</div>
+                            <div class="form-hint" id="otpStatus{{ $r->id }}" style="display:none;"></div>
                         </div>
-                        <div class="col-12">
-                            <label class="form-label-m">Mobile (optional)</label>
-                            <input type="text" name="mobile" class="form-control-m" value="{{ $r->mobile }}">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label-m">Unit / Station (optional)</label>
-                            <input type="text" name="unit_station" class="form-control-m" value="{{ $r->unit_station }}">
+                        <div class="col-12" id="otpFieldWrap{{ $r->id }}" style="display:none;">
+                            <label class="form-label-m">Verification Code</label>
+                            <input type="text" name="otp" id="otpInput{{ $r->id }}" class="form-control-m"
+                                   placeholder="6-digit code" maxlength="6" inputmode="numeric">
+                            <div class="form-hint">Check the inbox for the new email above — the code expires in 10 minutes.</div>
                         </div>
                     </div>
                 </div>
@@ -253,7 +383,7 @@
 <div class="modal fade" id="resetModal{{ $r->id }}" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border-radius:14px;border:none;">
-            <form method="POST" action="{{ route('responder-accounts.reset-password', $r) }}">
+            <form method="POST" action="{{ route('responder-accounts.reset-password', $r) }}" class="reset-password-form" data-agency="{{ $r->agency }}">
                 @csrf
                 <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title-custom">Reset {{ $r->agency }} Password</h5>
@@ -276,5 +406,141 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 @include('partials.sos-alert-overlay')
+
+<script>
+(function () {
+    var btn = document.getElementById('mobileMenuBtn');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebarOverlay');
+    if (!btn || !sidebar || !overlay) return;
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('show');
+    }
+    function openSidebar() {
+        sidebar.classList.add('open');
+        overlay.classList.add('show');
+    }
+
+    btn.addEventListener('click', function () {
+        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+    overlay.addEventListener('click', closeSidebar);
+    sidebar.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', closeSidebar);
+    });
+})();
+
+/**
+ * Guards against a mistyped agency login email — there's no self-service
+ * recovery if this gets fat-fingered (see the "Reset Password" flow's
+ * own doc comment: forgotten *passwords* are recoverable, but nobody
+ * catches a typo'd email until the whole team can't log in). Unlike a
+ * simple retype-to-confirm, this actually proves the new address is
+ * real and reachable: "Get Code" emails a 6-digit OTP to it (see
+ * Admin\ResponderAccountController::sendEmailOtp), and the email only
+ * takes effect once that code is typed back in and update() confirms
+ * it server-side. The button is always visible — clicking it re-sends
+ * a code for whatever's currently in the field, changed or not.
+ */
+function sendEmailOtp(id) {
+    var input = document.getElementById('editEmail' + id);
+    var btn = document.getElementById('getCodeBtn' + id);
+    var statusEl = document.getElementById('otpStatus' + id);
+    var otpWrap = document.getElementById('otpFieldWrap' + id);
+    var otpInput = document.getElementById('otpInput' + id);
+
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+
+    fetch('{{ url('/responder-accounts') }}/' + id + '/send-email-otp', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+        },
+        body: JSON.stringify({ email: input.value.trim() }),
+    })
+        .then(function (res) {
+            return res.json().then(function (data) {
+                return { ok: res.ok, data: data };
+            });
+        })
+        .then(function (result) {
+            statusEl.style.display = 'block';
+            if (result.ok) {
+                statusEl.style.color = '#065f46';
+                statusEl.textContent = result.data.message;
+                otpWrap.style.display = 'block';
+                otpInput.required = true;
+            } else {
+                statusEl.style.color = '#dc2626';
+                var firstError = result.data.errors
+                    ? Object.values(result.data.errors)[0][0]
+                    : (result.data.message || 'Could not send code.');
+                statusEl.textContent = firstError;
+            }
+        })
+        .catch(function () {
+            statusEl.style.display = 'block';
+            statusEl.style.color = '#dc2626';
+            statusEl.textContent = 'Network error — could not send code.';
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = 'Get Code';
+        });
+}
+
+const swalTheme = {
+    confirmButtonColor: '#1a3c8f',
+    cancelButtonColor: '#6b7280',
+    buttonsStyling: true,
+    customClass: {
+        popup: 'rounded-4',
+        confirmButton: 'fw-bold',
+        cancelButton: 'fw-bold',
+    },
+};
+
+// Reset Password — the modal already collects the new password; close
+// it first, THEN show the SweetAlert (firing Swal while a Bootstrap
+// modal is still open can cause stacking/focus-trap issues — same
+// reasoning as citizen-verification.blade.php's reject flow), and do
+// one final confirm before every device on this account gets signed out.
+document.querySelectorAll('.reset-password-form').forEach(form => {
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        const agency = form.dataset.agency;
+        const parentModalEl = form.closest('.modal');
+        const bsModal = parentModalEl ? bootstrap.Modal.getOrCreateInstance(parentModalEl) : null;
+
+        const confirmReset = () => {
+            Swal.fire({
+                ...swalTheme,
+                icon: 'warning',
+                title: `Reset the ${agency} password?`,
+                text: 'This immediately signs out every device currently using this account.',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, Reset Password',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc2626',
+            }).then(result => {
+                if (result.isConfirmed) form.submit();
+            });
+        };
+
+        if (bsModal && parentModalEl.classList.contains('show')) {
+            parentModalEl.addEventListener('hidden.bs.modal', confirmReset, { once: true });
+            bsModal.hide();
+        } else {
+            confirmReset();
+        }
+    });
+});
+</script>
 </body>
 </html>

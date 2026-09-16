@@ -146,6 +146,40 @@
             cursor: pointer;
             position: relative;
         }
+        .notif-badge {
+            position: absolute; top: -6px; right: -8px;
+            background: #dc2626; color: #fff;
+            font-size: .62rem; font-weight: 800;
+            min-width: 16px; height: 16px; border-radius: 20px;
+            display: none; align-items: center; justify-content: center;
+            padding: 0 4px; line-height: 1;
+        }
+        .notif-dropdown {
+            display: none;
+            position: absolute; top: 32px; right: -10px;
+            width: 320px; max-height: 380px; overflow-y: auto;
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+            box-shadow: 0 12px 32px rgba(0,0,0,.14);
+            z-index: 200; cursor: default;
+        }
+        .notif-dropdown-header {
+            font-family: 'Barlow', sans-serif; font-weight: 800; font-size: .85rem; color: #111827;
+            padding: 12px 16px; border-bottom: 1px solid #f3f4f6;
+        }
+        .notif-item {
+            display: block; padding: 10px 16px; text-decoration: none;
+            border-bottom: 1px solid #f9fafb; transition: background .15s;
+        }
+        .notif-item:hover { background: #f8faff; }
+        .notif-item-type { font-size: .82rem; font-weight: 700; color: #111827; }
+        .notif-item-loc { font-size: .76rem; color: #6b7280; margin-top: 1px; }
+        .notif-item-time { font-size: .7rem; color: #9ca3af; margin-top: 3px; }
+        .notif-empty { padding: 20px 16px; text-align: center; color: #9ca3af; font-size: .82rem; }
+        .notif-view-all {
+            display: block; text-align: center; padding: 10px;
+            font-size: .8rem; font-weight: 700; color: #1a3c8f; text-decoration: none;
+        }
+        .notif-view-all:hover { background: #f8faff; }
 
         .topbar-user {
             display: flex;
@@ -352,12 +386,138 @@
         @media (min-width: 768px) {
             .stat-grid-5 { grid-template-columns: repeat(5, 1fr); }
         }
+    
+        /* ── RESPONSIVE (mobile / tablet) ── */
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 14px; left: 14px;
+            z-index: 300;
+            width: 42px; height: 42px;
+            border-radius: 10px;
+            border: none;
+            background: #1a3c8f;
+            color: #fff;
+            font-size: 1.2rem;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,.25);
+            cursor: pointer;
+        }
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.45);
+            z-index: 150;
+        }
+        .sidebar-overlay.show { display: block; }
+
+        @media (max-width: 900px) {
+            .mobile-menu-btn { display: flex; }
+            .sidebar {
+                transform: translateX(-100%) !important;
+                transition: transform .25s ease;
+                z-index: 200;
+                width: 230px !important;
+                min-width: 230px !important;
+                max-width: 230px !important;
+            }
+            .sidebar.open { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,.3); }
+            .sidebar-nav a { white-space: normal !important; }
+            .main-wrap {
+                margin-left: 0 !important;
+                padding: 20px 16px 32px !important;
+                padding-top: 66px !important;
+                padding-bottom: 88px !important;
+            }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            img, svg, canvas, iframe { max-width: 100%; }
+        }
+
+        @media (max-width: 560px) {
+            .main-wrap {
+                padding: 16px 12px 28px !important;
+                padding-top: 62px !important;
+                padding-bottom: 88px !important;
+            }
+        }
+    
+        /* ── App-style nav polish ── */
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 2px 10px;
+            border-radius: 10px;
+            border-left: none !important;
+        }
+        .sidebar-nav a i { font-size: 1rem; width: 18px; text-align: center; flex-shrink: 0; }
+        .sidebar-nav a.active { border-left: none !important; background: rgba(255,255,255,.16) !important; }
+
+        /* ── Bottom app tab bar (mobile only) ── */
+        .bottom-tab-bar {
+            display: none;
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            background: #fff;
+            border-top: 1px solid #e5e7eb;
+            box-shadow: 0 -2px 14px rgba(0,0,0,.08);
+            z-index: 250;
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+        .bottom-tab-bar a {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            padding: 8px 2px 7px;
+            color: #8a93a6;
+            text-decoration: none;
+            font-size: .62rem;
+            font-weight: 700;
+            letter-spacing: .2px;
+            position: relative;
+        }
+        .bottom-tab-bar a i { font-size: 1.15rem; }
+        .bottom-tab-bar a.active { color: #1a3c8f; }
+        .bottom-tab-bar .tab-badge {
+            position: absolute;
+            top: 3px; right: calc(50% - 20px);
+            background: #dc2626;
+            color: #fff;
+            font-size: .58rem;
+            font-weight: 800;
+            line-height: 1;
+            padding: 2px 5px;
+            border-radius: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .bottom-tab-bar { display: flex; }
+        }
     </style>
 </head>
 <body>
 
 <!-- ════════════ SIDEBAR ════════════ -->
-<aside class="sidebar">
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<nav class="bottom-tab-bar">
+    <a href="{{ route('dashboard') }}" class="active"><i class="bi bi-speedometer2"></i><span>Home</span></a>
+    <a href="{{ route('incident') }}"><i class="bi bi-clipboard2-pulse"></i><span>Incidents</span>
+        @if(($pendingIncidentsCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingIncidentsCount }}</span>
+        @endif</a>
+    <a href="{{ route('sos-alerts') }}"><i class="bi bi-exclamation-octagon-fill"></i><span>SOS</span>
+        @if(($pendingSosCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingSosCount }}</span>
+        @endif</a>
+    <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i><span>Map</span></a>
+    <a href="javascript:void(0)" id="mobileMenuBtn"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
+</nav>
+<aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
         <img src="{{ asset('images/logo.png') }}" alt="Logo">
         <div class="sidebar-brand-text">
@@ -366,21 +526,27 @@
         </div>
     </div>
     <nav class="sidebar-nav">
-        <a href="{{ route('dashboard') }}" class="active">Dashboard</a>
-        <a href="{{ route('incident') }}">Incidents</a>
+        <a href="{{ route('dashboard') }}" class="active"><i class="bi bi-speedometer2"></i> Dashboard</a>
+        <a href="{{ route('incident') }}">
+            <i class="bi bi-clipboard2-pulse"></i> Incidents
+            @if(($pendingIncidentsCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingIncidentsCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('sos-alerts') }}">
             <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
             @if(($pendingSosCount ?? 0) > 0)
                 <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
             @endif
         </a>
-        <a href="{{ route('mapview') }}">Map View</a>
-        <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
-        <a href="{{ route('evacuation') }}">Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
-        <a href="{{ route('responder-accounts') }}">Responder Accounts</a>
-        <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
-        <a href="{{ route('users') }}">User</a>
+        <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
+        <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
+        <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
+        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Citizen Verification</a>
+        <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
+        <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
+        <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
+        <a href="{{ route('users') }}"><i class="bi bi-people-fill"></i> User</a>
     </nav>
 
     <div class="sidebar-logout">
@@ -401,7 +567,16 @@
     <div class="topbar">
         <div class="topbar-title">Dashboard Overview</div>
         <div class="topbar-right">
-            <div class="topbar-bell"><i class="bi bi-bell"></i></div>
+            <div class="topbar-bell" id="notifBell">
+                <i class="bi bi-bell"></i>
+                <span class="notif-badge" id="notifBadge"></span>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Recent Reports</div>
+                    <div id="notifList"></div>
+                    <a href="{{ route('incidents.overview') }}" class="notif-view-all">View all incidents</a>
+                </div>
+            </div>
+            <audio id="notifSound" src="{{ asset('sounds/notification.mp3') }}" preload="auto"></audio>
             <div class="topbar-user">
     
                 <a href="{{ route('audit-log') }}" style="text-decoration:none;color:inherit;">
@@ -416,7 +591,7 @@
     <div class="content">
 
         <div class="stat-grid-5">
-            <a href="{{ route('incident') }}" class="stat-card-link">
+            <a href="{{ route('incidents.overview') }}" class="stat-card-link">
                 <div class="stat-card">
                     <div class="stat-label">Total Incidents</div>
                     <div class="stat-value">{{ $totalIncidents }}</div>
@@ -424,7 +599,7 @@
                 </div>
             </a>
 
-            <a href="{{ route('incident') }}" class="stat-card-link">
+            <a href="{{ route('critical') }}" class="stat-card-link">
                 <div class="stat-card">
                     <div class="stat-label text-danger">Critical</div>
                     <div class="stat-value" style="color:#dc2626;">{{ $criticalIncidents }}</div>
@@ -442,7 +617,7 @@
                 </div>
             </a>
 
-            <a href="{{ route('incident') }}" class="stat-card-link">
+            <a href="{{ route('incidents.overview', ['status' => 'responding']) }}" class="stat-card-link">
                 <div class="stat-card">
                     <div class="stat-label">Responding</div>
                     <div class="stat-value">{{ $respondingIncidents }}</div>
@@ -450,7 +625,7 @@
                 </div>
             </a>
 
-            <a href="{{ route('incident') }}" class="stat-card-link">
+            <a href="{{ route('incidents.overview', ['status' => 'resolved']) }}" class="stat-card-link">
                 <div class="stat-card">
                     <div class="stat-label">Resolved</div>
                     <div class="stat-value">{{ $resolvedIncidents }}</div>
@@ -627,13 +802,16 @@ new Chart(document.getElementById('donutChart'), {
     }]
 });
 
-// Line chart
+// Line chart — real data, last 7 days
+const trendLabels = @json($trendWeek->keys());
+const trendData = @json($trendWeek->values());
+
 new Chart(document.getElementById('lineChart'), {
     type: 'line',
     data: {
-        labels: ['May 21','May 22','May 23','May 24','May 25','May 26','May 23'],
+        labels: trendLabels,
         datasets: [{
-            data: [30, 18, 38, 22, 35, 12, 8],
+            data: trendData,
             borderColor: '#1a3c8f',
             borderWidth: 2,
             pointBackgroundColor: '#1a3c8f',
@@ -649,8 +827,8 @@ new Chart(document.getElementById('lineChart'), {
         scales: {
             x: { grid: { display: false }, ticks: { font: { size: 10 } } },
             y: {
-                min: 0, max: 40,
-                ticks: { stepSize: 10, font: { size: 10 } },
+                beginAtZero: true,
+                ticks: { precision: 0, font: { size: 10 } },
                 grid: { color: '#f0f0f0' }
             }
         }
@@ -712,5 +890,134 @@ new Chart(document.getElementById('lineChart'), {
 })();
 </script>
 @include('partials.sos-alert-overlay')
+
+<script>
+(function () {
+    var btn = document.getElementById('mobileMenuBtn');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebarOverlay');
+    if (!btn || !sidebar || !overlay) return;
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('show');
+    }
+    function openSidebar() {
+        sidebar.classList.add('open');
+        overlay.classList.add('show');
+    }
+
+    btn.addEventListener('click', function () {
+        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+    overlay.addEventListener('click', closeSidebar);
+    sidebar.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', closeSidebar);
+    });
+})();
+
+/**
+ * Notification bell — deliberately separate from the SOS siren overlay
+ * (sos-alert-overlay partial): that one is for emergencies that need
+ * immediate, hard-to-miss attention; this is for ordinary incident
+ * reports arriving, more like a chat app's "new message" ping than an
+ * alarm. Polls the same way the SOS overlay does, but excludes SOS
+ * entirely server-side (see IncidentController::latestIncidentNotifications)
+ * so a single SOS report never triggers both the siren AND a bell ding
+ * for the same event.
+ */
+(function () {
+    const STORAGE_KEY = 'resqpulse_last_seen_incident_notif';
+    const POLL_MS = 15000;
+
+    const bell = document.getElementById('notifBell');
+    const badge = document.getElementById('notifBadge');
+    const dropdown = document.getElementById('notifDropdown');
+    const list = document.getElementById('notifList');
+    const sound = document.getElementById('notifSound');
+    if (!bell) return;
+
+    let lastKnownCount = 0;
+    let isOpen = false;
+
+    function getLastSeen() {
+        return localStorage.getItem(STORAGE_KEY) || '';
+    }
+    function setLastSeen(iso) {
+        localStorage.setItem(STORAGE_KEY, iso);
+    }
+
+    function timeAgo(isoString) {
+        const seconds = Math.max(0, Math.floor((Date.now() - new Date(isoString).getTime()) / 1000));
+        if (seconds < 60) return 'just now';
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return minutes + ' min ago';
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return hours + 'h ago';
+        return Math.floor(hours / 24) + 'd ago';
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str ?? '';
+        return div.innerHTML;
+    }
+
+    async function poll() {
+        try {
+            const since = getLastSeen();
+            const url = new URL("{{ route('notifications.incidents') }}", window.location.origin);
+            if (since) url.searchParams.set('since', since);
+
+            const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const data = await res.json();
+
+            // Only chime on a genuine new arrival detected between polls —
+            // not on first page load, where "newCount" just reflects
+            // everything since the admin's very first-ever visit.
+            if (data.newCount > lastKnownCount && lastKnownCount > 0) {
+                sound.currentTime = 0;
+                sound.play().catch(() => {}); // blocked until the admin's first click anywhere on the page — normal browser autoplay policy
+            }
+            lastKnownCount = data.newCount;
+
+            badge.textContent = data.newCount > 99 ? '99+' : data.newCount;
+            badge.style.display = data.newCount > 0 ? 'flex' : 'none';
+
+            list.innerHTML = data.recent.length
+                ? data.recent.map(function (inc) {
+                    return '<a href="/incidents/' + inc.id + '" class="notif-item">' +
+                        '<div class="notif-item-type">' + escapeHtml(inc.emergency_type) + '</div>' +
+                        '<div class="notif-item-loc">' + escapeHtml(inc.location || 'Location unavailable') + '</div>' +
+                        '<div class="notif-item-time">' + timeAgo(inc.created_at) + '</div>' +
+                        '</a>';
+                }).join('')
+                : '<div class="notif-empty">No reports yet.</div>';
+        } catch (e) { /* silent — next poll tries again */ }
+    }
+
+    bell.addEventListener('click', function (e) {
+        e.stopPropagation();
+        isOpen = !isOpen;
+        dropdown.style.display = isOpen ? 'block' : 'none';
+        if (isOpen) {
+            // Opening the bell marks everything as seen — badge clears,
+            // and the next poll's "since" starts from right now.
+            setLastSeen(new Date().toISOString());
+            lastKnownCount = 0;
+            badge.style.display = 'none';
+        }
+    });
+    document.addEventListener('click', function (e) {
+        if (isOpen && !bell.contains(e.target)) {
+            isOpen = false;
+            dropdown.style.display = 'none';
+        }
+    });
+
+    poll();
+    setInterval(poll, POLL_MS);
+})();
+</script>
 </body>
 </html>

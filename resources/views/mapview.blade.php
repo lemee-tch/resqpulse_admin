@@ -183,12 +183,154 @@
         .map-text-label.barangay { font-weight: 600; font-size: 11px; }
 
         .status-note { font-size: .78rem; color: #6b7280; margin-top: -8px; margin-bottom: 12px; }
+
+        /* Pulsing ring under "pending" pins to draw the eye without being loud */
+        @keyframes pinPulse {
+            0%   { transform: scale(.6); opacity: .55; }
+            70%  { transform: scale(1.9); opacity: 0; }
+            100% { transform: scale(1.9); opacity: 0; }
+        }
+        .pin-pulse {
+            position: absolute;
+            border-radius: 50%;
+            transform-origin: center;
+            animation: pinPulse 1.8s ease-out infinite;
+            pointer-events: none;
+        }
+        .pin-wrap { transition: transform .15s ease; }
+        .pin-wrap:hover { transform: translateY(-2px); }
+    
+        /* ── RESPONSIVE (mobile / tablet) ── */
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 14px; left: 14px;
+            z-index: 300;
+            width: 42px; height: 42px;
+            border-radius: 10px;
+            border: none;
+            background: #1a3c8f;
+            color: #fff;
+            font-size: 1.2rem;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,.25);
+            cursor: pointer;
+        }
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.45);
+            z-index: 150;
+        }
+        .sidebar-overlay.show { display: block; }
+
+        @media (max-width: 900px) {
+            .mobile-menu-btn { display: flex; }
+            .sidebar {
+                transform: translateX(-100%) !important;
+                transition: transform .25s ease;
+                z-index: 200;
+                width: 230px !important;
+                min-width: 230px !important;
+                max-width: 230px !important;
+            }
+            .sidebar.open { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,.3); }
+            .sidebar-nav a { white-space: normal !important; }
+            .main-wrap {
+                margin-left: 0 !important;
+                padding: 20px 16px 32px !important;
+                padding-top: 66px !important;
+                padding-bottom: 88px !important;
+            }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            img, svg, canvas, iframe { max-width: 100%; }
+        }
+
+        @media (max-width: 560px) {
+            .main-wrap {
+                padding: 16px 12px 28px !important;
+                padding-top: 62px !important;
+                padding-bottom: 88px !important;
+            }
+        }
+    
+        /* ── App-style nav polish ── */
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 2px 10px;
+            border-radius: 10px;
+            border-left: none !important;
+        }
+        .sidebar-nav a i { font-size: 1rem; width: 18px; text-align: center; flex-shrink: 0; }
+        .sidebar-nav a.active { border-left: none !important; background: rgba(255,255,255,.16) !important; }
+
+        /* ── Bottom app tab bar (mobile only) ── */
+        .bottom-tab-bar {
+            display: none;
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            background: #fff;
+            border-top: 1px solid #e5e7eb;
+            box-shadow: 0 -2px 14px rgba(0,0,0,.08);
+            z-index: 250;
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+        .bottom-tab-bar a {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            padding: 8px 2px 7px;
+            color: #8a93a6;
+            text-decoration: none;
+            font-size: .62rem;
+            font-weight: 700;
+            letter-spacing: .2px;
+            position: relative;
+        }
+        .bottom-tab-bar a i { font-size: 1.15rem; }
+        .bottom-tab-bar a.active { color: #1a3c8f; }
+        .bottom-tab-bar .tab-badge {
+            position: absolute;
+            top: 3px; right: calc(50% - 20px);
+            background: #dc2626;
+            color: #fff;
+            font-size: .58rem;
+            font-weight: 800;
+            line-height: 1;
+            padding: 2px 5px;
+            border-radius: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .bottom-tab-bar { display: flex; }
+        }
     </style>
 </head>
 <body>
 
 <!-- ════ SIDEBAR ════ -->
-<aside class="sidebar">
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<nav class="bottom-tab-bar">
+    <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i><span>Home</span></a>
+    <a href="{{ route('incident') }}"><i class="bi bi-clipboard2-pulse"></i><span>Incidents</span>
+        @if(($pendingIncidentsCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingIncidentsCount }}</span>
+        @endif</a>
+    <a href="{{ route('sos-alerts') }}"><i class="bi bi-exclamation-octagon-fill"></i><span>SOS</span>
+        @if(($pendingSosCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingSosCount }}</span>
+        @endif</a>
+    <a href="{{ route('mapview') }}" class="active"><i class="bi bi-geo-alt-fill"></i><span>Map</span></a>
+    <a href="javascript:void(0)" id="mobileMenuBtn"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
+</nav>
+<aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
         <img src="{{ asset('images/logo.png') }}" alt="Logo">
         <div class="sidebar-brand-text">
@@ -197,21 +339,27 @@
         </div>
     </div>
     <nav class="sidebar-nav">
-        <a href="{{ route('dashboard') }}">Dashboard</a>
-        <a href="{{ route('incident') }}">Incidents</a>
+        <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
+        <a href="{{ route('incident') }}">
+            <i class="bi bi-clipboard2-pulse"></i> Incidents
+            @if(($pendingIncidentsCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingIncidentsCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('sos-alerts') }}">
             <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
             @if(($pendingSosCount ?? 0) > 0)
                 <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
             @endif
         </a>
-        <a href="{{ route('mapview') }}" class="active">Map View</a>
-        <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
-        <a href="{{ route('evacuation') }}">Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
-        <a href="{{ route('responder-accounts') }}">Responder Accounts</a>
-        <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
-        <a href="{{ route('users') }}">User</a>
+        <a href="{{ route('mapview') }}" class="active"><i class="bi bi-geo-alt-fill"></i> Map View</a>
+        <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
+        <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
+        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Citizen Verification</a>
+        <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
+        <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
+        <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
+        <a href="{{ route('users') }}"><i class="bi bi-people-fill"></i> User</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
@@ -282,7 +430,7 @@
                 </div>
                 <div class="form-check form-check-inline m-0">
                     <input class="form-check-input" type="checkbox" id="chkResp" checked onchange="toggleLayer('resp', this.checked)">
-                    <label class="form-check-label" for="chkResp" style="font-size:.8rem;font-weight:600;">Show Responders</label>
+                    <label class="form-check-label" for="chkResp" style="font-size:.8rem;font-weight:600;">Show Responders (Accepted Missions)</label>
                 </div>
                 <div class="form-check form-check-inline m-0">
                     <input class="form-check-input" type="checkbox" id="chkBoundary" checked onchange="toggleLayer('boundary', this.checked)">
@@ -343,20 +491,65 @@
     let hqMarker = null;
     let roadLayer, satelliteLayer;
 
-    function emojiDivIcon(emoji, color) {
+    // Lightens a #rrggbb color by `amt` (0-255) — used to build the subtle
+    // top-to-bottom gradient on each pin so it reads as a glossy droplet
+    // instead of a flat cutout shape.
+    function lightenColor(hex, amt) {
+        let c = hex.replace('#', '');
+        if (c.length === 3) c = c.split('').map(ch => ch + ch).join('');
+        const num = parseInt(c, 16);
+        const clamp = v => Math.min(255, Math.max(0, v));
+        const r = clamp((num >> 16) + amt);
+        const g = clamp(((num >> 8) & 0x00FF) + amt);
+        const b = clamp((num & 0x0000FF) + amt);
+        return '#' + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1);
+    }
+
+    let pinUid = 0;
+
+    /**
+     * A polished map pin: gradient-filled teardrop, white outline so it pops
+     * against any tile color, a white badge circle behind the emoji for
+     * contrast/legibility, and a soft blurred shadow instead of a flat oval.
+     * Pass `pulse: true` for markers that need urgent attention (e.g.
+     * pending incidents) — draws an animated ring under the pin.
+     */
+    function emojiDivIcon(emoji, color, opts = {}) {
+        const { pulse = false, size = 40 } = opts;
+        const h = Math.round(size * 1.25);
+        const uid = 'pin' + (pinUid++);
+        const light = lightenColor(color, 55);
+
+        const pulseHtml = pulse
+            ? `<div class="pin-pulse" style="left:${size * 0.5 - size * 0.32}px; top:${size * 0.34}px; width:${size * 0.64}px; height:${size * 0.64}px; background:${color};"></div>`
+            : '';
+
         return L.divIcon({
             className: '',
             html: `
-                <div style="position:relative;width:36px;height:44px;">
-                    <svg width="36" height="44" viewBox="0 0 36 44" style="position:absolute;top:0;left:0;">
-                        <ellipse cx="18" cy="40" rx="6" ry="3" fill="rgba(0,0,0,.2)"/>
-                        <path d="M18 0 C8 0 0 8 0 18 C0 30 18 44 18 44 C18 44 36 30 36 18 C36 8 28 0 18 0Z" fill="${color}"/>
-                        <text x="18" y="23" text-anchor="middle" font-size="16">${emoji}</text>
+                <div class="pin-wrap" style="position:relative;width:${size}px;height:${h}px;">
+                    ${pulseHtml}
+                    <svg width="${size}" height="${h}" viewBox="0 0 40 50" style="position:absolute;top:0;left:0;overflow:visible;">
+                        <defs>
+                            <linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="${light}"/>
+                                <stop offset="100%" stop-color="${color}"/>
+                            </linearGradient>
+                            <filter id="${uid}-shadow" x="-60%" y="-20%" width="220%" height="180%">
+                                <feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="#000" flood-opacity=".35"/>
+                            </filter>
+                        </defs>
+                        <ellipse cx="20" cy="45.5" rx="7" ry="2.2" fill="rgba(0,0,0,.22)"/>
+                        <path d="M20 2 C10.6 2 3 9.6 3 19 C3 30.5 20 47.5 20 47.5 C20 47.5 37 30.5 37 19 C37 9.6 29.4 2 20 2Z"
+                              fill="url(#${uid})" stroke="#ffffff" stroke-width="2" filter="url(#${uid}-shadow)"/>
+                        <circle cx="20" cy="19" r="12.5" fill="#ffffff" opacity=".95"/>
+                        <circle cx="20" cy="19" r="12.5" fill="none" stroke="${color}" stroke-width="1"/>
+                        <text x="20" y="24.5" text-anchor="middle" font-size="15">${emoji}</text>
                     </svg>
                 </div>`,
-            iconSize: [36, 44],
-            iconAnchor: [18, 44],
-            popupAnchor: [0, -40],
+            iconSize: [size, h],
+            iconAnchor: [size / 2, h - size * 0.06],
+            popupAnchor: [0, -h + 6],
         });
     }
 
@@ -452,6 +645,7 @@
         boundaryLayer.clearLayers();
         let barangayCount = 0;
         let municipalityDrawn = false;
+        let firstBoundaryBounds = null;
 
         const totalElements = (boundaryData.elements || []).length;
         const relations = (boundaryData.elements || []).filter(el => el.type === 'relation');
@@ -469,15 +663,45 @@
             if (!rings.length) return;
 
             if (level === '8') {
+                const totalPts = rings.reduce((sum, r) => sum + r.length, 0);
+
+                // A real municipal boundary has hundreds of vertices. If what
+                // we got is this sparse, the fetch almost certainly matched
+                // the wrong place (or got cut off) — don't draw a bogus
+                // shape, just say so.
+                if (totalPts < 100) {
+                    debugParts.push(`level-8 "${name}" REJECTED: only ${totalPts} pts total (looks wrong) — try Refresh Map`);
+                    return;
+                }
+
                 console.log('Rosales boundary rings (lat,lon):', rings);
                 const bounds = L.latLngBounds(rings.flat());
                 console.log('Boundary bounds:', bounds.toBBoxString());
 
-                L.polygon(rings, {
-                    color: '#ff0000', weight: 4, opacity: 1, dashArray: '10,6',
-                    fillColor: '#f2ecb0', fillOpacity: 0.3,
+                // Dim everything outside Rosales: one big rectangle covering the
+                // whole world with the Rosales ring(s) cut out as holes, using
+                // Leaflet's even-odd fill so only the outside gets shaded.
+                const worldRing = [[-85, -180], [85, -180], [85, 180], [-85, 180]];
+                L.polygon([worldRing, ...rings], {
+                    stroke: false,
+                    fillColor: '#0b1f4d',
+                    fillOpacity: 0.45,
+                    interactive: false,
                 }).addTo(boundaryLayer);
+
+                // Crisp solid outline right on the municipal boundary — this is
+                // the "highlight" line, no fill inside so Rosales itself stays
+                // at normal map brightness.
+                L.polygon(rings, {
+                    color: '#ffcc00',
+                    weight: 3,
+                    opacity: 1,
+                    fill: false,
+                    interactive: false,
+                }).addTo(boundaryLayer);
+
                 municipalityDrawn = true;
+                firstBoundaryBounds = firstBoundaryBounds || bounds;
 
                 const [clat, clon] = centroidOf(rings[0]);
                 L.marker([clat, clon], { icon: textDivIcon(name, 'municipality'), interactive: false }).addTo(boundaryLayer);
@@ -490,10 +714,17 @@
 
         console.log('Boundary debug:', debugParts.join(' | '));
 
+        // Snap the view to Rosales the first time the boundary loads, so the
+        // highlighted area is framed nicely instead of relying on the fixed
+        // center/zoom guess.
+        if (firstBoundaryBounds) {
+            map.fitBounds(firstBoundaryBounds, { padding: [24, 24] });
+        }
+
         const statusEl = document.getElementById('boundaryStatus');
         statusEl.textContent = municipalityDrawn
             ? `Rosales boundary drawn (${barangayCount} barangay labels). Debug: ${debugParts.join(' | ')}`
-            : `Boundary data unavailable. Debug: ${debugParts.join(' | ')}`;
+            : `Boundary data unavailable or looks wrong — click "Refresh Map" to re-fetch. Debug: ${debugParts.join(' | ')}`;
     }
 
     function renderIncidentMarkers() {
@@ -510,7 +741,9 @@
             const badgeClass = statusClass[statusKey] || 'pop-pending';
             const badgeLabel = statusLabel[statusKey] || incident.status || 'Pending';
 
-            const marker = L.marker([lat, lng], { icon: emojiDivIcon(iconInfo.emoji, pinColor) }).addTo(incidentLayer);
+            const marker = L.marker([lat, lng], {
+                icon: emojiDivIcon(iconInfo.emoji, pinColor, { pulse: statusKey === 'pending' }),
+            }).addTo(incidentLayer);
 
             const content = `
                 <div class="incident-popup">
@@ -548,24 +781,66 @@
         });
     }
 
-    // ── Responders (still a placeholder feed — no responders-location table yet) ──
+    const agencyIcon = { PNP: '🚓', BFP: '🚒', SARS: '🛟', HCU: '🚑', MSWD: '🤝' };
+
+    function responderName(r) {
+        return r.full_name || [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Responder';
+    }
+
+    function formatAcceptedAt(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    // ── Responders — plotted at the incident they accepted. There's no live
+    // GPS column for responders (see MapViewController), so the incident's
+    // own coordinates are the only truthful location we have: "accepted
+    // and heading to / on scene at" that address. Resolved incidents drop
+    // off (their responders are done), and multiple backup responders on
+    // the same incident fan out slightly so they don't stack unreadably.
     function renderResponderMarkers() {
         respLayer.clearLayers();
 
-        const responders = [
-            { lat: 15.8990, lng: 120.6260, name: 'Responder Unit 1', note: 'En route to Zone V' },
-            { lat: 15.8870, lng: 120.6320, name: 'Responder Unit 2', note: 'On standby - Zone I' },
-        ];
+        incidentsData.forEach(incident => {
+            if (incident.status === 'resolved') return;
 
-        responders.forEach(r => {
-            const marker = L.marker([r.lat, r.lng], { icon: emojiDivIcon('🚑', '#7c3aed') }).addTo(respLayer);
-            marker.bindPopup(`<div class="incident-popup"><b>🚑 ${r.name}</b><br>${r.note}</div>`);
+            const responders = incident.responders || [];
+            if (!responders.length) return;
+
+            const lat = parseFloat(incident.latitude);
+            const lng = parseFloat(incident.longitude);
+            if (isNaN(lat) || isNaN(lng)) return;
+
+            const n = responders.length;
+            responders.forEach((r, i) => {
+                const angle = (Math.PI / 4) + (i * (2 * Math.PI / n));
+                const radius = 0.00035; // ~35-40m fan-out per backup responder
+                const rLat = lat + Math.sin(angle) * radius;
+                const rLng = lng + Math.cos(angle) * radius;
+
+                const emoji = agencyIcon[r.agency] || '🚑';
+                const marker = L.marker([rLat, rLng], {
+                    icon: emojiDivIcon(emoji, '#7c3aed', { size: 34 }),
+                }).addTo(respLayer);
+
+                const acceptedAt = formatAcceptedAt(r.pivot && r.pivot.accepted_at);
+                const content = `
+                    <div class="incident-popup">
+                        <div class="pop-type">${emoji} ${responderName(r)}</div>
+                        <div class="pop-row">${r.agency ?? ''}${r.unit_station ? ' · ' + r.unit_station : ''}</div>
+                        <div class="pop-row">Responding to: ${incident.emergency_type ?? 'Incident'}${incident.location ? ' — ' + incident.location : ''}</div>
+                        ${acceptedAt ? `<div class="pop-row">Accepted: ${acceptedAt}</div>` : ''}
+                    </div>`;
+                marker.bindPopup(content);
+            });
         });
     }
 
     function renderHqMarker() {
         if (hqMarker) map.removeLayer(hqMarker);
-        hqMarker = L.marker([HQ_LAT, HQ_LNG], { icon: emojiDivIcon('🏛️', '#111827') }).addTo(map);
+        hqMarker = L.marker([HQ_LAT, HQ_LNG], { icon: emojiDivIcon('🏛️', '#111827', { size: 46 }) }).addTo(map);
         hqMarker.bindPopup(`<div class="incident-popup"><b>🏛️ MDRRMO HQ</b><br>Operations Center</div>`);
     }
 
@@ -588,5 +863,31 @@
     initMap();
 </script>
 @include('partials.sos-alert-overlay')
+
+<script>
+(function () {
+    var btn = document.getElementById('mobileMenuBtn');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebarOverlay');
+    if (!btn || !sidebar || !overlay) return;
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('show');
+    }
+    function openSidebar() {
+        sidebar.classList.add('open');
+        overlay.classList.add('show');
+    }
+
+    btn.addEventListener('click', function () {
+        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+    overlay.addEventListener('click', closeSidebar);
+    sidebar.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', closeSidebar);
+    });
+})();
+</script>
 </body>
 </html>

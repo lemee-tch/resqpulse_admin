@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RESQPULSE – Incident</title>
+    <title>RESQPULSE – SOS Alert</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -40,12 +40,16 @@
         .back-link { font-size: .83rem; font-weight: 600; color: #1a3c8f; text-decoration: none; display: flex; align-items: center; gap: 5px; transition: color .2s; }
         .back-link:hover { color: #0d2e7a; }
 
-        /* ── INCIDENT BANNER ── */
+        /* ── INCIDENT BANNER — same component/classes as incident-details.
+           SOS's own `priority` column is always 'critical' server-side
+           (see Api\IncidentController::sos()), so reusing .critical here
+           costs nothing and stays visually identical rather than a
+           bespoke SOS-only banner style. ── */
         .incident-banner {
             border-radius: 12px; padding: 16px 22px;
             display: flex; align-items: center; justify-content: space-between;
-            flex-wrap: wrap; gap: 10px; margin-bottom: 20px;
-            background: #6b7280; /* default: no priority */
+            flex-wrap: wrap; gap: 10px; margin-bottom: 14px;
+            background: #6b7280;
         }
         .incident-banner.critical { background: #dc2626; }
         .incident-banner.high     { background: #f97316; }
@@ -58,6 +62,25 @@
         .banner-meta { display: flex; gap: 24px; flex-wrap: wrap; }
         .banner-meta span { font-size: .78rem; color: rgba(255,255,255,.9); font-weight: 500; }
         .banner-meta strong { color: #fff; font-weight: 700; }
+
+        /* ── SOS-specific: review notice + quick actions (no equivalent
+           on the regular Incident Details page). ── */
+        .review-banner {
+            display: flex; align-items: flex-start; gap: 10px;
+            background: #fef3c7; border: 1px solid #fde68a; color: #92400e;
+            border-radius: 10px; padding: 12px 16px; font-size: .82rem; line-height: 1.5;
+            margin-bottom: 14px;
+        }
+        .quick-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .btn-quick {
+            display: flex; align-items: center; gap: 8px;
+            border: none; border-radius: 10px; padding: 12px 18px;
+            font-family: 'Barlow', sans-serif; font-weight: 700; font-size: .88rem;
+            cursor: pointer; text-decoration: none; transition: opacity .2s, box-shadow .2s;
+        }
+        .btn-quick:hover { opacity: .9; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+        .btn-call { background: #10b981; color: #fff; }
+        .btn-approve-lg { background: #1a3c8f; color: #fff; }
 
         /* ── THREE COLUMN GRID ── */
         .detail-grid { display: grid; grid-template-columns: 1fr 1fr 220px; gap: 16px; margin-bottom: 20px; }
@@ -79,16 +102,16 @@
         .photos-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
         .photo-thumb { width: 68px; height: 52px; border-radius: 6px; object-fit: cover; cursor: pointer; border: 2px solid transparent; transition: border-color .2s; }
         .photo-thumb:hover { border-color: #1a3c8f; }
+        .photo-empty {
+            width: 68px; height: 52px; border-radius: 6px; background: #f9fafb;
+            border: 1px dashed #e5e7eb; display: flex; align-items: center; justify-content: center;
+            color: #d1d5db; font-size: 1rem;
+        }
 
         /* Action panel */
         .action-panel { display: flex; flex-direction: column; gap: 8px; }
-        .btn-action { width: 100%; border: none; border-radius: 8px; padding: 10px 14px; font-family: 'Barlow', sans-serif; font-weight: 700; font-size: .85rem; cursor: pointer; transition: opacity .2s, box-shadow .2s; }
-        .btn-action:hover { opacity: .88; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
-        .btn-responding   { background: #f97316; color: #fff; }
-        .btn-resolved     { background: #10b981; color: #fff; }
         .btn-note { width: 100%; background: #fff; color: #374151; border: 1.5px solid #d1d5db; border-radius: 8px; padding: 10px 14px; font-family: 'Barlow', sans-serif; font-weight: 700; font-size: .85rem; cursor: pointer; transition: border-color .2s; }
         .btn-note:hover { border-color: #1a3c8f; color: #1a3c8f; }
-        .current-status { font-size: .75rem; color: #6b7280; text-align: center; margin-top: 2px; }
         .dispatch-note { display: flex; align-items: flex-start; gap: 8px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 12px; font-size: .74rem; color: #1e40af; line-height: 1.5; margin-bottom: 4px; }
         .dispatch-note i { margin-top: 1px; flex-shrink: 0; }
 
@@ -122,8 +145,13 @@
     </div>
     <nav class="sidebar-nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>
-        <a href="{{ route('incident') }}" class="active">Incidents</a>
-        <a href="{{ route('sos-alerts') }}">
+        <a href="{{ route('incident') }}">
+            Incidents
+            @if(($pendingIncidentsCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingIncidentsCount }}</span>
+            @endif
+        </a>
+        <a href="{{ route('sos-alerts') }}" class="active">
             <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
             @if(($pendingSosCount ?? 0) > 0)
                 <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
@@ -136,7 +164,6 @@
         <a href="{{ route('responder-accounts') }}">Responder Accounts</a>
         <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
         <a href="{{ route('users') }}">User</a>
-
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
@@ -154,24 +181,17 @@
     <div class="content">
 
         @php
-            $priority = $incident->priority ?? 'unset';
-            $priorityLabel = $incident->priority ? ucfirst($incident->priority) : 'No Priority Set';
-            $reporter = $incident->citizen?->full_name ?? 'Unknown';
+            // SOS is always critical server-side — default matches that
+            // rather than leaving it to chance if an older row somehow
+            // has priority unset.
+            $priority = $incident->priority ?? 'critical';
+            $priorityLabel = ucfirst($priority);
+            $reporter = $incident->citizen?->full_name ?? ($incident->citizen_id ? 'Unknown' : 'Guest');
+            $mobile = $incident->citizen?->mobile;
             $lat = $incident->latitude  ?? 15.8952;
             $lng = $incident->longitude ?? 120.6263;
-            $typeIcons = [
-                'Fire'              => '🔥',
-                'Flood'             => '🌊',
-                'Earthquake'        => '🏚️',
-                'Accident'          => '🚗',
-                'Medical Emergency' => '🚑',
-                'Landslide'         => '⛰️',
-                'Other'             => '⚠️',
-            ];
-            $icon = $typeIcons[$incident->emergency_type] ?? '⚠️';
+            $icon = '🆘';
 
-            // `photo_path` stores a JSON-encoded array of paths (e.g. '["a.jpg","b.jpg"]').
-            // Some very old rows may still have a single plain path string instead — handle both.
             $detailPhotos = collect();
             if ($incident->photo_path) {
                 $decodedPhotos = json_decode($incident->photo_path, true);
@@ -180,11 +200,9 @@
         @endphp
 
         <div class="page-header">
-            <div class="page-title">
-                Incident Details
-            </div>
-            <a href="{{ route('incident') }}" class="back-link">
-                <i class="bi bi-arrow-left"></i> Back to Incidents
+            <div class="page-title">SOS Alert #{{ str_pad($incident->id, 4, '0', STR_PAD_LEFT) }}</div>
+            <a href="{{ route('sos-alerts') }}" class="back-link">
+                <i class="bi bi-arrow-left"></i> Back to SOS Alerts
             </a>
         </div>
 
@@ -194,18 +212,42 @@
             </div>
         @endif
 
-        <!-- INCIDENT BANNER -->
+        <!-- INCIDENT BANNER (same component as Incident Details) -->
         <div class="incident-banner {{ $priority }}">
             <div class="banner-left">
                 <div class="banner-icon">{{ $icon }}</div>
-                <div class="banner-type">{{ $incident->emergency_type }}</div>
+                <div class="banner-type">SOS Emergency</div>
                 <span class="badge-priority">{{ $priorityLabel }}</span>
             </div>
             <div class="banner-meta">
-                <span><strong>Status</strong> {{ ucfirst($incident->status) }}</span>
+                <span><strong>Status</strong> {{ $incident->needs_review ? 'Pending Review' : ucfirst($incident->status) }}</span>
                 <span><strong>Reported</strong> {{ $incident->created_at->format('M d, Y g:i A') }}</span>
                 <span><strong>Reporter</strong> {{ $reporter }}</span>
             </div>
+        </div>
+
+        @if($incident->needs_review)
+            <div class="review-banner">
+                <i class="bi bi-info-circle" style="margin-top:1px;"></i>
+                <span>This SOS came from a guest (not logged in) — only GPS location is guaranteed. Responders are NOT notified until you approve it below.</span>
+            </div>
+        @endif
+
+        <!-- QUICK ACTIONS -->
+        <div class="quick-actions">
+            @if($mobile)
+                <a href="tel:{{ $mobile }}" class="btn-quick btn-call">
+                    <i class="bi bi-telephone-fill"></i> Call {{ $mobile }}
+                </a>
+            @endif
+            @if($incident->needs_review)
+                <form action="{{ route('incident.approve', $incident->id) }}" method="POST" style="margin:0;">
+                    @csrf
+                    <button type="submit" class="btn-quick btn-approve-lg">
+                        <i class="bi bi-check-circle-fill"></i> Approve &amp; Notify Responders
+                    </button>
+                </form>
+            @endif
         </div>
 
         <!-- THREE COLUMN GRID -->
@@ -216,7 +258,7 @@
                 <div class="panel-label">Location</div>
                 <div class="location-addr">
                     <i class="bi bi-geo-alt-fill" style="color:#dc2626;"></i>
-                    {{ $incident->location }}
+                    {{ $incident->location ?: 'Location unavailable' }}
                 </div>
                 <div id="detail-map"></div>
                 <a href="https://www.google.com/maps?q={{ $lat }},{{ $lng }}" target="_blank" class="btn-gmaps">
@@ -231,7 +273,7 @@
 
                 <div class="detail-sub">Reported by</div>
                 <div class="detail-val">
-                    {{ $reporter }}<br>
+                    {{ $reporter }}{{ $mobile ? ' · ' . $mobile : '' }}<br>
                     {{ $incident->created_at->format('m/d/y, g:i A') }}
                 </div>
 
@@ -244,9 +286,12 @@
                                  data-bs-toggle="modal"
                                  data-bs-target="#photoModal"
                                  onclick="showPhotoSlide({{ $index }})"
-                                 alt="Incident photo {{ $index + 1 }}">
+                                 alt="SOS photo {{ $index + 1 }}">
                         @endforeach
                     </div>
+                @else
+                    <div class="detail-sub">Photos</div>
+                    <div class="photos-row"><div class="photo-empty"><i class="bi bi-camera-video-off"></i></div></div>
                 @endif
 
                 @if($incident->ai_detected_type)
@@ -270,6 +315,7 @@
                 @endif
             </div>
 
+            <!-- RESPONDING TEAM -->
             <div class="panel-card">
                 <div class="panel-label">
                     Responding Team
@@ -298,7 +344,7 @@
                     </div>
                 @empty
                     <div style="font-size:.82rem;color:#9ca3af;font-style:italic;">
-                        Not yet accepted by a responder.
+                        {{ $incident->needs_review ? 'Approve this SOS to notify responders.' : 'Not yet accepted by a responder.' }}
                     </div>
                 @endforelse
             </div>
@@ -317,22 +363,18 @@
 
                     <div style="display:flex; align-items:center; gap:8px; background:{{ $statusMeta['bg'] }}; border:1px solid {{ $statusMeta['border'] }}; border-radius:8px; padding:12px 14px;">
                         <i class="bi {{ $statusMeta['icon'] }}" style="color:{{ $statusMeta['text'] }}; font-size:1.1rem;"></i>
-                        <span style="font-size:.85rem; font-weight:700; color:{{ $statusMeta['text'] }};">{{ $statusMeta['label'] }}</span>
+                        <span style="font-size:.85rem; font-weight:700; color:{{ $statusMeta['text'] }};">
+                            {{ $incident->needs_review ? 'Pending Review' : $statusMeta['label'] }}
+                        </span>
                     </div>
 
-                    @if($incident->status !== 'resolved')
-                        {{-- Responders were already notified automatically the
-                             moment this incident was created (see
-                             PushNotificationService::dispatchToRespondersForIncident).
-                             Status here is informational only — it's updated by
-                             responders themselves, not set manually from admin. --}}
+                    @if(!$incident->needs_review && $incident->status !== 'resolved')
                         <div class="dispatch-note">
                             <i class="bi bi-broadcast"></i>
-                            <span>Responders for this emergency type were automatically notified when it was reported. Status updates as they act on it.</span>
+                            <span>Responders were automatically notified when this SOS was triggered. Status updates as they act on it.</span>
                         </div>
                     @endif
 
-                    {{-- Add Note (unrelated to status — stays available regardless) --}}
                     <button class="btn-note" data-bs-toggle="modal" data-bs-target="#noteModal">
                         <i class="bi bi-pencil-square me-1"></i> Add Note
                     </button>
@@ -347,32 +389,32 @@
             <div class="timeline">
                 <div class="tl-row">
                     <div class="tl-time">{{ $incident->created_at->format('g:i A') }}</div>
-                    <div class="tl-dot info"></div>
+                    <div class="tl-dot danger"></div>
                     <div class="tl-text">
-                        Incident reported by <strong>{{ $reporter }}</strong>
-                        — {{ $incident->emergency_type }} at {{ $incident->location }}
+                        SOS triggered by <strong>{{ $reporter }}</strong>
+                        @if($incident->needs_review) — awaiting admin review @endif
                     </div>
                 </div>
-                @if($incident->priority)
-                <div class="tl-row">
-                    <div class="tl-time">—</div>
-                    <div class="tl-dot {{ $incident->priority === 'critical' ? 'danger' : ($incident->priority === 'high' ? 'warning' : 'info') }}"></div>
-                    <div class="tl-text">Priority set to <strong>{{ ucfirst($incident->priority) }}</strong></div>
-                </div>
+                @if($incident->needs_review)
+                    <div class="tl-row">
+                        <div class="tl-time">—</div>
+                        <div class="tl-dot warning"></div>
+                        <div class="tl-text">Flagged for review — guest report, not yet approved</div>
+                    </div>
                 @endif
                 @if(in_array($incident->status, ['acknowledged', 'responding', 'resolved']))
-                <div class="tl-row">
-                    <div class="tl-time">—</div>
-                    <div class="tl-dot warning"></div>
-                    <div class="tl-text">Status updated to <strong>{{ ucfirst($incident->status) }}</strong></div>
-                </div>
+                    <div class="tl-row">
+                        <div class="tl-time">—</div>
+                        <div class="tl-dot warning"></div>
+                        <div class="tl-text">Status updated to <strong>{{ ucfirst($incident->status) }}</strong></div>
+                    </div>
                 @endif
                 @if($incident->status === 'resolved')
-                <div class="tl-row">
-                    <div class="tl-time">—</div>
-                    <div class="tl-dot success"></div>
-                    <div class="tl-text">Incident <strong>resolved</strong></div>
-                </div>
+                    <div class="tl-row">
+                        <div class="tl-time">—</div>
+                        <div class="tl-dot success"></div>
+                        <div class="tl-text">SOS <strong>resolved</strong></div>
+                    </div>
                 @endif
             </div>
         </div>
@@ -380,14 +422,14 @@
     </div>
 </div>
 
-{{-- Photo Modal (carousel — supports 3 or many photos, plus legacy single photo) --}}
+{{-- Photo Modal --}}
 @if($detailPhotos->count())
 <div class="modal fade" id="photoModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border-radius:14px;border:none;">
             <div class="modal-header border-0 pb-0">
                 <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
-                    Incident #{{ str_pad($incident->id, 4, '0', STR_PAD_LEFT) }} — Photos ({{ $detailPhotos->count() }})
+                    SOS Alert #{{ str_pad($incident->id, 4, '0', STR_PAD_LEFT) }} — Photos ({{ $detailPhotos->count() }})
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -398,7 +440,7 @@
                             <div class="carousel-item {{ $index === 0 ? 'active' : '' }}">
                                 <img src="{{ Storage::url($photoPath) }}"
                                      style="width:100%;max-height:480px;object-fit:contain;border-radius:10px;border:1px solid #e5e7eb;"
-                                     alt="Incident photo {{ $index + 1 }}">
+                                     alt="SOS photo {{ $index + 1 }}">
                             </div>
                         @endforeach
                     </div>

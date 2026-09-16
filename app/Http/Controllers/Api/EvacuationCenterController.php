@@ -63,4 +63,38 @@ class EvacuationCenterController extends Controller
             'center'  => $center,
         ], 201);
     }
+
+    /**
+     * The Add Center form no longer asks for a status up front — every
+     * new center simply starts 'open' (set server-side, see store()
+     * above's validator still requiring the Flutter side to send it as
+     * 'open'). Changing it afterward is this action instead, e.g. an
+     * MSWD responder marking a center 'full' once it fills up or
+     * 'closed' when it's no longer in use. Same MSWD-only gate as store().
+     */
+    public function updateStatus(Request $request, EvacuationCenter $center)
+    {
+        $user = $request->user();
+
+        if (! $user instanceof Responder || $user->agency !== 'MSWD') {
+            return response()->json([
+                'message' => 'Only MSWD responders can update evacuation centers.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'status' => ['required', 'in:open,full,closed'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+        }
+
+        $center->update(['status' => $request->status]);
+
+        return response()->json([
+            'message' => 'Status updated.',
+            'center'  => $center,
+        ]);
+    }
 }

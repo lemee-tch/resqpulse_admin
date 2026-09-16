@@ -135,10 +135,35 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
   display:flex;align-items:center;gap:8px;cursor:pointer;
 }
 .date-pill i{color:var(--muted);}
+.date-range-form{
+  background:#fff;border:1px solid var(--line);border-radius:10px;
+  padding:8px 14px;font-size:13.5px;font-weight:600;color:var(--ink);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.range-preset{
+  border:none;background:transparent;font-size:13px;font-weight:700;
+  color:var(--primary);font-family:inherit;cursor:pointer;padding:4px 2px;
+}
+.range-preset:focus{outline:none;}
+.date-sep{color:var(--line);font-weight:400;}
+.date-input{
+  border:none;background:transparent;font-size:13.5px;font-weight:600;
+  color:var(--ink);font-family:inherit;padding:5px 3px;cursor:pointer;
+}
+.date-input:focus{outline:none;}
+.btn-apply-range{
+  background:var(--primary);color:#fff;border:none;border-radius:8px;
+  padding:8px 18px;font-weight:700;font-size:13px;cursor:pointer;
+  transition:background .15s;
+}
+.btn-apply-range:hover{background:var(--primary-dark);}
+@media (max-width: 560px){
+  .date-range-form{width:100%;}
+}
 .btn-export{
   background:var(--primary);color:#fff;border:none;border-radius:10px;
   padding:9px 18px;font-weight:700;font-size:13.5px;
-  display:flex;align-items:center;gap:8px;
+  display:flex;align-items:center;gap:8px;text-decoration:none;
   box-shadow:0 6px 14px rgba(26,60,143,.28);
 }
 .btn-export:hover{background:var(--primary-dark);color:#fff;}
@@ -176,6 +201,11 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
 .legend-row{display:flex;align-items:center;gap:10px;font-size:13.5px;}
 .legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
 .legend-name{flex:1;color:var(--ink);font-weight:600;}
+.legend-pending{
+  display:inline-block;margin-left:8px;background:#fef3c7;color:#92400e;
+  font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;
+  vertical-align:middle;
+}
 .legend-pct{color:var(--muted);font-weight:700;font-size:13px;}
 
 /* Location bar chart card */
@@ -206,12 +236,138 @@ canvas{max-width:100%;}
   .stat-grid{grid-template-columns:repeat(2,1fr);}
   .row-grid{grid-template-columns:1fr;}
 }
-</style>
+
+        /* ── RESPONSIVE (mobile / tablet) ── */
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 14px; left: 14px;
+            z-index: 300;
+            width: 42px; height: 42px;
+            border-radius: 10px;
+            border: none;
+            background: #1a3c8f;
+            color: #fff;
+            font-size: 1.2rem;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,.25);
+            cursor: pointer;
+        }
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.45);
+            z-index: 150;
+        }
+        .sidebar-overlay.show { display: block; }
+
+        @media (max-width: 900px) {
+            .mobile-menu-btn { display: flex; }
+            .sidebar {
+                transform: translateX(-100%) !important;
+                transition: transform .25s ease;
+                z-index: 200;
+                width: 230px !important;
+                min-width: 230px !important;
+                max-width: 230px !important;
+            }
+            .sidebar.open { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,.3); }
+            .sidebar-nav a { white-space: normal !important; }
+            .main {
+                margin-left: 0 !important;
+                padding: 20px 16px 32px !important;
+                padding-top: 66px !important;
+                padding-bottom: 88px !important;
+            }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            img, svg, canvas, iframe { max-width: 100%; }
+        }
+
+        @media (max-width: 560px) {
+            .main {
+                padding: 16px 12px 28px !important;
+                padding-top: 62px !important;
+                padding-bottom: 88px !important;
+            }
+        }
+    
+        /* ── App-style nav polish ── */
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 2px 10px;
+            border-radius: 10px;
+            border-left: none !important;
+        }
+        .sidebar-nav a i { font-size: 1rem; width: 18px; text-align: center; flex-shrink: 0; }
+        .sidebar-nav a.active { border-left: none !important; background: rgba(255,255,255,.16) !important; }
+
+        /* ── Bottom app tab bar (mobile only) ── */
+        .bottom-tab-bar {
+            display: none;
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            background: #fff;
+            border-top: 1px solid #e5e7eb;
+            box-shadow: 0 -2px 14px rgba(0,0,0,.08);
+            z-index: 250;
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+        .bottom-tab-bar a {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            padding: 8px 2px 7px;
+            color: #8a93a6;
+            text-decoration: none;
+            font-size: .62rem;
+            font-weight: 700;
+            letter-spacing: .2px;
+            position: relative;
+        }
+        .bottom-tab-bar a i { font-size: 1.15rem; }
+        .bottom-tab-bar a.active { color: #1a3c8f; }
+        .bottom-tab-bar .tab-badge {
+            position: absolute;
+            top: 3px; right: calc(50% - 20px);
+            background: #dc2626;
+            color: #fff;
+            font-size: .58rem;
+            font-weight: 800;
+            line-height: 1;
+            padding: 2px 5px;
+            border-radius: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .bottom-tab-bar { display: flex; }
+        }
+    </style>
 </head>
 <body>
 
 <!-- ════════════ SIDEBAR ════════════ -->
-<aside class="sidebar">
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<nav class="bottom-tab-bar">
+    <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i><span>Home</span></a>
+    <a href="{{ route('incident') }}"><i class="bi bi-clipboard2-pulse"></i><span>Incidents</span>
+        @if(($pendingIncidentsCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingIncidentsCount }}</span>
+        @endif</a>
+    <a href="{{ route('sos-alerts') }}"><i class="bi bi-exclamation-octagon-fill"></i><span>SOS</span>
+        @if(($pendingSosCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingSosCount }}</span>
+        @endif</a>
+    <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i><span>Map</span></a>
+    <a href="javascript:void(0)" id="mobileMenuBtn" class="active"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
+</nav>
+<aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
         <img src="{{ asset('images/logo.png') }}" alt="Logo">
         <div class="sidebar-brand-text">
@@ -220,21 +376,27 @@ canvas{max-width:100%;}
         </div>
     </div>
     <nav class="sidebar-nav">
-        <a href="{{ route('dashboard') }}">Dashboard</a>
-        <a href="{{ route('incident') }}">Incidents</a>
+        <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
+        <a href="{{ route('incident') }}">
+            <i class="bi bi-clipboard2-pulse"></i> Incidents
+            @if(($pendingIncidentsCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingIncidentsCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('sos-alerts') }}">
             <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
             @if(($pendingSosCount ?? 0) > 0)
                 <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
             @endif
         </a>
-        <a href="{{ route('mapview') }}">Map View</a>
-        <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
-        <a href="{{ route('evacuation') }}">Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
-        <a href="{{ route('responder-accounts') }}">Responder Accounts</a>
-        <a href="{{ route('reports-analytics') }}" class="active">Reports &amp; Analytics</a>
-        <a href="{{ route('users') }}">User</a>
+        <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
+        <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
+        <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
+        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Citizen Verification</a>
+        <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
+        <a href="{{ route('reports-analytics') }}" class="active"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
+        <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
+        <a href="{{ route('users') }}"><i class="bi bi-people-fill"></i> User</a>
     </nav>
 
     <div class="sidebar-logout">
@@ -256,9 +418,32 @@ canvas{max-width:100%;}
       <h1>Reports &amp; Analytics</h1>
     </div>
     <div class="head-actions">
-      <div class="date-pill"><i class="bi bi-calendar3"></i> May 21, 2025 – May 28, 2025 <i class="bi bi-chevron-down" style="font-size:11px;"></i></div>
-      <button class="btn-export"><i class="bi bi-download"></i> Export Report</button>
+      <form method="GET" action="{{ route('reports-analytics') }}" class="date-range-form" id="dateRangeForm">
+        <select class="range-preset" id="rangePreset" onchange="applyRangePreset(this.value)">
+          <option value="">Quick range…</option>
+          <option value="today">Today</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="thismonth">This month</option>
+          <option value="lastmonth">Last month</option>
+        </select>
+        <span class="date-sep">|</span>
+        <i class="bi bi-calendar3" style="color:var(--muted);"></i>
+        <input type="date" name="from" id="fromInput" value="{{ $fromDate->toDateString() }}" class="date-input" max="{{ now()->toDateString() }}">
+        <span style="color:var(--muted);">–</span>
+        <input type="date" name="to" id="toInput" value="{{ $toDate->toDateString() }}" class="date-input" max="{{ now()->toDateString() }}">
+        <button type="submit" class="btn-apply-range">Apply</button>
+      </form>
+      <a href="{{ route('reports-analytics.export', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString()]) }}" class="btn-export">
+          <i class="bi bi-download"></i> Export Report
+      </a>
     </div>
+  </div>
+
+  <div class="panel-sub" style="margin:-14px 0 18px;">
+    Stat cards and the two breakdowns below reflect <strong>{{ $fromDate->format('M d, Y') }} – {{ $toDate->format('M d, Y') }}</strong>,
+    compared against the {{ $fromDate->diffInDays($toDate) + 1 }}-day period right before it.
+    "Incidents over Time" below has its own Week/Month/Year view, independent of this range.
   </div>
 
   <!-- Stat cards -->
@@ -269,7 +454,9 @@ canvas{max-width:100%;}
         <span class="stat-icon" style="background:var(--primary-soft);color:var(--primary);"><i class="bi bi-clipboard2-pulse"></i></span>
       </div>
       <div class="stat-value">{{ $totalIncidents }}</div>
-      <span class="trend up"><i class="bi bi-arrow-up-short"></i>12%<span class="trend-note">&nbsp;from last week</span></span>
+      <span class="trend {{ $totalTrend >= 0 ? 'up' : 'down' }}">
+        <i class="bi bi-arrow-{{ $totalTrend >= 0 ? 'up' : 'down' }}-short"></i>{{ abs($totalTrend) }}%<span class="trend-note">&nbsp;vs previous period</span>
+      </span>
     </div>
     <div class="card stat-card">
       <div class="stat-top">
@@ -277,23 +464,46 @@ canvas{max-width:100%;}
         <span class="stat-icon" style="background:#E7F7EE;color:var(--up);"><i class="bi bi-check2-circle"></i></span>
       </div>
       <div class="stat-value">{{ $resolvedIncidents }}</div>
-      <span class="trend up"><i class="bi bi-arrow-up-short"></i>10%<span class="trend-note">&nbsp;from last week</span></span>
+      <span class="trend {{ $resolvedTrend >= 0 ? 'up' : 'down' }}">
+        <i class="bi bi-arrow-{{ $resolvedTrend >= 0 ? 'up' : 'down' }}-short"></i>{{ abs($resolvedTrend) }}%<span class="trend-note">&nbsp;vs previous period</span>
+      </span>
     </div>
     <div class="card stat-card">
       <div class="stat-top">
         <span class="stat-label">Response Time (Avg)</span>
         <span class="stat-icon" style="background:#FFF1E8;color:var(--fire);"><i class="bi bi-stopwatch"></i></span>
       </div>
-      <div class="stat-value">18m</div>
-      <span class="trend up"><i class="bi bi-arrow-up-short"></i>5<span class="trend-note">&nbsp;from last week</span></span>
+      <div class="stat-value">{{ $avgResponseMinutes !== null ? $avgResponseMinutes . 'm' : '—' }}</div>
+      @if($responseTimeTrend === null)
+        <span class="trend" style="color:var(--muted);"><span class="trend-note">Not enough data yet</span></span>
+      @else
+        {{-- Lower response time is the improvement here, so the arrow
+             logic is intentionally flipped from the other cards: a
+             DECREASE shows the green "up" (good) styling. --}}
+        <span class="trend {{ $responseTimeTrend <= 0 ? 'up' : 'down' }}">
+          <i class="bi bi-arrow-{{ $responseTimeTrend <= 0 ? 'down' : 'up' }}-short"></i>{{ abs($responseTimeTrend) }}m<span class="trend-note">&nbsp;vs previous period</span>
+        </span>
+      @endif
     </div>
     <div class="card stat-card">
       <div class="stat-top">
-        <span class="stat-label">Satisfaction Rate</span>
-        <span class="stat-icon" style="background:#EAF2FF;color:var(--flood);"><i class="bi bi-emoji-smile"></i></span>
+        <span class="stat-label">Resolution Rate</span>
+        <span class="stat-icon" style="background:#EAF2FF;color:var(--flood);"><i class="bi bi-check-circle"></i></span>
       </div>
-      <div class="stat-value">92%</div>
-      <span class="trend up"><i class="bi bi-arrow-up-short"></i>5%<span class="trend-note">&nbsp;from last week</span></span>
+      @if($totalIncidents === 0)
+        {{-- resolved ÷ total can't divide by zero, so a 0-incident
+             period would otherwise silently show "0%" — indistinguishable
+             from "incidents happened but none got resolved," which is a
+             very different (and worse) situation. Say plainly that
+             there's no data instead of a number that could mean either. --}}
+        <div class="stat-value" style="font-size:22px;">No data</div>
+        <span class="trend" style="color:var(--muted);"><span class="trend-note">No incidents in this period</span></span>
+      @else
+        <div class="stat-value">{{ $resolutionRate }}%</div>
+        <span class="trend {{ $resolutionRateTrend >= 0 ? 'up' : 'down' }}">
+          <i class="bi bi-arrow-{{ $resolutionRateTrend >= 0 ? 'up' : 'down' }}-short"></i>{{ abs($resolutionRateTrend) }} pts<span class="trend-note">&nbsp;vs previous period</span>
+        </span>
+      @endif
     </div>
   </div>
 
@@ -315,7 +525,12 @@ canvas{max-width:100%;}
               @forelse($reportsByType as $type => $count)
                   <div class="legend-row">
                       <span class="legend-dot" style="background:{{ $pieColors[$loop->index % count($pieColors)] }};"></span>
-                      <span class="legend-name">{{ $type }}</span>
+                      <span class="legend-name">
+                          {{ $type }}
+                          @if(($reportsByTypePending[$type] ?? 0) > 0)
+                              <span class="legend-pending">{{ $reportsByTypePending[$type] }} pending</span>
+                          @endif
+                      </span>
                       <span class="legend-pct">{{ $reportsByType->sum() > 0 ? round($count / $reportsByType->sum() * 100) : 0 }}%</span>
                   </div>
               @empty
@@ -359,6 +574,35 @@ canvas{max-width:100%;}
 </main>
 
 <script>
+// One click instead of hand-picking two dates every time — computes the
+// range client-side and auto-submits, so "Apply" is only needed for a
+// genuinely custom range typed into the date inputs directly.
+function applyRangePreset(preset) {
+  if (!preset) return;
+
+  const pad = n => String(n).padStart(2, '0');
+  const toStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+  const today = new Date();
+  let from = new Date(today);
+  let to = new Date(today);
+
+  if (preset === 'today') {
+    // from/to both stay "today"
+  } else if (preset === '7' || preset === '30') {
+    from.setDate(from.getDate() - (parseInt(preset, 10) - 1));
+  } else if (preset === 'thismonth') {
+    from = new Date(today.getFullYear(), today.getMonth(), 1);
+  } else if (preset === 'lastmonth') {
+    from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    to = new Date(today.getFullYear(), today.getMonth(), 0);
+  }
+
+  document.getElementById('fromInput').value = toStr(from);
+  document.getElementById('toInput').value = toStr(to);
+  document.getElementById('dateRangeForm').submit();
+}
+
 // ── Incidents by Type — Pie Chart ──────────────────────────────────────
 const typeLabels = @json($reportsByType->keys());
 const typeData = @json($reportsByType->values());
@@ -399,11 +643,44 @@ new Chart(document.getElementById('locationBar'), {
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
-      tooltip: { callbacks: { label: c => c.raw + ' incidents' } }
+      tooltip: {
+        // Tooltip title always shows the FULL original location (Chart.js
+        // pulls this from data.labels, not from the tick callback below),
+        // so truncating the on-axis label loses no information — anyone
+        // who needs the full text just hovers.
+        callbacks: { label: c => c.raw + (c.raw === 1 ? ' incident' : ' incidents') }
+      }
     },
     scales: {
-      y: { beginAtZero: true, grid: { color: '#EEF0F6' }, ticks: { color: '#6B7385', font: { size: 11.5 } } },
-      x: { grid: { display: false }, ticks: { color: '#6B7385', font: { size: 11.5 } } }
+      // stepSize: 1 — this is a count of incidents, which can only ever
+      // be a whole number. Without this, Chart.js's auto-scaling showed
+      // fractional gridlines (0.2, 0.4, 0.6...) whenever the tallest bar
+      // was small, which doesn't mean anything for a count.
+      y: {
+        beginAtZero: true,
+        grid: { color: '#EEF0F6' },
+        ticks: { color: '#6B7385', font: { size: 11.5 }, stepSize: 1, precision: 0 }
+      },
+      x: {
+        grid: { display: false },
+        ticks: {
+          color: '#6B7385',
+          font: { size: 11.5 },
+          maxRotation: 35,
+          minRotation: 0,
+          // Some older SOS reports (from before location resolution was
+          // wired up — see BarangayLocationService) still have raw
+          // coordinates baked into `location`, e.g. "SOS Alert (outside
+          // Rosales — Lat 16.07843, Lng 120.57323)". Left un-truncated,
+          // one long label like that pushes every other bar's label into
+          // an unreadable wrap. Truncate on the axis; full text is still
+          // one hover away via the tooltip.
+          callback: function (value) {
+            const label = this.getLabelForValue(value);
+            return label.length > 24 ? label.slice(0, 22) + '…' : label;
+          }
+        }
+      }
     }
   }
 });
@@ -484,5 +761,31 @@ tfTabs.querySelectorAll('.tf-tab').forEach(btn => {
 renderTrend(currentRange);
 </script>
 @include('partials.sos-alert-overlay')
+
+<script>
+(function () {
+    var btn = document.getElementById('mobileMenuBtn');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebarOverlay');
+    if (!btn || !sidebar || !overlay) return;
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('show');
+    }
+    function openSidebar() {
+        sidebar.classList.add('open');
+        overlay.classList.add('show');
+    }
+
+    btn.addEventListener('click', function () {
+        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+    overlay.addEventListener('click', closeSidebar);
+    sidebar.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', closeSidebar);
+    });
+})();
+</script>
 </body>
 </html>

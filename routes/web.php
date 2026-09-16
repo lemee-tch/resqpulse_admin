@@ -15,11 +15,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/citizen-verification/{citizen}/approve', [CitizenVerificationController::class, 'approve'])->name('citizen-verification.approve');
     Route::post('/citizen-verification/{citizen}/reject', [CitizenVerificationController::class, 'reject'])->name('citizen-verification.reject');
 
-    // Responder accounts are pre-built, one per agency — this page
-    // replaces the old individual-responder verification workflow
-    // (approve/reject an uploaded ID) since there's no self-registration
-    // to verify anymore. Manage credentials/contact details here instead.
     Route::get('/responder-accounts', [ResponderAccountController::class, 'index'])->name('responder-accounts');
+    Route::post('/responder-accounts/{responder}/send-email-otp', [ResponderAccountController::class, 'sendEmailOtp'])->name('responder-accounts.send-email-otp');
     Route::patch('/responder-accounts/{responder}', [ResponderAccountController::class, 'update'])->name('responder-accounts.update');
     Route::post('/responder-accounts/{responder}/reset-password', [ResponderAccountController::class, 'resetPassword'])->name('responder-accounts.reset-password');
     Route::post('/responder-accounts/{responder}/toggle-status', [ResponderAccountController::class, 'toggleStatus'])->name('responder-accounts.toggle-status');
@@ -39,11 +36,16 @@ Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard',  [AuthController::class, 'dashboard'])->name('dashboard');
     Route::get('/incident',  [IncidentController::class, 'index'])->name('incident');
+    Route::get('/critical', [IncidentController::class, 'criticalIndex'])->name('critical');
+    Route::get('/incidents-overview', [IncidentController::class, 'overviewIndex'])->name('incidents.overview');
+    Route::post('/incidents-overview/recheck-locations', [IncidentController::class, 'recheckLocations'])->name('incidents.recheck-locations');
     Route::get('/incidents/{incident}', [IncidentController::class, 'show'])->name('incident.detail');
     Route::get('/sos-alerts', [IncidentController::class, 'sosIndex'])->name('sos-alerts');
     Route::get('/reports-analytics', [AuthController::class, 'reportsAnalytics'])->name('reports-analytics');
+    Route::get('/reports-analytics/export', [AuthController::class, 'exportReport'])->name('reports-analytics.export');
     Route::get('/evacuation', [EvacuationCenterController::class, 'index'])->name('evacuation');
     Route::post('/evacuation', [EvacuationCenterController::class, 'store'])->name('evacuation.store');
+    Route::patch('/evacuation/{center}/status', [EvacuationCenterController::class, 'updateStatus'])->name('evacuation.update-status');
     Route::get('/users', [UserController::class, 'index'])->name('users');
     Route::post('/users', [UserController::class, 'store'])->name('users.store');
     Route::patch('/users/{user}', [UserController::class, 'update'])->name('users.update');
@@ -57,9 +59,14 @@ Route::middleware('auth')->group(function () {
     Route::patch('/incidents/{incident}/priority', [IncidentController::class, 'updatePriority'])->name('incident.priority');
     Route::patch('/incidents/{incident}/status', [IncidentController::class, 'updateStatus'])->name('incident.status');
     Route::patch('/incidents/{incident}/note', [IncidentController::class, 'updateNote'])->name('incident.note');
-    Route::get('/incidents/{incident}', [IncidentController::class, 'show'])->name('incident.detail');
+    Route::post('/incidents/{incident}/approve', [IncidentController::class, 'approve'])->name('incident.approve');
 
     Route::get('/sos-alerts/latest', [IncidentController::class, 'latestSos'])->name('sos-alerts.latest');
+    Route::get('/notifications/incidents', [IncidentController::class, 'latestIncidentNotifications'])->name('notifications.incidents');
+    // Must stay AFTER /sos-alerts/latest — {incident} is a wildcard and
+    // would otherwise swallow "latest" as if it were an incident ID,
+    // breaking the SOS overlay's polling (Laravel matches route
+    // definitions top-to-bottom, first match wins).
+    Route::get('/sos-alerts/{incident}', [IncidentController::class, 'sosShow'])->name('sos.detail');
     Route::get('/audit-log', [\App\Http\Controllers\Admin\AuditLogController::class, 'index'])->name('audit-log');
-
 });

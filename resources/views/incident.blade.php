@@ -68,6 +68,10 @@
         }
         .tab-btn.active { color: #1a3c8f; border-bottom-color: #1a3c8f; }
         .tab-btn:hover { color: #1a3c8f; }
+        .tab-btn .pill-count {
+            background: #fef3c7; color: #92400e; font-size: .68rem; font-weight: 800;
+            padding: 1px 7px; border-radius: 20px; margin-left: 6px;
+        }
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
 
@@ -105,7 +109,6 @@
         /* Priority badges */
         .priority-critical { color: #dc2626; font-weight: 700; font-size: .8rem; }
         .priority-high     { color: #f97316; font-weight: 700; font-size: .8rem; }
-        .priority-moderate { color: #10b981; font-weight: 700; font-size: .8rem; }
         .priority-low      { color: #3b82f6; font-weight: 700; font-size: .8rem; }
         .priority-unset    { color: #9ca3af; font-style: italic; font-size: .8rem; }
 
@@ -113,6 +116,7 @@
         .badge-pending      { background: #fef3c7; color: #92400e; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
         .badge-responding   { background: #e0f2fe; color: #0369a1; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
         .badge-resolved     { background: #d1fae5; color: #065f46; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+        .badge-review       { background: #fef3c7; color: #92400e; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 
         /* Inline dropdowns */
         .inline-select {
@@ -127,12 +131,146 @@
 
         .photo-thumb { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e7eb; cursor: pointer; }
         .thumb-broken-icon { color: #d1d5db; font-size: 1.2rem; }
+
+        .btn-approve {
+            background: #10b981; color: #fff; border: none; border-radius: 6px;
+            padding: 6px 14px; font-size: .78rem; font-weight: 700; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px; transition: background .2s;
+        }
+        .btn-approve:hover { background: #059669; }
+        .guest-note { font-size: .74rem; color: #92400e; font-style: italic; }
+    
+        /* ── RESPONSIVE (mobile / tablet) ── */
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 14px; left: 14px;
+            z-index: 300;
+            width: 42px; height: 42px;
+            border-radius: 10px;
+            border: none;
+            background: #1a3c8f;
+            color: #fff;
+            font-size: 1.2rem;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,.25);
+            cursor: pointer;
+        }
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.45);
+            z-index: 150;
+        }
+        .sidebar-overlay.show { display: block; }
+
+        @media (max-width: 900px) {
+            .mobile-menu-btn { display: flex; }
+            .sidebar {
+                transform: translateX(-100%) !important;
+                transition: transform .25s ease;
+                z-index: 200;
+                width: 230px !important;
+                min-width: 230px !important;
+                max-width: 230px !important;
+            }
+            .sidebar.open { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,.3); }
+            .sidebar-nav a { white-space: normal !important; }
+            .main-wrap {
+                margin-left: 0 !important;
+                padding: 20px 16px 32px !important;
+                padding-top: 66px !important;
+                padding-bottom: 88px !important;
+            }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            img, svg, canvas, iframe { max-width: 100%; }
+        }
+
+        @media (max-width: 560px) {
+            .main-wrap {
+                padding: 16px 12px 28px !important;
+                padding-top: 62px !important;
+                padding-bottom: 88px !important;
+            }
+        }
+    
+        /* ── App-style nav polish ── */
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 2px 10px;
+            border-radius: 10px;
+            border-left: none !important;
+        }
+        .sidebar-nav a i { font-size: 1rem; width: 18px; text-align: center; flex-shrink: 0; }
+        .sidebar-nav a.active { border-left: none !important; background: rgba(255,255,255,.16) !important; }
+
+        /* ── Bottom app tab bar (mobile only) ── */
+        .bottom-tab-bar {
+            display: none;
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            background: #fff;
+            border-top: 1px solid #e5e7eb;
+            box-shadow: 0 -2px 14px rgba(0,0,0,.08);
+            z-index: 250;
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+        .bottom-tab-bar a {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            padding: 8px 2px 7px;
+            color: #8a93a6;
+            text-decoration: none;
+            font-size: .62rem;
+            font-weight: 700;
+            letter-spacing: .2px;
+            position: relative;
+        }
+        .bottom-tab-bar a i { font-size: 1.15rem; }
+        .bottom-tab-bar a.active { color: #1a3c8f; }
+        .bottom-tab-bar .tab-badge {
+            position: absolute;
+            top: 3px; right: calc(50% - 20px);
+            background: #dc2626;
+            color: #fff;
+            font-size: .58rem;
+            font-weight: 800;
+            line-height: 1;
+            padding: 2px 5px;
+            border-radius: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .bottom-tab-bar { display: flex; }
+        }
     </style>
 </head>
 <body>
 
 <!-- ════ SIDEBAR ════ -->
-<aside class="sidebar">
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<nav class="bottom-tab-bar">
+    <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i><span>Home</span></a>
+    <a href="{{ route('incident') }}" class="active"><i class="bi bi-clipboard2-pulse"></i><span>Incidents</span>
+        @if(($pendingIncidentsCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingIncidentsCount }}</span>
+        @endif</a>
+    <a href="{{ route('sos-alerts') }}"><i class="bi bi-exclamation-octagon-fill"></i><span>SOS</span>
+        @if(($pendingSosCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingSosCount }}</span>
+        @endif</a>
+    <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i><span>Map</span></a>
+    <a href="javascript:void(0)" id="mobileMenuBtn"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
+</nav>
+<aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
         <img src="{{ asset('images/logo.png') }}" alt="Logo">
         <div class="sidebar-brand-text">
@@ -141,21 +279,27 @@
         </div>
     </div>
     <nav class="sidebar-nav">
-        <a href="{{ route('dashboard') }}">Dashboard</a>
-        <a href="{{ route('incident') }}" class="active">Incidents</a>
+        <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
+        <a href="{{ route('incident') }}" class="active">
+            <i class="bi bi-clipboard2-pulse"></i> Incidents
+            @if(($pendingIncidentsCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingIncidentsCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('sos-alerts') }}">
             <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
             @if(($pendingSosCount ?? 0) > 0)
                 <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
             @endif
         </a>
-        <a href="{{ route('mapview') }}">Map View</a>
-        <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
-        <a href="{{ route('evacuation') }}">Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
-        <a href="{{ route('responder-accounts') }}">Responder Accounts</a>
-        <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
-        <a href="{{ route('users') }}">User</a>
+        <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
+        <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
+        <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
+        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Citizen Verification</a>
+        <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
+        <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
+        <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
+        <a href="{{ route('users') }}"><i class="bi bi-people-fill"></i> User</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
@@ -180,7 +324,12 @@
         @endif
 
         @php
-            $activeIncidents   = $incidents->where('status', '!=', 'resolved')->values();
+            // Pending Review — guest-submitted reports awaiting admin
+            // approval before responders are notified. Excluded from
+            // Active so admins don't mistake an unreviewed guest report
+            // for something already dispatched.
+            $pendingReviewIncidents = $incidents->where('needs_review', true)->values();
+            $activeIncidents   = $incidents->where('needs_review', false)->where('status', '!=', 'resolved')->values();
             $resolvedIncidents = $incidents->where('status', '=', 'resolved')->values();
 
             // Shared row-rendering data, computed once per incident.
@@ -199,7 +348,11 @@
                     'resolved'   => 'Resolved',
                     default      => 'Pending',
                 };
-                $reporterName = $inc->citizen?->full_name ?? 'Unknown';
+                $reporterName = $inc->citizen?->full_name ?? ($inc->citizen_id ? 'Unknown' : 'Guest');
+
+                $responderLabel = $inc->responders->isNotEmpty()
+                    ? $inc->responders->map(fn ($r) => $r->full_name . ' (' . $r->agency . ')')->implode(', ')
+                    : null;
 
                 $incPhotos = collect();
                 if ($inc->photo_path) {
@@ -207,13 +360,19 @@
                     $incPhotos = is_array($decoded) ? collect($decoded) : collect([$inc->photo_path]);
                 }
 
-                return compact('priorityVal', 'priorityClass', 'priorityLabel', 'isResolved', 'statusBadge', 'statusLabel', 'reporterName', 'incPhotos');
+                return compact('priorityVal', 'priorityClass', 'priorityLabel', 'isResolved', 'statusBadge', 'statusLabel', 'reporterName','responderLabel', 'incPhotos');
             };
         @endphp
 
         <!-- TABS -->
         <div class="tab-bar">
             <button class="tab-btn active" onclick="switchTab('active', this)">Active Incidents ({{ $activeIncidents->count() }})</button>
+            <button class="tab-btn" onclick="switchTab('review', this)">
+                Pending Review ({{ $pendingReviewIncidents->count() }})
+                @if($pendingReviewIncidents->count() > 0)
+                    <span class="pill-count">{{ $pendingReviewIncidents->count() }}</span>
+                @endif
+            </button>
             <button class="tab-btn" onclick="switchTab('history', this)">Resolved History ({{ $resolvedIncidents->count() }})</button>
         </div>
 
@@ -226,7 +385,6 @@
                     <option value="">All Priorities</option>
                     <option value="critical">Critical</option>
                     <option value="high">High</option>
-                    <option value="moderate">Moderate</option>
                     <option value="low">Low</option>
                     <option value="unset">Not Set</option>
                 </select>
@@ -265,7 +423,6 @@
                 <table class="incidents-table">
                     <thead>
                         <tr>
-                            <th>ID</th>
                             <th>Priority</th>
                             <th>Type</th>
                             <th>Location</th>
@@ -273,6 +430,7 @@
                             <th>Description</th>
                             <th>Photo</th>
                             <th>Status</th>
+                            <th>Responder</th>
                             <th>Date</th>
                         </tr>
                     </thead>
@@ -288,8 +446,6 @@
                             data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
                             data-href="{{ route('incident.detail', $inc->id) }}"
                         >
-                            <td class="td-id">#{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }}</td>
-
                             <td onclick="event.stopPropagation()">
                                 <form method="POST" action="{{ route('incident.priority', $inc->id) }}">
                                     @csrf @method('PATCH')
@@ -306,7 +462,7 @@
                             </td>
 
                             <td>{{ $inc->emergency_type }}</td>
-                            <td>{{ $inc->location }}</td>
+                            <td>{{ $inc->location ?: '—' }}</td>
                             <td>{{ $reporterName }}</td>
                             <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ $inc->description }}">
                                 {{ $inc->description }}
@@ -328,6 +484,14 @@
 
                             <td>
                                 <span class="{{ $statusBadge }}">{{ $statusLabel }}</span>
+                            </td>
+
+                            <td>
+                                @if($responderLabel)
+                                    <span style="font-size:.78rem;font-weight:600;color:#065f46;">{{ $responderLabel }}</span>
+                                @else
+                                    <span style="color:#d1d5db;font-size:.78rem;">Unassigned</span>
+                                @endif
                             </td>
 
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
@@ -374,6 +538,103 @@
             </div>
         </div>
 
+        <!-- ══ TAB: PENDING REVIEW (guest reports) ══ -->
+        <div id="tab-review" class="tab-panel">
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;">
+                <i class="bi bi-info-circle" style="margin-top:1px;"></i>
+                <span>These were submitted by guests (not logged in) — only their GPS location is guaranteed accurate. Responders are not notified until you approve.</span>
+            </div>
+
+            <div class="table-card">
+                <table class="incidents-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Description</th>
+                            <th>Photo</th>
+                            <th>Coordinates</th>
+                            <th>Submitted</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($pendingReviewIncidents as $inc)
+                        @php extract($rowData($inc)); @endphp
+                        <tr class="incident-row" data-href="{{ route('incident.detail', $inc->id) }}">
+                            <td>{{ $inc->emergency_type }}</td>
+                            <td>{{ $inc->location ?: '—' }}</td>
+                            <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ $inc->description }}">
+                                <span class="guest-note">{{ $inc->description }}</span>
+                            </td>
+                            <td onclick="event.stopPropagation()">
+                                @if($incPhotos->count())
+                                    <img src="{{ Storage::url($incPhotos->first()) }}"
+                                         class="photo-thumb"
+                                         data-bs-toggle="modal"
+                                         data-bs-target="#reviewPhotoModal{{ $inc->id }}"
+                                         alt="Photo">
+                                @else
+                                    <span style="color:#d1d5db;font-size:.75rem;">None</span>
+                                @endif
+                            </td>
+                            <td>
+                                @if($inc->latitude && $inc->longitude)
+                                    <a href="https://www.google.com/maps?q={{ $inc->latitude }},{{ $inc->longitude }}" target="_blank" onclick="event.stopPropagation()" style="color:#1a3c8f;text-decoration:none;font-weight:600;font-size:.78rem;">
+                                        {{ $inc->location ?: number_format($inc->latitude, 5) . ', ' . number_format($inc->longitude, 5) }}
+                                    </a>
+                                @elseif($inc->location)
+                                    <span style="font-size:.78rem;">{{ $inc->location }}</span>
+                                @else
+                                    <span style="color:#d1d5db;font-size:.75rem;">No location</span>
+                                @endif
+                            </td>
+                            <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
+                            <td onclick="event.stopPropagation()">
+                                <form action="{{ route('incident.approve', $inc->id) }}" method="POST">
+                                    @csrf
+                                    <button type="submit" class="btn-approve" title="Approve and notify responders">
+                                        <i class="bi bi-check-lg"></i> Approve
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+
+                        @if($incPhotos->count())
+                        <div class="modal fade" id="reviewPhotoModal{{ $inc->id }}" tabindex="-1">
+                            <div class="modal-dialog modal-dialog-centered">
+                                <div class="modal-content" style="border-radius:14px;border:none;">
+                                    <div class="modal-header border-0 pb-0">
+                                        <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
+                                            Guest Report #{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }} — Photo
+                                        </h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body pt-2">
+                                        <img src="{{ Storage::url($incPhotos->first()) }}"
+                                             style="width:100%;border-radius:10px;border:1px solid #e5e7eb;"
+                                             alt="Guest report photo">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        @endif
+
+                        @empty
+                        <tr>
+                            <td colspan="7">
+                                <div class="no-results">
+                                    <i class="bi bi-check2-circle"></i>
+                                    No guest reports waiting for review.
+                                </div>
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- ══ TAB: RESOLVED HISTORY ══ -->
         <div id="tab-history" class="tab-panel">
 
@@ -383,7 +644,6 @@
                     <option value="">All Priorities</option>
                     <option value="critical">Critical</option>
                     <option value="high">High</option>
-                    <option value="moderate">Moderate</option>
                     <option value="low">Low</option>
                     <option value="unset">Not Set</option>
                 </select>
@@ -415,7 +675,6 @@
                 <table class="incidents-table">
                     <thead>
                         <tr>
-                            <th>ID</th>
                             <th>Priority</th>
                             <th>Type</th>
                             <th>Location</th>
@@ -436,7 +695,6 @@
                             data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
                             data-href="{{ route('incident.detail', $inc->id) }}"
                             onclick="window.location.href='{{ route('incident.detail', $inc->id) }}'">
-                            <td class="td-id">#{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }}</td>
                             <td><span class="{{ $priorityClass }}">{{ $priorityLabel }}</span></td>
                             <td>{{ $inc->emergency_type }}</td>
                             <td>{{ $inc->location }}</td>
@@ -558,7 +816,18 @@
             applyFilters();
         });
 
-        // Click anywhere on an active-tab row (outside interactive cells) to open the detail page
+        // Landing here from the Dashboard's "Critical" card (?priority=critical)
+        // pre-applies the filter on the Active Incidents tab — which is
+        // already "not resolved yet" by definition (see $activeIncidents
+        // above: needs_review=false AND status != resolved) — so the
+        // combination is exactly "all unresolved critical incidents, one
+        // page, no extra clicks."
+        const urlParams = new URLSearchParams(window.location.search);
+        const priorityParam = urlParams.get('priority');
+        if (priorityParam && ['critical', 'high', 'low', 'unset'].includes(priorityParam)) {
+            priorityFilter.value = priorityParam;
+        }
+
         rows.forEach(row => {
             row.addEventListener('click', () => {
                 const href = row.dataset.href;
@@ -569,10 +838,19 @@
         applyFilters();
     })();
 
+    // Pending Review rows are also clickable through to the detail page
+    // (Approve button stops propagation on its own).
+    document.querySelectorAll('#tab-review tr.incident-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const href = row.dataset.href;
+            if (href) window.location.href = href;
+        });
+    });
+
     // Resolved History tab filters (priority / type / date / search)
     (function () {
         const priorityFilter = document.getElementById('filterPriorityH');
-        if (!priorityFilter) return; // nothing was resolved yet — no filter bar rendered
+        if (!priorityFilter) return;
 
         const typeFilter    = document.getElementById('filterTypeH');
         const dateFilter     = document.getElementById('filterDateH');
@@ -624,5 +902,31 @@
     })();
 </script>
 @include('partials.sos-alert-overlay')
+
+<script>
+(function () {
+    var btn = document.getElementById('mobileMenuBtn');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebarOverlay');
+    if (!btn || !sidebar || !overlay) return;
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('show');
+    }
+    function openSidebar() {
+        sidebar.classList.add('open');
+        overlay.classList.add('show');
+    }
+
+    btn.addEventListener('click', function () {
+        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+    overlay.addEventListener('click', closeSidebar);
+    sidebar.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', closeSidebar);
+    });
+})();
+</script>
 </body>
 </html>

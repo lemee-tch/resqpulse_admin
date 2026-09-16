@@ -11,7 +11,6 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
 
-        /* ── SIDEBAR ── */
         .sidebar {
             width: 200px; min-height: 100vh; background: #1a3c8f;
             display: flex; flex-direction: column; position: fixed; top: 0; left: 0; z-index: 100;
@@ -75,7 +74,6 @@
             color: #fff; 
         }
 
-        /* ── MAIN ── */
         .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 28px 32px; flex: 1; }
 
@@ -130,7 +128,7 @@
             animation: sosFlicker 1s ease-in-out infinite; 
         }
 
-        /* ── TABS (same as Alerts & Broadcast) ── */
+        /* ── TABS ── */
         .tab-bar {
             display: flex; gap: 0;
             border-bottom: 2px solid #e5e7eb;
@@ -147,39 +145,66 @@
         }
         .tab-btn.active { color: #1a3c8f; border-bottom-color: #1a3c8f; }
         .tab-btn:hover { color: #1a3c8f; }
+        .tab-btn .pill-count {
+            background: #fef3c7; color: #92400e; font-size: .68rem; font-weight: 800;
+            padding: 1px 7px; border-radius: 20px; margin-left: 6px;
+        }
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
 
         /* ── SOS CARD ── */
         .sos-card {
-            background: #fff; 
-            border: 1.5px solid #fecaca; 
+            background: #fff;
+            border: 1.5px solid #e5e7eb;
             border-left: 5px solid #dc2626;
-            border-radius: 14px; 
-            padding: 18px 20px; 
+            border-radius: 14px;
+            padding: 18px 20px;
             margin-bottom: 14px;
-            display: flex; 
-            gap: 16px; 
+            display: flex;
+            gap: 16px;
             align-items: flex-start;
-            transition: box-shadow .2s; 
+            transition: box-shadow .2s, transform .15s;
             cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,.04);
         }
-        .sos-card:hover { 
-            box-shadow: 0 6px 20px rgba(220,38,38,.12); 
+        .sos-card:hover {
+            box-shadow: 0 8px 24px rgba(17,24,39,.1);
+            transform: translateY(-1px);
         }
-        .sos-card.status-resolved { 
-            border-left-color: #10b981; 
-            opacity: .75; 
+
+        /* Severity reflects actual status, not a blanket alarm on every
+           card — a SOS nobody has touched yet stays the loud red/tinted
+           treatment; one already being responded to (or resolved) reads
+           calmer, so the cards that still need eyes on them actually
+           stand out instead of everything looking equally urgent. */
+        .sos-card--pending {
+            border-left-color: #dc2626;
+            background: linear-gradient(to right, #fff5f5, #fff 70px);
+        }
+        .sos-card--responding,
+        .sos-card--acknowledged {
+            border-left-color: #2563eb;
+        }
+        .sos-card--resolved {
+            border-left-color: #10b981;
+            opacity: .8;
+        }
+        .sos-card--review {
+            border-left-color: #f59e0b;
         }
 
         .sos-photo {
-            width: 92px; height: 92px; border-radius: 10px; object-fit: cover;
+            width: 92px; height: 92px; border-radius: 12px; object-fit: cover;
             flex-shrink: 0; border: 1px solid #f3f4f6;
+            box-shadow: 0 2px 8px rgba(0,0,0,.08);
+            transition: transform .15s;
         }
+        .sos-card:hover .sos-photo { transform: scale(1.03); }
         .sos-photo-placeholder {
-            width: 92px; height: 92px; border-radius: 10px; flex-shrink: 0;
-            background: #f3f4f6; display: flex; align-items: center; justify-content: center;
-            color: #9ca3af; font-size: 1.4rem;
+            width: 92px; height: 92px; border-radius: 12px; flex-shrink: 0;
+            background: #f9fafb; display: flex; align-items: center; justify-content: center;
+            color: #d1d5db; font-size: 1.5rem;
+            border: 1px dashed #e5e7eb;
         }
 
         .sos-body { flex: 1; min-width: 0; }
@@ -192,6 +217,7 @@
         .badge-acknowledged { background: #dbeafe; color: #1e40af; }
         .badge-responding   { background: #e0f2f1; color: #0369a1; }
         .badge-resolved     { background: #d1fae5; color: #065f46; }
+        .badge-review       { background: #fef3c7; color: #92400e; }
 
         .badge-ai { background: #eef2ff; color: #4338ca; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 
@@ -203,12 +229,150 @@
 
         .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
         .empty-state i { font-size: 2.4rem; display: block; margin-bottom: 12px; color: #d1d5db; }
+
+        .btn-approve {
+            background: #10b981; color: #fff; border: none; border-radius: 8px;
+            padding: 8px 16px; font-size: .8rem; font-weight: 700; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px; transition: background .2s;
+            margin-top: 10px;
+        }
+        .btn-approve:hover { background: #059669; }
+        .review-banner {
+            background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;
+            font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;
+        }
+    
+        /* ── RESPONSIVE (mobile / tablet) ── */
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 14px; left: 14px;
+            z-index: 300;
+            width: 42px; height: 42px;
+            border-radius: 10px;
+            border: none;
+            background: #1a3c8f;
+            color: #fff;
+            font-size: 1.2rem;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,.25);
+            cursor: pointer;
+        }
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.45);
+            z-index: 150;
+        }
+        .sidebar-overlay.show { display: block; }
+
+        @media (max-width: 900px) {
+            .mobile-menu-btn { display: flex; }
+            .sidebar {
+                transform: translateX(-100%) !important;
+                transition: transform .25s ease;
+                z-index: 200;
+                width: 230px !important;
+                min-width: 230px !important;
+                max-width: 230px !important;
+            }
+            .sidebar.open { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,.3); }
+            .sidebar-nav a { white-space: normal !important; }
+            .main-wrap {
+                margin-left: 0 !important;
+                padding: 20px 16px 32px !important;
+                padding-top: 66px !important;
+                padding-bottom: 88px !important;
+            }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            img, svg, canvas, iframe { max-width: 100%; }
+        }
+
+        @media (max-width: 560px) {
+            .main-wrap {
+                padding: 16px 12px 28px !important;
+                padding-top: 62px !important;
+                padding-bottom: 88px !important;
+            }
+        }
+    
+        /* ── App-style nav polish ── */
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 2px 10px;
+            border-radius: 10px;
+            border-left: none !important;
+        }
+        .sidebar-nav a i { font-size: 1rem; width: 18px; text-align: center; flex-shrink: 0; }
+        .sidebar-nav a.active { border-left: none !important; background: rgba(255,255,255,.16) !important; }
+
+        /* ── Bottom app tab bar (mobile only) ── */
+        .bottom-tab-bar {
+            display: none;
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            background: #fff;
+            border-top: 1px solid #e5e7eb;
+            box-shadow: 0 -2px 14px rgba(0,0,0,.08);
+            z-index: 250;
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+        .bottom-tab-bar a {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            padding: 8px 2px 7px;
+            color: #8a93a6;
+            text-decoration: none;
+            font-size: .62rem;
+            font-weight: 700;
+            letter-spacing: .2px;
+            position: relative;
+        }
+        .bottom-tab-bar a i { font-size: 1.15rem; }
+        .bottom-tab-bar a.active { color: #1a3c8f; }
+        .bottom-tab-bar .tab-badge {
+            position: absolute;
+            top: 3px; right: calc(50% - 20px);
+            background: #dc2626;
+            color: #fff;
+            font-size: .58rem;
+            font-weight: 800;
+            line-height: 1;
+            padding: 2px 5px;
+            border-radius: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .bottom-tab-bar { display: flex; }
+        }
     </style>
 </head>
 <body>
 
 <!-- ════ SIDEBAR ════ -->
-<aside class="sidebar">
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<nav class="bottom-tab-bar">
+    <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i><span>Home</span></a>
+    <a href="{{ route('incident') }}"><i class="bi bi-clipboard2-pulse"></i><span>Incidents</span>
+        @if(($pendingIncidentsCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingIncidentsCount }}</span>
+        @endif</a>
+    <a href="{{ route('sos-alerts') }}" class="active"><i class="bi bi-exclamation-octagon-fill"></i><span>SOS</span>
+        @if(($pendingSosCount ?? 0) > 0)
+            <span class="tab-badge">{{ $pendingSosCount }}</span>
+        @endif</a>
+    <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i><span>Map</span></a>
+    <a href="javascript:void(0)" id="mobileMenuBtn"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
+</nav>
+<aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
         <img src="{{ asset('images/logo.png') }}" alt="Logo">
         <div class="sidebar-brand-text">
@@ -217,21 +381,27 @@
         </div>
     </div>
     <nav class="sidebar-nav">
-        <a href="{{ route('dashboard') }}">Dashboard</a>
-        <a href="{{ route('incident') }}">Incidents</a>
+        <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
+        <a href="{{ route('incident') }}">
+            <i class="bi bi-clipboard2-pulse"></i> Incidents
+            @if(($pendingIncidentsCount ?? 0) > 0)
+                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingIncidentsCount }}</span>
+            @endif
+        </a>
         <a href="{{ route('sos-alerts') }}" class="active">
             <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
             @if(($pendingSosCount ?? 0) > 0)
                 <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
             @endif
         </a>
-        <a href="{{ route('mapview') }}">Map View</a>
-        <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
-        <a href="{{ route('evacuation') }}">Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}">Citizen Verification</a>
-        <a href="{{ route('responder-accounts') }}">Responder Accounts</a>
-        <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
-        <a href="{{ route('users') }}">User</a>
+        <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
+        <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
+        <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
+        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Citizen Verification</a>
+        <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
+        <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
+        <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
+        <a href="{{ route('users') }}"><i class="bi bi-people-fill"></i> User</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
@@ -248,11 +418,17 @@
 <div class="main-wrap">
     <div class="content">
 
+        @php
+            $pendingReviewSos = $sosAlerts->where('needs_review', true)->values();
+            $activeSos   = $sosAlerts->where('needs_review', false)->where('status', '!=', 'resolved')->values();
+            $resolvedSos = $sosAlerts->where('status', '=', 'resolved')->values();
+        @endphp
+
         <div class="page-header">
             <div class="page-title">
                 <i class="bi bi-exclamation-octagon-fill" style="color:#dc2626;"></i> SOS Alerts
             </div>
-            <span class="live-pill"><span class="live-dot"></span> {{ $sosAlerts->where('status', 'pending')->count() }} pending</span>
+            <span class="live-pill"><span class="live-dot"></span> {{ $activeSos->where('status', 'pending')->count() }} pending</span>
         </div>
         <div class="page-sub">Panic-button alerts from the mobile app — GPS location and photo captured automatically, always critical priority.</div>
 
@@ -262,14 +438,15 @@
             </div>
         @endif
 
-        @php
-            $activeSos   = $sosAlerts->where('status', '!=', 'resolved')->values();
-            $resolvedSos = $sosAlerts->where('status', '=', 'resolved')->values();
-        @endphp
-
         <!-- TABS -->
         <div class="tab-bar">
             <button class="tab-btn active" onclick="switchTab('active', this)">Active SOS ({{ $activeSos->count() }})</button>
+            <button class="tab-btn" onclick="switchTab('review', this)">
+                Pending Review ({{ $pendingReviewSos->count() }})
+                @if($pendingReviewSos->count() > 0)
+                    <span class="pill-count">{{ $pendingReviewSos->count() }}</span>
+                @endif
+            </button>
             <button class="tab-btn" onclick="switchTab('history', this)">Resolved History ({{ $resolvedSos->count() }})</button>
         </div>
 
@@ -279,23 +456,19 @@
                 @php
                     $statusClass = 'badge-' . $sos->status;
                     $statusLabel = ucfirst($sos->status);
-                    $reporter = $sos->citizen?->full_name ?? 'Unknown';
+                    $reporter = $sos->citizen?->full_name ?? ($sos->citizen_id ? 'Unknown' : 'Guest');
                     $mobile = $sos->citizen?->mobile;
                     $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
 
-                    // `photo_path` stores a JSON-encoded array of paths (e.g.
-                    // '["a.jpg","b.jpg"]') — same pattern as incident.blade.php /
-                    // incident-details.blade.php. Some very old rows may still
-                    // have a single plain path string instead — handle both.
                     $sosPhoto = null;
                     if ($sos->photo_path) {
                         $decodedSosPhotos = json_decode($sos->photo_path, true);
                         $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
                     }
                 @endphp
-                <div class="sos-card"
+                <div class="sos-card sos-card--{{ $sos->status }}"
                     data-id="{{ $sos->id }}"
-                    onclick="window.location.href='{{ route('incident.detail', $sos->id) }}'">
+                    onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'">
 
                     @if($sosPhoto)
                         <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo">
@@ -344,6 +517,69 @@
             @endforelse
         </div>
 
+        <!-- ══ TAB: PENDING REVIEW (guest SOS) ══ -->
+        <div id="tab-review" class="tab-panel">
+            <div class="review-banner">
+                <i class="bi bi-info-circle" style="margin-top:1px;"></i>
+                <span>These SOS alerts came from guests (not logged in) — only their GPS location is guaranteed. Responders are not notified until you approve.</span>
+            </div>
+
+            @forelse($pendingReviewSos as $sos)
+                @php
+                    $reporter = $sos->citizen?->full_name ?? 'Guest';
+                    $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
+
+                    $sosPhoto = null;
+                    if ($sos->photo_path) {
+                        $decodedSosPhotos = json_decode($sos->photo_path, true);
+                        $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
+                    }
+                @endphp
+                <div class="sos-card sos-card--review" data-id="{{ $sos->id }}">
+                    @if($sosPhoto)
+                        <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo" onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'">
+                    @else
+                        <div class="sos-photo-placeholder" onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'"><i class="bi bi-camera-video-off"></i></div>
+                    @endif
+
+                    <div class="sos-body">
+                        <div class="sos-top-row">
+                            <div class="sos-title">
+                                🆘 SOS Emergency
+                                <span class="badge-status badge-review">Needs Review</span>
+                            </div>
+                            <div class="sos-time">{{ $sos->created_at->diffForHumans() }} · {{ $sos->created_at->format('M d, g:i A') }}</div>
+                        </div>
+
+                        <div class="sos-meta-row">
+                            <div class="sos-meta-item">
+                                <i class="bi bi-person-fill"></i>
+                                <span class="sos-reporter">{{ $reporter }}</span>
+                            </div>
+                            <div class="sos-meta-item">
+                                <i class="bi bi-geo-alt-fill"></i>
+                                <a href="{{ $mapsUrl }}" target="_blank" style="color:#1a3c8f;text-decoration:none;font-weight:600;">
+                                    {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
+                                </a>
+                            </div>
+                        </div>
+
+                        <form action="{{ route('incident.approve', $sos->id) }}" method="POST">
+                            @csrf
+                            <button type="submit" class="btn-approve">
+                                <i class="bi bi-check-lg"></i> Approve &amp; Dispatch to Responders
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            @empty
+                <div class="empty-state">
+                    <i class="bi bi-check2-circle"></i>
+                    No guest SOS alerts waiting for review.
+                </div>
+            @endforelse
+        </div>
+
         <!-- ══ TAB: RESOLVED HISTORY ══ -->
         <div id="tab-history" class="tab-panel">
 
@@ -377,23 +613,21 @@
 
             @forelse($resolvedSos as $sos)
                 @php
-                    $reporter = $sos->citizen?->full_name ?? 'Unknown';
+                    $reporter = $sos->citizen?->full_name ?? ($sos->citizen_id ? 'Unknown' : 'Guest');
                     $mobile = $sos->citizen?->mobile;
                     $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
 
-                    // `photo_path` stores a JSON-encoded array of paths — same
-                    // decoding as the Active SOS tab above.
                     $sosPhoto = null;
                     if ($sos->photo_path) {
                         $decodedSosPhotos = json_decode($sos->photo_path, true);
                         $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
                     }
                 @endphp
-                <div class="sos-card status-resolved history-row"
+                <div class="sos-card sos-card--resolved history-row"
                     data-date="{{ $sos->created_at->format('Y-m-d') }}"
                     data-ai="{{ $sos->ai_detected_type }}"
                     data-search="{{ strtolower($reporter.' '.$sos->location.' '.$sos->ai_detected_type.' '.$sos->ai_analysis) }}"
-                    onclick="window.location.href='{{ route('incident.detail', $sos->id) }}'">
+                    onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'">
 
                     @if($sosPhoto)
                         <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo">
@@ -467,8 +701,6 @@
         const highlightId = params.get('highlight');
         if (!highlightId) return;
 
-        // The highlighted alert is always still-active (that's why it fired
-        // the overlay), so the Active SOS tab is already showing by default.
         const card = document.querySelector('.sos-card[data-id="' + highlightId + '"]');
         if (card) {
             card.classList.add('is-new-alert');
@@ -490,7 +722,7 @@
     // Resolved History tab filters (date / AI type / search)
     (function () {
         const dateFilter   = document.getElementById('filterDateH');
-        if (!dateFilter) return; // nothing resolved yet — no filter bar rendered
+        if (!dateFilter) return;
 
         const aiFilter      = document.getElementById('filterAiH');
         const searchInput   = document.getElementById('searchInputH');
@@ -531,5 +763,31 @@
     })();
 </script>
 @include('partials.sos-alert-overlay')
+
+<script>
+(function () {
+    var btn = document.getElementById('mobileMenuBtn');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebarOverlay');
+    if (!btn || !sidebar || !overlay) return;
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('show');
+    }
+    function openSidebar() {
+        sidebar.classList.add('open');
+        overlay.classList.add('show');
+    }
+
+    btn.addEventListener('click', function () {
+        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+    overlay.addEventListener('click', closeSidebar);
+    sidebar.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', closeSidebar);
+    });
+})();
+</script>
 </body>
 </html>

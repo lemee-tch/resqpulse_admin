@@ -22,13 +22,25 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         View::composer('*', function ($view) {
-            static $count = null;
-            if ($count === null) {
-                $count = Incident::where('emergency_type', 'SOS Emergency')
+            static $sosCount = null;
+            if ($sosCount === null) {
+                $sosCount = Incident::where('emergency_type', 'SOS Emergency')
                     ->where('status', 'pending')
                     ->count();
             }
-            $view->with('pendingSosCount', $count);
+            $view->with('pendingSosCount', $sosCount);
+
+            // Same idea as the SOS badge above, for the "Incidents" nav
+            // item — excludes SOS Emergency since that's already counted
+            // (and shown) separately; this is specifically how many
+            // regular incidents are sitting unaddressed.
+            static $incidentCount = null;
+            if ($incidentCount === null) {
+                $incidentCount = Incident::where('emergency_type', '!=', 'SOS Emergency')
+                    ->where('status', 'pending')
+                    ->count();
+            }
+            $view->with('pendingIncidentsCount', $incidentCount);
         });
 }
 }
