@@ -376,6 +376,9 @@ v<!DOCTYPE html>
                             <button class="action-btn" title="View details" data-bs-toggle="modal" data-bs-target="#viewModal{{ $c->id }}">
                                 <i class="bi bi-eye"></i>
                             </button>
+                            <a href="{{ route('evacuation.log', $c) }}" class="action-btn" title="Evacuation log" style="text-decoration:none;display:inline-block;">
+                                <i class="bi bi-clipboard2-pulse"></i>
+                            </a>
                             <form action="{{ route('evacuation.update-status', $c) }}" method="POST" style="display:inline-block;">
                                 @csrf
                                 @method('PATCH')

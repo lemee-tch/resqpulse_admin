@@ -28,6 +28,21 @@ class EvacuationCenter extends Model
     protected const HQ_LNG = 120.6265;
 
     /**
+     * Deliberately NOT tied into `occupancy` above — occupancy is a
+     * manually-set live headcount the admin controls directly (see
+     * EvacuationCenterController::updateStatus and the Add Center
+     * form), while this log has no check-out step (see Evacuee model —
+     * logging is arrival-only, by design). Auto-incrementing occupancy
+     * from evacuee log entries would make it climb forever and never
+     * reflect people who've actually left, which is worse than the
+     * current manual number, not better.
+     */
+    public function evacuees()
+    {
+        return $this->hasMany(Evacuee::class);
+    }
+
+    /**
      * Straight-line distance from MDRRMO HQ, in kilometers (Haversine formula).
      * Computed on the fly so admins never have to type a distance by hand.
      */

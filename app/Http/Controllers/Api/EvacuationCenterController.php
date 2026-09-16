@@ -97,4 +97,44 @@ class EvacuationCenterController extends Controller
             'center'  => $center,
         ]);
     }
+
+    /**
+     * MSWD responders log evacuees in the field, one row per person —
+     * arrival only, no check-out step. Same MSWD-only gate as store()
+     * and updateStatus() above. The web admin panel can only VIEW this
+     * log (Admin\EvacuationCenterController::showLog); creating an
+     * entry happens exclusively here, from the responder app.
+     */
+    public function storeEvacuee(Request $request, EvacuationCenter $center)
+    {
+        $user = $request->user();
+
+        if (! $user instanceof Responder || $user->agency !== 'MSWD') {
+            return response()->json([
+                'message' => 'Only MSWD responders can log evacuees.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'first_name'     => ['required', 'string', 'max:255'],
+            'middle_name'    => ['nullable', 'string', 'max:255'],
+            'last_name'      => ['required', 'string', 'max:255'],
+            'suffix'         => ['nullable', 'string', 'max:20'],
+            'contact_number' => ['nullable', 'string', 'max:20'],
+            'barangay'       => ['required', 'string', 'max:255'],
+            'gender'         => ['required', 'in:Male,Female'],
+            'age'            => ['required', 'integer', 'min:0', 'max:120'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+        }
+
+        $evacuee = $center->evacuees()->create($validator->validated() + ['logged_by' => $user->id]);
+
+        return response()->json([
+            'message' => 'Evacuee logged.',
+            'evacuee' => $evacuee,
+        ], 201);
+    }
 }

@@ -46,6 +46,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/evacuation', [EvacuationCenterController::class, 'index'])->name('evacuation');
     Route::post('/evacuation', [EvacuationCenterController::class, 'store'])->name('evacuation.store');
     Route::patch('/evacuation/{center}/status', [EvacuationCenterController::class, 'updateStatus'])->name('evacuation.update-status');
+    Route::get('/evacuation/{center}/log', [EvacuationCenterController::class, 'showLog'])->name('evacuation.log');
     Route::get('/users', [UserController::class, 'index'])->name('users');
     Route::post('/users', [UserController::class, 'store'])->name('users.store');
     Route::patch('/users/{user}', [UserController::class, 'update'])->name('users.update');

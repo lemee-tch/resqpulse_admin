@@ -61,7 +61,7 @@
 
         /* ── MAIN ── */
         .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
-        .content { padding: 28px 32px; flex: 1; }
+        .content { padding: 32px 36px; flex: 1; }
 
         .page-title {
             font-family: 'Barlow', sans-serif; font-weight: 800;
@@ -451,20 +451,7 @@
                             'Zone IV (Poblacion)','Zone V (Poblacion)',
                         ];
 
-                        $titlePresets = [
-                            'Typhoon Warning',
-                            'Heavy Rainfall Advisory',
-                            'Flood Warning',
-                            'Earthquake Advisory',
-                            'Fire Warning',
-                            'Landslide Warning',
-                            'Heat Index Advisory',
-                            'Water Service Interruption',
-                            'Power Interruption Notice',
-                            'Road Closure Advisory',
-                            'Evacuation Order',
-                            'All Clear / Warning Lifted',
-                        ];
+                        $titlePresets = $titlePresets ?? [];
 
                         // value => message template. Keys are just labels shown
                         // in the picker; selecting one fills the textarea below,
@@ -490,6 +477,13 @@
                                 @foreach($titlePresets as $preset)
                                     <option value="{{ $preset }}">{{ $preset }}</option>
                                 @endforeach
+                                @if(($customTitles ?? collect())->isNotEmpty())
+                                    <optgroup label="Previously used">
+                                        @foreach($customTitles as $custom)
+                                            <option value="{{ $custom }}">{{ $custom }}</option>
+                                        @endforeach
+                                    </optgroup>
+                                @endif
                                 <option value="__custom__">Other (type custom title)</option>
                             </select>
                             <input type="text" id="titleCustom" class="form-input-s custom-field"

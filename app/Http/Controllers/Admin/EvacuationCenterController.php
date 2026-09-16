@@ -50,4 +50,21 @@ class EvacuationCenterController extends Controller
 
         return back()->with('success', "{$center->name}'s status updated to " . ucfirst($request->status) . '.');
     }
+
+    /**
+     * View-only for the admin panel — creating an entry happens
+     * exclusively through the responder app now (see
+     * Api\EvacuationCenterController::storeEvacuee), gated to MSWD
+     * accounts specifically since they're the ones physically at the
+     * center. This just lets office staff review what's been logged.
+     */
+    public function showLog(EvacuationCenter $center)
+    {
+        $evacuees = $center->evacuees()
+            ->with('loggedBy')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return view('evacuation-log', compact('center', 'evacuees'));
+    }
 }

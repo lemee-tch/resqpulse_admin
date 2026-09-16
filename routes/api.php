@@ -50,8 +50,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/evacuation-centers', [EvacuationCenterController::class, 'store']);
     Route::patch('/evacuation-centers/{center}/status', [EvacuationCenterController::class, 'updateStatus']);
+    Route::post('/evacuation-centers/{center}/evacuees', [EvacuationCenterController::class, 'storeEvacuee']);
 
     Route::post('/responder/incidents/{incident}/accept', [IncidentController::class, 'accept']);
     Route::post('/responder/incidents/{incident}/decline', [IncidentController::class, 'decline']);
-    Route::post('/responder/incidents/{incident}/resolve', [IncidentController::class, 'resolve']);
 });

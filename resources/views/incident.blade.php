@@ -406,6 +406,22 @@
                     <option value="Other">Other</option>
                 </select>
 
+                <select class="filter-select" id="filterBarangay">
+                    <option value="">All Barangays</option>
+                    @foreach ([
+                        'Acop','Bakitbakit','Balingcanaway','Cabalaoangan Norte','Cabalaoangan Sur',
+                        'Calanutan','Camangaan','Capitan Tomas','Carmay East','Carmay West',
+                        'Carmen East','Carmen West','Casanicolasan','Coliling','Don Antonio Village',
+                        'Guiling','Palakipak','Pangaoan','Rabago','Rizal','Salvacion','San Angel',
+                        'San Antonio','San Bartolome','San Isidro','San Luis','San Pedro East',
+                        'San Pedro West','San Vicente','Station District','Tomana East','Tomana West',
+                        'Zone I (Poblacion)','Zone II (Poblacion)','Zone III (Poblacion)',
+                        'Zone IV (Poblacion)','Zone V (Poblacion)',
+                    ] as $brgy)
+                        <option value="{{ strtolower($brgy) }}">{{ $brgy }}</option>
+                    @endforeach
+                </select>
+
                 <input type="date" class="filter-date" id="filterDate" title="Filter by date">
 
                 <div class="search-wrap">
@@ -659,6 +675,22 @@
                     <option value="Other">Other</option>
                 </select>
 
+                <select class="filter-select" id="filterBarangayH">
+                    <option value="">All Barangays</option>
+                    @foreach ([
+                        'Acop','Bakitbakit','Balingcanaway','Cabalaoangan Norte','Cabalaoangan Sur',
+                        'Calanutan','Camangaan','Capitan Tomas','Carmay East','Carmay West',
+                        'Carmen East','Carmen West','Casanicolasan','Coliling','Don Antonio Village',
+                        'Guiling','Palakipak','Pangaoan','Rabago','Rizal','Salvacion','San Angel',
+                        'San Antonio','San Bartolome','San Isidro','San Luis','San Pedro East',
+                        'San Pedro West','San Vicente','Station District','Tomana East','Tomana West',
+                        'Zone I (Poblacion)','Zone II (Poblacion)','Zone III (Poblacion)',
+                        'Zone IV (Poblacion)','Zone V (Poblacion)',
+                    ] as $brgy)
+                        <option value="{{ strtolower($brgy) }}">{{ $brgy }}</option>
+                    @endforeach
+                </select>
+
                 <input type="date" class="filter-date" id="filterDateH" title="Filter by date">
 
                 <div class="search-wrap">
@@ -777,6 +809,7 @@
         const priorityFilter = document.getElementById('filterPriority');
         const statusFilter   = document.getElementById('filterStatus');
         const typeFilter     = document.getElementById('filterType');
+        const barangayFilter = document.getElementById('filterBarangay');
         const dateFilter     = document.getElementById('filterDate');
         const searchInput    = document.getElementById('searchInput');
         const btnClear       = document.getElementById('btnClear');
@@ -788,14 +821,24 @@
             const priority = priorityFilter.value;
             const status   = statusFilter.value;
             const type     = typeFilter.value;
+            const barangay = barangayFilter.value;
             const date     = dateFilter.value;
             const search   = searchInput.value.trim().toLowerCase();
             let visible    = 0;
 
             rows.forEach(row => {
+                // Barangay match is a substring check against the same
+                // lowercased data-search text the free-text search box
+                // already uses — location is free-typed text (from a
+                // citizen's address, or resolved via BarangayLocationService),
+                // never a clean single field, so an exact match against
+                // the fixed 37-barangay list would silently miss most
+                // real rows. A row whose location mentions the selected
+                // barangay anywhere counts as a match.
                 const ok = (!priority || row.dataset.priority === priority)
                         && (!status   || row.dataset.status   === status)
                         && (!type     || row.dataset.type     === type)
+                        && (!barangay || row.dataset.search.includes(barangay))
                         && (!date     || row.dataset.date     === date)
                         && (!search   || row.dataset.search.includes(search));
                 row.style.display = ok ? '' : 'none';
@@ -808,10 +851,11 @@
         priorityFilter.addEventListener('change', applyFilters);
         statusFilter.addEventListener('change', applyFilters);
         typeFilter.addEventListener('change', applyFilters);
+        barangayFilter.addEventListener('change', applyFilters);
         dateFilter.addEventListener('change', applyFilters);
         searchInput.addEventListener('input', applyFilters);
         btnClear.addEventListener('click', () => {
-            [priorityFilter, statusFilter, typeFilter].forEach(s => s.value = '');
+            [priorityFilter, statusFilter, typeFilter, barangayFilter].forEach(s => s.value = '');
             dateFilter.value = searchInput.value = '';
             applyFilters();
         });
