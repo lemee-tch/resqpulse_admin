@@ -366,7 +366,7 @@
                             <th>Citizen</th>
                             <th>Contact</th>
                             <th>Municipality / Barangay</th>
-                            <th>Valid ID</th>
+                            <th>Proof of Residency</th>
                             <th>Registered</th>
                             <th>Status</th>
                             <th>Action</th>

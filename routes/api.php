@@ -49,6 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/responder/incidents', [IncidentController::class, 'assignedToResponder']);
 
     Route::post('/evacuation-centers', [EvacuationCenterController::class, 'store']);
+    Route::get('/evacuation-centers/evacuees', [EvacuationCenterController::class, 'evacuees']);
     Route::patch('/evacuation-centers/{center}/status', [EvacuationCenterController::class, 'updateStatus']);
     Route::post('/evacuation-centers/{center}/evacuees', [EvacuationCenterController::class, 'storeEvacuee']);
 

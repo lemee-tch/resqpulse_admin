@@ -14,10 +14,17 @@ class EvacuationCenterController extends Controller
      * Public — guests can view evacuation centers without logging in,
      * same as the "Evacuation Centers" tile on the app's home screen.
      */
+    /**
+     * Public — guests can view evacuation centers without logging in,
+     * same as the "Evacuation Centers" tile on the app's home screen.
+     * withCount('evacuees') adds an evacuees_count column to each
+     * center in the response — how many residents have been logged
+     * there, without a separate request per center.
+     */
     public function index()
     {
         return response()->json(
-            EvacuationCenter::orderBy('name')->get()
+            EvacuationCenter::withCount('evacuees')->orderBy('name')->get()
         );
     }
 
@@ -48,7 +55,13 @@ class EvacuationCenterController extends Controller
             'barangay'  => ['required', 'string', 'max:255'],
             'latitude'  => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
-            'capacity'  => ['required', 'integer', 'min:1'],
+            // Optional now — matches the admin web panel's Add Center
+            // form, which never asked for capacity either. The column
+            // already defaults to 0 in the migration, so a center added
+            // from the field without a capacity figure is safe; an
+            // admin can set the real number later from the web panel
+            // once it's actually known.
+            'capacity'  => ['nullable', 'integer', 'min:1'],
             'status'    => ['required', 'in:open,full,closed'],
         ]);
 
@@ -56,7 +69,7 @@ class EvacuationCenterController extends Controller
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        $center = EvacuationCenter::create($validator->validated() + ['occupancy' => 0]);
+        $center = EvacuationCenter::create($validator->validated() + ['occupancy' => 0, 'capacity' => $request->capacity ?? 0]);
 
         return response()->json([
             'message' => 'Evacuation center added.',
@@ -136,5 +149,30 @@ class EvacuationCenterController extends Controller
             'message' => 'Evacuee logged.',
             'evacuee' => $evacuee,
         ], 201);
+    }
+
+    /**
+     * All evacuees logged across every center, newest first — the
+     * mobile counterpart to Admin\EvacuationCenterController::showLog,
+     * which only shows one center's log at a time. This is the "bird's
+     * eye" view for the Resident Logs quick-access screen. Same
+     * MSWD-only gate as logging itself — viewing isn't opened up to
+     * every agency, since this is MSWD's own field data.
+     */
+    public function evacuees(Request $request)
+    {
+        $user = $request->user();
+
+        if (! $user instanceof Responder || $user->agency !== 'MSWD') {
+            return response()->json([
+                'message' => 'Only MSWD responders can view the evacuee log.',
+            ], 403);
+        }
+
+        $evacuees = \App\Models\Evacuee::with('evacuationCenter:id,name,barangay')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json($evacuees);
     }
 }
