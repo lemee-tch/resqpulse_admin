@@ -75,7 +75,7 @@
         }
 
         .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
-        .content { padding: 28px 32px; flex: 1; }
+        .content { padding: 32px 36px; flex: 1; }
 
         .page-header { 
             display: flex; 
@@ -526,7 +526,7 @@
 
             @forelse($pendingReviewSos as $sos)
                 @php
-                    $reporter = $sos->citizen?->full_name ?? 'Guest';
+                    $reporter = $sos->citizen?->full_name ?? ($sos->citizen_id ? 'Unknown' : 'Guest');
                     $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
 
                     $sosPhoto = null;

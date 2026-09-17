@@ -282,7 +282,7 @@
         @php
             $priority = $incident->priority ?? 'unset';
             $priorityLabel = $incident->priority ? ucfirst($incident->priority) : 'No Priority Set';
-            $reporter = $incident->citizen?->full_name ?? 'Unknown';
+            $reporter = $incident->citizen?->full_name ?? ($incident->citizen_id ? 'Unknown' : 'Guest');
             $lat = $incident->latitude  ?? 15.8952;
             $lng = $incident->longitude ?? 120.6263;
             $typeIcons = [

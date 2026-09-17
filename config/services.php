@@ -18,12 +18,14 @@ return [
         'secret' => env('MAILGUN_SECRET'),
     ],
 
+    // These were two separate 'postmark' entries before — in a PHP array
+    // literal, a repeated key doesn't merge, it silently overwrites the
+    // earlier one. 'token' was dead/unreachable as a result. Not used by
+    // this app right now (mail goes through SMTP), but worth being
+    // correct rather than leaving a silent bug sitting here.
     'postmark' => [
         'token' => env('POSTMARK_TOKEN'),
-    ],
-
-    'postmark' => [
-        'key' => env('POSTMARK_API_KEY'),
+        'key'   => env('POSTMARK_API_KEY'),
     ],
 
     'resend' => [
@@ -49,7 +51,11 @@ return [
 
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),
-        'model'   => env('GEMINI_VISION_MODEL', 'gemini-2.0-flash'),
+        // gemini-2.0-flash (the old fallback here) was shut down in June
+        // 2026 — updated to a model that's actually still alive, so a
+        // missing GEMINI_VISION_MODEL env var fails safely instead of
+        // silently pointing at a dead model.
+        'model'   => env('GEMINI_VISION_MODEL', 'gemini-3.1-flash-lite'),
     ],
     
 ];
