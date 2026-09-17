@@ -145,6 +145,12 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
   color:var(--primary);font-family:inherit;cursor:pointer;padding:4px 2px;
 }
 .range-preset:focus{outline:none;}
+.barangay-select{
+  border:none;background:transparent;font-size:13px;font-weight:700;
+  color:var(--primary);font-family:inherit;cursor:pointer;padding:4px 2px;
+  max-width:150px;
+}
+.barangay-select:focus{outline:none;}
 .date-sep{color:var(--line);font-weight:400;}
 .date-input{
   border:none;background:transparent;font-size:13.5px;font-weight:600;
@@ -432,16 +438,29 @@ canvas{max-width:100%;}
         <input type="date" name="from" id="fromInput" value="{{ $fromDate->toDateString() }}" class="date-input" max="{{ now()->toDateString() }}">
         <span style="color:var(--muted);">–</span>
         <input type="date" name="to" id="toInput" value="{{ $toDate->toDateString() }}" class="date-input" max="{{ now()->toDateString() }}">
+        <span class="date-sep">|</span>
+        <i class="bi bi-geo-alt" style="color:var(--muted);"></i>
+        <select name="barangay" id="barangayInput" class="barangay-select" onchange="document.getElementById('dateRangeForm').submit();">
+          <option value="">All barangays</option>
+          @foreach($barangayList as $b)
+            <option value="{{ $b }}" {{ $barangay === $b ? 'selected' : '' }}>{{ $b }}</option>
+          @endforeach
+        </select>
         <button type="submit" class="btn-apply-range">Apply</button>
       </form>
-      <a href="{{ route('reports-analytics.export', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString()]) }}" class="btn-export">
+      <a href="{{ route('reports-analytics.export', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString(), 'barangay' => $barangay]) }}" class="btn-export">
           <i class="bi bi-download"></i> Export Report
       </a>
     </div>
   </div>
 
   <div class="panel-sub" style="margin:-14px 0 18px;">
-    Stat cards and the two breakdowns below reflect <strong>{{ $fromDate->format('M d, Y') }} – {{ $toDate->format('M d, Y') }}</strong>,
+    Stat cards and the two breakdowns below reflect <strong>{{ $fromDate->format('M d, Y') }} – {{ $toDate->format('M d, Y') }}</strong>
+    @if($barangay)
+      in <strong>Barangay {{ $barangay }}</strong>,
+    @else
+      ,
+    @endif
     compared against the {{ $fromDate->diffInDays($toDate) + 1 }}-day period right before it.
     "Incidents over Time" below has its own Week/Month/Year view, independent of this range.
   </div>

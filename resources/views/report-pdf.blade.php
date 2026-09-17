@@ -41,6 +41,9 @@
         <h1>MDRRMO Rosales — Incident Report</h1>
         <div class="sub">
             {{ $fromDate->format('M d, Y') }} – {{ $toDate->format('M d, Y') }}
+            @if($barangay ?? null)
+                &nbsp;·&nbsp; Barangay {{ $barangay }}
+            @endif
             &nbsp;·&nbsp; Generated {{ now()->format('M d, Y g:i A') }}
             &nbsp;·&nbsp; Exported by {{ $exportedBy }}
         </div>

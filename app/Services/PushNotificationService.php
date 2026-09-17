@@ -14,38 +14,25 @@ use Kreait\Laravel\Firebase\Facades\Firebase;
 class PushNotificationService
 {
     /**
-     * Which responder agency (or agencies) gets notified for each emergency
-     * type. SARS is the general-purpose responder agency (Search and
-     * Rescue) and acts as the fallback for anything not explicitly mapped —
-     * MDRRMO is the admin/dispatcher side (the Laravel admin panel), not a
-     * field agency that registers responders or receives pushes.
-     * Adjust freely — this is the single place that controls routing.
+     * Every active agency gets notified for every incident, regardless
+     * of type. This used to route by emergency type (Fire → BFP/SARS,
+     * Flood → SARS/HCU, etc.), but that meant any agency not explicitly
+     * listed for a given type — like MSWD, added later — was silently
+     * never notified for anything. Flattened to "everyone gets
+     * everything" so a newly added agency doesn't also require
+     * remembering to wire it into a per-type mapping.
      */
-    protected const AGENCY_MAP = [
-        'Fire'              => ['BFP', 'SARS'],
-        'Accident'          => ['PNP', 'SARS'],
-        'Flood'             => ['SARS', 'HCU'],
-        'Earthquake'        => ['SARS', 'HCU'],
-        'Landslide'         => ['SARS', 'HCU'],
-        'Medical Emergency' => ['SARS', 'HCU'],
-        'Other'             => ['SARS'],
-    ];
+    protected const ALL_AGENCIES = ['PNP', 'BFP', 'SARS', 'HCU', 'MSWD'];
 
     /**
-     * Used when the type isn't in AGENCY_MAP at all — e.g. a plain
-     * 'SOS Emergency' with no photo, so no AI-detected type to route by.
-     */
-    protected const DEFAULT_AGENCIES = ['SARS'];
-
-    /**
-     * Given a routing type (an ai_detected_type or emergency_type value),
-     * returns which agency/agencies should see it. Public + static so it
-     * can be reused both for push dispatch (below) and for filtering
-     * which incidents show up in a responder's "Assigned Incidents" feed.
+     * Kept as a method (rather than inlining ALL_AGENCIES at the call
+     * site) so dispatchToRespondersForIncident() below doesn't need to
+     * change, and so a future return to per-type routing only touches
+     * this one place again.
      */
     public static function agenciesFor(?string $routingType): array
     {
-        return self::AGENCY_MAP[$routingType] ?? self::DEFAULT_AGENCIES;
+        return self::ALL_AGENCIES;
     }
 
     public function broadcastToAllCitizens(string $title, string $body): void
@@ -208,25 +195,5 @@ class PushNotificationService
                 ]);
             }
         }
-    }
-        /**
-     * Suggests an incident priority from the AI-detected type and its
-     * confidence. Low-confidence detections are stepped down one level —
-     * an uncertain "Fire" guess shouldn't automatically page critical
-     * the same way a high-confidence one does.
-     */
-    public static function priorityFor(string $type, string $confidence): string
-    {
-        $base = self::TYPE_PRIORITY[$type] ?? 'moderate';
-
-        if (strtolower($confidence) !== 'low') {
-            return $base;
-        }
-
-        return match ($base) {
-            'critical' => 'high',
-            'high'     => 'moderate',
-            default    => 'low',
-        };
     }
 }

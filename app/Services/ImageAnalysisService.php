@@ -62,8 +62,18 @@ class ImageAnalysisService
             $prompt = "You are triage software for a municipal disaster response system. "
                 . "Look at this photo, submitted with an emergency report. "
                 . "Classify it into exactly one of these categories: {$typesList}. "
+                . 'Then write the notes as a first responder\'s dispatch note, not a neutral photo '
+                . 'caption. Focus on the disaster itself: what is actually dangerous in the scene, '
+                . 'how severe it looks, and anything a responder needs to know before arriving — '
+                . 'e.g. rising or moving water, people in the water or trapped, structural damage or '
+                . 'collapse risk, active fire and its spread, smoke, blocked or unsafe access. Write '
+                . "with appropriate urgency for what's shown — this note is read by a responder "
+                . 'deciding how fast to move, so a genuinely severe scene should read as severe. '
+                . 'Stay strictly factual: only describe hazards actually visible in the photo — never '
+                . 'invent details, assume anything outside the frame, or escalate the tone beyond '
+                . 'what the image itself supports. '
                 . 'Respond with ONLY raw JSON in this exact shape: '
-                . '{"type": "<one of the categories above>", "confidence": "high|medium|low", "notes": "<one short sentence describing what is visible, for a responder who has not seen the photo>"}';
+                . '{"type": "<one of the categories above>", "confidence": "high|medium|low", "notes": "<one urgent, hazard-focused sentence for a responder who has not seen the photo>"}';
 
             // Retries transient failures with a short backoff: both
             // overload/rate-limit responses (503, 429) and connection-level
