@@ -42,6 +42,7 @@
         <div class="sub">
             {{ $fromDate->format('M d, Y') }} – {{ $toDate->format('M d, Y') }}
             &nbsp;·&nbsp; Generated {{ now()->format('M d, Y g:i A') }}
+            &nbsp;·&nbsp; Exported by {{ $exportedBy }}
         </div>
     </div>
 

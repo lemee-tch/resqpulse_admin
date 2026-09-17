@@ -9,7 +9,9 @@ use App\Models\Responder;
 use App\Services\BarangayLocationService;
 use App\Services\ImageAnalysisService;
 use App\Services\PushNotificationService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -327,11 +329,33 @@ class IncidentController extends Controller
             ? $request->file('photo')->store('incident_resolution_photos', 'public')
             : null;
 
-        $incident->update([
-            'status'                => 'resolved',
-            'resolution_notes'      => $request->notes,
-            'resolution_photo_path' => $photoPath,
-        ]);
+        // Wrapped specifically because this project has no CLI/artisan
+        // access on its deployment — migrations get applied by hand via
+        // phpMyAdmin (see 2026_09_13_175814_add_resolution_fields_to_
+        // incidents_table.php), so a column genuinely missing on the
+        // live DB is a real, recurring failure mode here, not a
+        // hypothetical one. Without this, that shows up to the
+        // responder as an opaque "Could not mark this resolved." with
+        // nothing in the app to explain why; this at least logs the
+        // real SQL error server-side and tells the responder it's a
+        // server problem rather than something they can retry their way
+        // out of.
+        try {
+            $incident->update([
+                'status'                => 'resolved',
+                'resolution_notes'      => $request->notes,
+                'resolution_photo_path' => $photoPath,
+            ]);
+        } catch (QueryException $e) {
+            Log::error('Failed to save incident resolution — possible missing column on incidents table.', [
+                'incident_id' => $incident->id,
+                'error'       => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Could not save the resolution — a server-side database issue. Please notify MDRRMO admin.',
+            ], 500);
+        }
 
         $incident->refresh()->load(['responders', 'citizen']);
 

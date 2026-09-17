@@ -209,7 +209,7 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
 .legend-pct{color:var(--muted);font-weight:700;font-size:13px;}
 
 /* Location bar chart card */
-.loc-chart-wrap{position:relative;height:260px;}
+.loc-chart-wrap{position:relative;height:280px;}
 
 /* Time filter controls */
 .time-filter{display:flex;align-items:center;gap:8px;}
@@ -531,7 +531,6 @@ canvas{max-width:100%;}
                               <span class="legend-pending">{{ $reportsByTypePending[$type] }} pending</span>
                           @endif
                       </span>
-                      <span class="legend-pct">{{ $reportsByType->sum() > 0 ? round($count / $reportsByType->sum() * 100) : 0 }}%</span>
                   </div>
               @empty
                   <div style="color:var(--muted);font-size:13px;">No incidents reported yet.</div>
@@ -625,7 +624,12 @@ new Chart(document.getElementById('typePie'), {
   }
 });
 
-// ── Incidents by Location — Bar Chart ──────────────────────────────────
+// ── Incidents by Location — Horizontal Bar Chart ────────────────────────
+// Location strings are often long ("SOS Alert — Vacante, Pangasinan",
+// "Urdaneta - Palaris Road, ..."). A vertical bar forces those onto a
+// narrow rotated x-axis, which is what was truncating them mid-word.
+// indexAxis: 'y' flips the chart so labels run left-to-right along the
+// y-axis instead — full-width, unrotated, and far more readable.
 new Chart(document.getElementById('locationBar'), {
   type: 'bar',
   data: {
@@ -635,12 +639,14 @@ new Chart(document.getElementById('locationBar'), {
       data: @json($reportsByLocation->values()),
       backgroundColor: '#1A3C8F',
       borderRadius: 6,
-      maxBarThickness: 46
+      maxBarThickness: 28
     }]
   },
   options: {
+    indexAxis: 'y',
     responsive: true,
     maintainAspectRatio: false,
+    layout: { padding: { right: 12 } },
     plugins: {
       legend: { display: false },
       tooltip: {
@@ -656,28 +662,25 @@ new Chart(document.getElementById('locationBar'), {
       // be a whole number. Without this, Chart.js's auto-scaling showed
       // fractional gridlines (0.2, 0.4, 0.6...) whenever the tallest bar
       // was small, which doesn't mean anything for a count.
-      y: {
+      x: {
         beginAtZero: true,
         grid: { color: '#EEF0F6' },
         ticks: { color: '#6B7385', font: { size: 11.5 }, stepSize: 1, precision: 0 }
       },
-      x: {
+      y: {
         grid: { display: false },
         ticks: {
           color: '#6B7385',
           font: { size: 11.5 },
-          maxRotation: 35,
-          minRotation: 0,
-          // Some older SOS reports (from before location resolution was
-          // wired up — see BarangayLocationService) still have raw
-          // coordinates baked into `location`, e.g. "SOS Alert (outside
-          // Rosales — Lat 16.07843, Lng 120.57323)". Left un-truncated,
-          // one long label like that pushes every other bar's label into
-          // an unreadable wrap. Truncate on the axis; full text is still
-          // one hover away via the tooltip.
+          // The horizontal axis has far more room than the old rotated
+          // x-axis did, so most real locations fit whole. Only the rare
+          // pre-BarangayLocationService label with raw coordinates baked
+          // in ("SOS Alert (outside Rosales — Lat 16.07843, Lng
+          // 120.57323)") still needs a cutoff — full text stays one
+          // hover away via the tooltip either way.
           callback: function (value) {
             const label = this.getLabelForValue(value);
-            return label.length > 24 ? label.slice(0, 22) + '…' : label;
+            return label.length > 40 ? label.slice(0, 38) + '…' : label;
           }
         }
       }

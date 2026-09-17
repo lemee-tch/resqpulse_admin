@@ -401,14 +401,25 @@ class AuthController extends Controller
         $resolvedIncidents = $incidents->where('status', 'resolved')->count();
         $resolutionRate = $totalIncidents > 0 ? round($resolvedIncidents / $totalIncidents * 100) : 0;
 
+        // Who's actually pulling this report — printed on the PDF/CSV
+        // itself so a report can't circulate without a name attached to
+        // it, and logged the same way every other admin action is (see
+        // AuditLogService::log calls elsewhere in this controller).
+        $exportedBy = auth()->user()->name;
+
+        AuditLogService::log(
+            'exported',
+            "{$exportedBy} exported the incident report for {$fromDate->format('M d, Y')} – {$toDate->format('M d, Y')} ({$totalIncidents} incidents)."
+        );
+
         if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-            return $this->exportReportAsPdf($incidents, $fromDate, $toDate, $totalIncidents, $resolvedIncidents, $resolutionRate);
+            return $this->exportReportAsPdf($incidents, $fromDate, $toDate, $totalIncidents, $resolvedIncidents, $resolutionRate, $exportedBy);
         }
 
-        return $this->exportReportAsCsv($incidents, $fromDate, $toDate);
+        return $this->exportReportAsCsv($incidents, $fromDate, $toDate, $exportedBy);
     }
 
-    private function exportReportAsPdf($incidents, $fromDate, $toDate, $totalIncidents, $resolvedIncidents, $resolutionRate)
+    private function exportReportAsPdf($incidents, $fromDate, $toDate, $totalIncidents, $resolvedIncidents, $resolutionRate, $exportedBy)
     {
         $filename = 'resqpulse-report_' . $fromDate->format('Y-m-d') . '_to_' . $toDate->format('Y-m-d') . '.pdf';
 
@@ -419,12 +430,13 @@ class AuthController extends Controller
             'totalIncidents'    => $totalIncidents,
             'resolvedIncidents' => $resolvedIncidents,
             'resolutionRate'    => $resolutionRate,
+            'exportedBy'        => $exportedBy,
         ])->setPaper('a4', 'portrait');
 
         return $pdf->download($filename);
     }
 
-    private function exportReportAsCsv($incidents, $fromDate, $toDate)
+    private function exportReportAsCsv($incidents, $fromDate, $toDate, $exportedBy)
     {
         $filename = 'resqpulse-report_' . $fromDate->format('Y-m-d') . '_to_' . $toDate->format('Y-m-d') . '.csv';
 
@@ -433,11 +445,18 @@ class AuthController extends Controller
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ];
 
-        $callback = function () use ($incidents) {
+        $callback = function () use ($incidents, $exportedBy) {
             $handle = fopen('php://output', 'w');
             // UTF-8 BOM so Excel renders barangay names with ñ/special
             // characters correctly instead of mangling them.
             fwrite($handle, "\xEF\xBB\xBF");
+            // A one-cell metadata line above the real header row — Excel
+            // and Sheets both just show it as row 1 without disrupting
+            // the data table starting on row 3, but it means the CSV
+            // itself carries who pulled it even after it's been
+            // forwarded, renamed, or saved outside the admin panel.
+            fputcsv($handle, ["Exported by {$exportedBy} on " . now()->format('M d, Y g:i A')]);
+            fputcsv($handle, []);
             fputcsv($handle, ['ID', 'Type', 'Priority', 'Status', 'Location', 'Reporter', 'Mobile', 'Reported At']);
 
             foreach ($incidents as $inc) {
