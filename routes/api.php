@@ -55,4 +55,5 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/responder/incidents/{incident}/accept', [IncidentController::class, 'accept']);
     Route::post('/responder/incidents/{incident}/decline', [IncidentController::class, 'decline']);
+    Route::post('/responder/incidents/{incident}/resolve', [IncidentController::class, 'resolve']);
 });
