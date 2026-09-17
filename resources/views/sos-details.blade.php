@@ -32,7 +32,7 @@
 
         /* ── MAIN ── */
         .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
-        .content { padding: 28px 32px; flex: 1; }
+        .content { padding: 32px 36px; flex: 1; }
 
         /* ── PAGE HEADER ── */
         .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
@@ -326,7 +326,7 @@
         @endphp
 
         <div class="page-header">
-            <div class="page-title">SOS Alert #{{ str_pad($incident->id, 4, '0', STR_PAD_LEFT) }}</div>
+            <div class="page-title">SOS Alert Details</div>
             <a href="{{ route('sos-alerts') }}" class="back-link">
                 <i class="bi bi-arrow-left"></i> Back to SOS Alerts
             </a>
@@ -555,7 +555,7 @@
         <div class="modal-content" style="border-radius:14px;border:none;">
             <div class="modal-header border-0 pb-0">
                 <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
-                    SOS Alert #{{ str_pad($incident->id, 4, '0', STR_PAD_LEFT) }} — Photos ({{ $detailPhotos->count() }})
+                    SOS Alert Photos ({{ $detailPhotos->count() }})
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>

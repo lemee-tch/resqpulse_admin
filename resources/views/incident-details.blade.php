@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RESQPULSE – Incident #{{ str_pad($incident->id, 4, '0', STR_PAD_LEFT) }}</title>
+    <title>RESQPULSE – Incident Details</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -32,7 +32,7 @@
 
         /* ── MAIN ── */
         .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
-        .content { padding: 28px 32px; flex: 1; }
+        .content { padding: 32px 36px; flex: 1; }
 
         /* ── PAGE HEADER ── */
         .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
@@ -307,7 +307,7 @@
 
         <div class="page-header">
             <div class="page-title">
-                Incident #{{ str_pad($incident->id, 4, '0', STR_PAD_LEFT) }}
+                Incident Details
             </div>
             <a href="{{ route('incident') }}" class="back-link">
                 <i class="bi bi-arrow-left"></i> Back to Incidents
@@ -513,7 +513,7 @@
         <div class="modal-content" style="border-radius:14px;border:none;">
             <div class="modal-header border-0 pb-0">
                 <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
-                    Incident #{{ str_pad($incident->id, 4, '0', STR_PAD_LEFT) }} — Photos ({{ $detailPhotos->count() }})
+                    Incident Photos ({{ $detailPhotos->count() }})
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
