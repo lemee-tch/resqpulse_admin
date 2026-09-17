@@ -39,15 +39,29 @@ class MapViewController extends Controller
         $evacCenters = EvacuationCenter::select('id', 'name', 'barangay', 'latitude', 'longitude', 'capacity', 'occupancy', 'status')
             ->get();
 
-        $boundaryData = Cache::remember('rosales_boundary_and_barangays', now()->addDays(30), function () {
-            return $this->fetchBoundaryData();
-        });
+        $boundaryData = self::getBoundaryData();
 
         return view('mapview', [
             'incidents' => $incidents,
             'evacCenters' => $evacCenters,
             'boundaryData' => $boundaryData,
         ]);
+    }
+
+    /**
+     * Shared cache entry for the Rosales municipal boundary — used by
+     * this full map page AND by the small per-incident location maps on
+     * incident-details/sos-details (see IncidentController::show()/
+     * sosShow()), so those get the same "Rosales highlighted, everything
+     * else dimmed" treatment without a second Overpass fetch. Public +
+     * static so it's callable from another controller without
+     * instantiating this one.
+     */
+    public static function getBoundaryData(): array
+    {
+        return Cache::remember('rosales_boundary_and_barangays', now()->addDays(30), function () {
+            return (new self)->fetchBoundaryData();
+        });
     }
 
     /**

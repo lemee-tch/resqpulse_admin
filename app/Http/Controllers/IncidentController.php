@@ -167,7 +167,10 @@ class IncidentController extends Controller
     public function show(Incident $incident)
     {
         $incident->load(['citizen', 'responders']);
-        return view('incident-details', compact('incident'));
+        return view('incident-details', [
+            'incident'     => $incident,
+            'boundaryData' => MapViewController::getBoundaryData(),
+        ]);
     }
 
     /**
@@ -181,7 +184,10 @@ class IncidentController extends Controller
     public function sosShow(Incident $incident)
     {
         $incident->load(['citizen', 'responders']);
-        return view('sos-details', compact('incident'));
+        return view('sos-details', [
+            'incident'     => $incident,
+            'boundaryData' => MapViewController::getBoundaryData(),
+        ]);
     }
 
     public function latestSos()

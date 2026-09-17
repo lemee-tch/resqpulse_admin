@@ -582,6 +582,70 @@
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
     L.marker([{{ $lat }}, {{ $lng }}]).addTo(map);
 
+    // ── Dim everything outside Rosales ──────────────────────────────
+    // Same treatment as the full Map View page: one world-covering
+    // rectangle with the Rosales municipal boundary cut out as a hole
+    // (even-odd fill), so only Rosales itself stays at normal map
+    // brightness. Reuses the same 30-day-cached boundary fetch — see
+    // MapViewController::getBoundaryData() — so this costs nothing
+    // extra server-side.
+    (function () {
+        const boundaryData = @json($boundaryData);
+
+        function pointsEqual(a, b) {
+            return Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
+        }
+
+        function joinSegments(segments) {
+            const segs = segments.map(s => s.slice());
+            const rings = [];
+            while (segs.length) {
+                let ring = segs.shift();
+                let extended = true;
+                while (extended && !pointsEqual(ring[0], ring[ring.length - 1])) {
+                    extended = false;
+                    for (let i = 0; i < segs.length; i++) {
+                        const seg = segs[i];
+                        if (pointsEqual(ring[ring.length - 1], seg[0])) { ring = ring.concat(seg.slice(1)); segs.splice(i, 1); extended = true; break; }
+                        if (pointsEqual(ring[ring.length - 1], seg[seg.length - 1])) { ring = ring.concat(seg.slice(0, -1).reverse()); segs.splice(i, 1); extended = true; break; }
+                        if (pointsEqual(ring[0], seg[seg.length - 1])) { ring = seg.slice(0, -1).concat(ring); segs.splice(i, 1); extended = true; break; }
+                        if (pointsEqual(ring[0], seg[0])) { ring = seg.slice(1).reverse().concat(ring); segs.splice(i, 1); extended = true; break; }
+                    }
+                }
+                rings.push(ring);
+            }
+            return rings;
+        }
+
+        const relation = (boundaryData.elements || []).find(el => el.type === 'relation' && el.tags && el.tags.admin_level === '8');
+        if (!relation || !relation.members) return;
+
+        const segs = relation.members
+            .filter(m => m.type === 'way' && m.geometry && (m.role === 'outer' || m.role === ''))
+            .map(m => m.geometry.map(pt => [pt.lat, pt.lon]));
+        if (!segs.length) return;
+
+        const rings = joinSegments(segs).filter(r => r.length >= 3);
+        const totalPts = rings.reduce((sum, r) => sum + r.length, 0);
+        if (totalPts < 100) return; // same sparse-data guard as the full map page
+
+        const worldRing = [[-85, -180], [85, -180], [85, 180], [-85, 180]];
+        L.polygon([worldRing, ...rings], {
+            stroke: false,
+            fillColor: '#0b1f4d',
+            fillOpacity: 0.45,
+            interactive: false,
+        }).addTo(map);
+
+        L.polygon(rings, {
+            color: '#ffcc00',
+            weight: 2,
+            opacity: 1,
+            fill: false,
+            interactive: false,
+        }).addTo(map);
+    })();
+
     function showPhotoSlide(index) {
         const carouselEl = document.getElementById('photoCarousel');
         if (!carouselEl) return;
