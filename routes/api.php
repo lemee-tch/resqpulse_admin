@@ -8,6 +8,14 @@ use App\Http\Controllers\Api\IncidentController;
 use App\Http\Controllers\Api\EvacuationCenterController;
 use App\Http\Controllers\Api\ResponderAuthController;
 
+// ── TEMPORARY DIAGNOSTIC ROUTE ───────────────────────────────────────
+// Not part of the app — added purely to check whether the live server
+// is actually loading THIS file at all. Visit /api/ping-test-123 in a
+// browser; if it doesn't return "PONG-<timestamp>", the deployed
+// routes/api.php isn't this one. Safe to delete once confirmed either
+// way.
+Route::get('/ping-test-123', fn () => 'PONG-' . now()->timestamp);
+
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
