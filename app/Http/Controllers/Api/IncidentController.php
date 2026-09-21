@@ -241,6 +241,22 @@ class IncidentController extends Controller
         return response()->json($incidents);
     }
 
+    public function history(Request $request)
+    {
+        $responder = $request->user();
+        if (! $responder instanceof Responder) {
+            return response()->json(['message' => 'Not a responder account.'], 403);
+        }
+
+        $incidents = Incident::with(['citizen', 'responders'])
+            ->where('status', 'resolved')
+            ->whereHas('responders', fn ($q) => $q->where('responder_id', $responder->id))
+            ->orderByDesc('updated_at')
+            ->get();
+
+        return response()->json($incidents);
+    }
+
     /**
      * Backup-support model: accepting no longer exclusively claims the
      * incident for one responder. Any number of responders (from the

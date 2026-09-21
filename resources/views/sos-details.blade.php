@@ -131,6 +131,10 @@
         /* Admin notes */
         .admin-notes-box { background: #f9fafb; border: 1.5px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #4b5563; line-height: 1.6; min-height: 60px; }
 
+        /* Resolution (submitted by the responder from the field) */
+        .resolution-notes-box { background: #ecfdf5; border: 1.5px solid #a7f3d0; border-left: 3px solid #10b981; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #065f46; line-height: 1.6; min-height: 44px; }
+        .resolution-empty { font-size: .8rem; color: #9ca3af; font-style: italic; }
+
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn {
             display: none;
@@ -186,7 +190,7 @@
                 padding-bottom: 88px !important;
             }
         }
-    
+
         /* ── App-style nav polish ── */
         .sidebar-nav a {
             display: flex;
@@ -270,9 +274,9 @@
         </div>
     </div>
     <nav class="sidebar-nav">
-        <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
+        <a href="{{ route('dashboard') }}">Dashboard</a>
         <a href="{{ route('incident') }}">
-            <i class="bi bi-clipboard2-pulse"></i> Incidents
+            Incidents
             @if(($pendingIncidentsCount ?? 0) > 0)
                 <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingIncidentsCount }}</span>
             @endif
@@ -283,14 +287,13 @@
                 <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
             @endif
         </a>
-        <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
-        <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
-        <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Residents Verification</a>
-        <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
-        <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
-        <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
-        <a href="{{ route('users') }}"><i class="bi bi-people-fill"></i> User</a>
+        <a href="{{ route('mapview') }}">Map View</a>
+        <a href="{{ route('alerts') }}">Alerts &amp; Broadcast</a>
+        <a href="{{ route('evacuation') }}">Evacuation Centers</a>
+        <a href="{{ route('citizen-verification') }}">Residents Verification</a>
+        <a href="{{ route('responder-accounts') }}">Responder Accounts</a>
+        <a href="{{ route('reports-analytics') }}">Reports &amp; Analytics</a>
+        <a href="{{ route('users') }}">User</a>
     </nav>
     <div class="sidebar-logout">
         <a href="{{ route('logout') }}"
@@ -440,6 +443,28 @@
                     <div class="detail-sub" style="margin-top:14px;">Admin Notes</div>
                     <div class="admin-notes-box">{{ $incident->admin_notes }}</div>
                 @endif
+
+                @if($incident->status === 'resolved')
+                    <div class="detail-sub" style="margin-top:14px;">
+                        <i class="bi bi-check-circle-fill" style="color:#10b981;"></i> Resolution (from responder)
+                    </div>
+                    @if($incident->resolution_notes)
+                        <div class="resolution-notes-box">{{ $incident->resolution_notes }}</div>
+                    @else
+                        <div class="resolution-empty">No notes were submitted with the resolution.</div>
+                    @endif
+
+                    @if($incident->resolution_photo_path)
+                        <div class="detail-sub" style="margin-top:10px;">Resolution Photo</div>
+                        <div class="photos-row">
+                            <img src="{{ Storage::url($incident->resolution_photo_path) }}"
+                                 class="photo-thumb"
+                                 data-bs-toggle="modal"
+                                 data-bs-target="#resolutionPhotoModal"
+                                 alt="Resolution photo">
+                        </div>
+                    @endif
+                @endif
             </div>
 
             <!-- RESPONDING TEAM -->
@@ -540,7 +565,10 @@
                     <div class="tl-row">
                         <div class="tl-time">—</div>
                         <div class="tl-dot success"></div>
-                        <div class="tl-text">SOS <strong>resolved</strong></div>
+                        <div class="tl-text">
+                            SOS <strong>resolved</strong>
+                            @if($incident->resolution_notes) — "{{ \Illuminate\Support\Str::limit($incident->resolution_notes, 60) }}" @endif
+                        </div>
                     </div>
                 @endif
             </div>
@@ -586,6 +614,27 @@
 </div>
 @endif
 
+{{-- Resolution Photo Modal — separate from the citizen report's photo carousel above --}}
+@if($incident->status === 'resolved' && $incident->resolution_photo_path)
+<div class="modal fade" id="resolutionPhotoModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius:14px;border:none;">
+            <div class="modal-header border-0 pb-0">
+                <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
+                    Resolution Photo
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-2">
+                <img src="{{ Storage::url($incident->resolution_photo_path) }}"
+                     style="width:100%;max-height:480px;object-fit:contain;border-radius:10px;border:1px solid #e5e7eb;"
+                     alt="Resolution photo">
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
 {{-- Add Note Modal --}}
 <div class="modal fade" id="noteModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -619,70 +668,6 @@
                  .setView([{{ $lat }}, {{ $lng }}], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
     L.marker([{{ $lat }}, {{ $lng }}]).addTo(map);
-
-    // ── Dim everything outside Rosales ──────────────────────────────
-    // Same treatment as the full Map View page: one world-covering
-    // rectangle with the Rosales municipal boundary cut out as a hole
-    // (even-odd fill), so only Rosales itself stays at normal map
-    // brightness. Reuses the same 30-day-cached boundary fetch — see
-    // MapViewController::getBoundaryData() — so this costs nothing
-    // extra server-side.
-    (function () {
-        const boundaryData = @json($boundaryData);
-
-        function pointsEqual(a, b) {
-            return Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
-        }
-
-        function joinSegments(segments) {
-            const segs = segments.map(s => s.slice());
-            const rings = [];
-            while (segs.length) {
-                let ring = segs.shift();
-                let extended = true;
-                while (extended && !pointsEqual(ring[0], ring[ring.length - 1])) {
-                    extended = false;
-                    for (let i = 0; i < segs.length; i++) {
-                        const seg = segs[i];
-                        if (pointsEqual(ring[ring.length - 1], seg[0])) { ring = ring.concat(seg.slice(1)); segs.splice(i, 1); extended = true; break; }
-                        if (pointsEqual(ring[ring.length - 1], seg[seg.length - 1])) { ring = ring.concat(seg.slice(0, -1).reverse()); segs.splice(i, 1); extended = true; break; }
-                        if (pointsEqual(ring[0], seg[seg.length - 1])) { ring = seg.slice(0, -1).concat(ring); segs.splice(i, 1); extended = true; break; }
-                        if (pointsEqual(ring[0], seg[0])) { ring = seg.slice(1).reverse().concat(ring); segs.splice(i, 1); extended = true; break; }
-                    }
-                }
-                rings.push(ring);
-            }
-            return rings;
-        }
-
-        const relation = (boundaryData.elements || []).find(el => el.type === 'relation' && el.tags && el.tags.admin_level === '8');
-        if (!relation || !relation.members) return;
-
-        const segs = relation.members
-            .filter(m => m.type === 'way' && m.geometry && (m.role === 'outer' || m.role === ''))
-            .map(m => m.geometry.map(pt => [pt.lat, pt.lon]));
-        if (!segs.length) return;
-
-        const rings = joinSegments(segs).filter(r => r.length >= 3);
-        const totalPts = rings.reduce((sum, r) => sum + r.length, 0);
-        if (totalPts < 100) return; // same sparse-data guard as the full map page
-
-        const worldRing = [[-85, -180], [85, -180], [85, 180], [-85, 180]];
-        L.polygon([worldRing, ...rings], {
-            stroke: false,
-            fillColor: '#0b1f4d',
-            fillOpacity: 0.45,
-            interactive: false,
-        }).addTo(map);
-
-        L.polygon(rings, {
-            color: '#ffcc00',
-            weight: 2,
-            opacity: 1,
-            fill: false,
-            interactive: false,
-        }).addTo(map);
-    })();
 
     function showPhotoSlide(index) {
         const carouselEl = document.getElementById('photoCarousel');
