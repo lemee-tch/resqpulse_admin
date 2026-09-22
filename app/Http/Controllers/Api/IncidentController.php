@@ -105,7 +105,14 @@ class IncidentController extends Controller
         ]);
 
         if ($photoPaths) {
-            $analysis = $imageAnalysis->classify($photoPaths[0]);
+            // Description rides along with the photo so the AI's read on
+            // the scene isn't made blind to what the reporter actually
+            // said — see ImageAnalysisService::classify(). This is what
+            // sets ai_detected_type/ai_confidence/ai_analysis and the
+            // auto-adjusted priority below; none of that is surfaced as
+            // its own "AI Photo Analysis" UI for a manual report anymore,
+            // it just quietly informs the priority the incident gets.
+            $analysis = $imageAnalysis->classify($photoPaths[0], $request->description);
             if ($analysis) {
                 $incident->update([
                     'ai_detected_type' => $analysis['type'],
@@ -185,6 +192,10 @@ class IncidentController extends Controller
         ]);
 
         if ($photoPath) {
+            // No description to pass here — SOS never carries reporter
+            // text (see the Incident::create() call above), so this is
+            // photo-only, same as before. Priority also isn't touched by
+            // this analysis for SOS — it's already hardcoded 'critical'.
             $analysis = $imageAnalysis->classify($photoPath);
             if ($analysis) {
                 $incident->update([

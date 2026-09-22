@@ -379,21 +379,6 @@
                     </div>
                 @endif
 
-                @if($incident->ai_detected_type)
-                    <div class="detail-sub" style="margin-top:14px;">AI Photo Analysis</div>
-                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-                        <span style="background:#eef2ff;color:#4338ca;font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">
-                            <i></i> Likely: {{ $incident->ai_detected_type }}
-                        </span>
-                        <span style="font-size:.72rem;color:#9ca3af;text-transform:capitalize;">
-                            {{ $incident->ai_confidence }} confidence
-                        </span>
-                    </div>
-                    @if($incident->ai_analysis)
-                        <div class="detail-val" style="font-style:italic;">{{ $incident->ai_analysis }}</div>
-                    @endif
-                @endif
-
                 @if($incident->admin_notes)
                     <div class="detail-sub" style="margin-top:14px;">Admin Notes</div>
                     <div class="admin-notes-box">{{ $incident->admin_notes }}</div>

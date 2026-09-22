@@ -317,7 +317,6 @@
             $priority = $incident->priority ?? 'critical';
             $priorityLabel = ucfirst($priority);
             $reporter = $incident->citizen?->full_name ?? ($incident->citizen_id ? 'Unknown' : 'Guest');
-            $mobile = $incident->citizen?->mobile;
             $lat = $incident->latitude  ?? 15.8952;
             $lng = $incident->longitude ?? 120.6263;
             $icon = '🆘';
@@ -365,11 +364,6 @@
 
         <!-- QUICK ACTIONS -->
         <div class="quick-actions">
-            @if($mobile)
-                <a href="tel:{{ $mobile }}" class="btn-quick btn-call">
-                    <i class="bi bi-telephone-fill"></i> Call Reporter
-                </a>
-            @endif
             @if($incident->needs_review)
                 <form action="{{ route('incident.approve', $incident->id) }}" method="POST" style="margin:0;">
                     @csrf
