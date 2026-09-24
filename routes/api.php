@@ -40,6 +40,9 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
     Route::get('/me', [AuthController::class, 'me']);
+    // Citizen edit-profile — name, mobile, address fields only (not
+    // email or password, see AuthController::updateProfile doc comment).
+    Route::patch('/profile', [AuthController::class, 'updateProfile']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/alerts', [ApiAlertController::class, 'index']);
     Route::post('/fcm-token', [ApiAlertController::class, 'updateToken']);

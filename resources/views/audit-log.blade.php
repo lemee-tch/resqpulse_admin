@@ -62,6 +62,13 @@
         .badge-approved { background: #d1fae5; color: #065f46; }
         .badge-rejected { background: #fee2e2; color: #991b1b; }
 
+        /* Actor column — small tag next to the name distinguishing a
+           resident/guest (mobile app) row from an admin (web panel) row.
+           Admin rows show no tag at all, since that's the default/expected
+           case and a tag on every row would just be noise. */
+        .actor-name { font-weight: 600; color: #111827; }
+        .badge-resident { background: #e0e7ff; color: #3730a3; font-size: .65rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; margin-left: 6px; white-space: nowrap; }
+
         .empty-state { text-align: center; padding: 48px 20px; color: #9ca3af; font-size: .9rem; }
         .ip-cell { font-size: .74rem; color: #9ca3af; }
 
@@ -120,7 +127,7 @@
                 padding-bottom: 88px !important;
             }
         }
-    
+
         /* ── App-style nav polish ── */
         .sidebar-nav a {
             display: flex;
@@ -236,9 +243,15 @@
 <div class="main-wrap">
     <div class="content">
         <div class="page-title">Audit Log</div>
-        <div class="page-sub">Every admin login, logout, and record change — most recent first.</div>
+        <div class="page-sub">Every admin action and resident activity — logins, reports, profile edits, and record changes — most recent first.</div>
 
         <form method="GET" action="{{ route('audit-log') }}" class="filter-bar">
+            <select name="actor" class="filter-select" onchange="this.form.submit()">
+                <option value="">All Actors</option>
+                <option value="admin" {{ request('actor') === 'admin' ? 'selected' : '' }}>Admins</option>
+                <option value="resident" {{ request('actor') === 'resident' ? 'selected' : '' }}>Residents &amp; Guests</option>
+            </select>
+
             <select name="action" class="filter-select" onchange="this.form.submit()">
                 <option value="">All Actions</option>
                 @foreach(['login','logout','created','updated','deleted','approved','rejected'] as $a)
@@ -269,7 +282,7 @@
                 <thead>
                     <tr>
                         <th>When</th>
-                        <th>Admin</th>
+                        <th>Actor</th>
                         <th>Action</th>
                         <th>Description</th>
                         <th>IP</th>
@@ -282,7 +295,12 @@
                             {{ $log->created_at->format('M d, Y g:i A') }}
                             <div style="font-size:.7rem;color:#9ca3af;">{{ $log->created_at->diffForHumans() }}</div>
                         </td>
-                        <td>{{ $log->user_name ?? $log->user?->name ?? 'Unknown' }}</td>
+                        <td>
+                            <span class="actor-name">{{ $log->actor_name }}</span>
+                            @unless($log->is_admin_action)
+                                <span class="badge-resident">{{ $log->actor_name === 'Guest' ? 'Guest' : 'Resident' }}</span>
+                            @endunless
+                        </td>
                         <td><span class="badge-action badge-{{ $log->action }}">{{ ucfirst($log->action) }}</span></td>
                         <td>{{ $log->description }}</td>
                         <td class="ip-cell">{{ $log->ip_address ?? '—' }}</td>

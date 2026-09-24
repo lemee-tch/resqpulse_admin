@@ -8,6 +8,7 @@ use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use App\Mail\PasswordResetOtp;
 use App\Mail\EmailVerificationOtp;
 use Illuminate\Support\Facades\Mail;
@@ -67,6 +68,13 @@ class AuthController extends Controller
         ]);
 
         Mail::to($citizen->email)->send(new EmailVerificationOtp($otp, $citizen->full_name));
+
+        // Resident activity trail — same convention as login()/
+        // updateProfile() below: no admin session here, so user_id/
+        // user_name stay null and the actor is named directly via
+        // $auditable (this Citizen). Also what the Residents Log page
+        // reads to show "who registered" (Admin\ResidentsLogController).
+        AuditLogService::log('created', "Citizen {$citizen->full_name} registered.", $citizen);
 
         // No token yet — the citizen must verify their email before they can log in.
         return response()->json([
@@ -184,6 +192,89 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         return response()->json($request->user());
+    }
+
+    /**
+     * Lets a logged-in citizen update their own name, mobile number and
+     * address fields — the counterpart to register() above, but for an
+     * EXISTING account instead of creating one. Deliberately excludes
+     * email (tied to login + verification_status) and municipality
+     * (fixed to Rosales, same as register()); password changes stay on
+     * the separate forgot/reset-password OTP flow, not this endpoint.
+     *
+     * Resident activity trail — shows up in the admin Audit Log page
+     * (filterable by action=updated), same convention as login()/
+     * store()/sos(): user_id/user_name stay null (no admin session
+     * here), the actor is captured via $auditable (this Citizen), and
+     * old/new only carry the fields that actually changed.
+     */
+    public function updateProfile(Request $request)
+    {
+        $citizen = $request->user();
+
+        if (! $citizen instanceof Citizen) {
+            return response()->json(['message' => 'Not a citizen account.'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'first_name'  => ['required', 'string', 'max:255'],
+            'middle_name' => ['nullable', 'string', 'max:255'],
+            'last_name'   => ['required', 'string', 'max:255'],
+            'suffix'      => ['nullable', 'string', 'max:20'],
+            'mobile'      => [
+                'required',
+                'string',
+                Rule::unique('citizens', 'mobile')->ignore($citizen->id),
+            ],
+            'barangay'    => ['required', 'string'],
+            'street'      => ['nullable', 'string'],
+            'zone'        => ['nullable', 'string'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+        }
+
+        $trackedFields = ['first_name', 'middle_name', 'last_name', 'suffix', 'mobile', 'barangay', 'street', 'zone'];
+        $before = $citizen->only($trackedFields);
+
+        $fullName = collect([
+            $request->first_name,
+            $request->middle_name,
+            $request->last_name,
+            $request->suffix,
+        ])->filter(fn ($part) => filled($part))->implode(' ');
+
+        $citizen->update([
+            'first_name'  => $request->first_name,
+            'middle_name' => $request->middle_name,
+            'last_name'   => $request->last_name,
+            'suffix'      => $request->suffix,
+            'full_name'   => $fullName,
+            'mobile'      => $request->mobile,
+            'barangay'    => $request->barangay,
+            'street'      => $request->street,
+            'zone'        => $request->zone,
+        ]);
+
+        $after = $citizen->only($trackedFields);
+
+        // Only log (and only report) fields that actually changed —
+        // resubmitting the form with nothing edited shouldn't create a
+        // noise row in the Audit Log.
+        $changedBefore = array_diff_assoc($before, $after);
+        if ($changedBefore !== []) {
+            $changedAfter = array_intersect_key($after, $changedBefore);
+            AuditLogService::log(
+                'updated',
+                "Citizen {$citizen->full_name} updated their profile.",
+                $citizen,
+                $changedBefore,
+                $changedAfter
+            );
+        }
+
+        return response()->json(['message' => 'Profile updated.', 'citizen' => $citizen]);
     }
 
     public function forgotPassword(Request $request)

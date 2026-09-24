@@ -207,7 +207,7 @@
                 padding-bottom: 88px !important;
             }
         }
-    
+
         /* ── App-style nav polish ── */
         .sidebar-nav a {
             display: flex;
@@ -345,17 +345,8 @@
         <div class="tab-bar">
             <button class="tab-btn active" onclick="switchTab('pending', this)">Pending Review ({{ $pendingCitizens->count() }})</button>
             <button class="tab-btn" onclick="switchTab('verified', this)">Verified ({{ $verifiedCitizens->count() }})</button>
+            <button class="tab-btn" onclick="switchTab('all', this)">All Registered ({{ $citizens->count() }})</button>
         </div>
-
-        @php
-            // Shared row markup, rendered once per tab via a Blade component-ish closure.
-            $renderTable = function ($rows, $emptyMessage) {
-                return view('partials.citizen-verification-table', [
-                    'citizens' => $rows,
-                    'emptyMessage' => $emptyMessage,
-                ])->render();
-            };
-        @endphp
 
         <!-- ══ TAB: PENDING REVIEW ══ -->
         <div id="tab-pending" class="tab-panel active">
@@ -495,6 +486,65 @@
             </div>
         </div>
 
+        <!-- ══ TAB: ALL REGISTERED (registration record — who signed up
+             and when, independent of verification status; this is the
+             "residents log" the sidebar Audit Log page doesn't cover on
+             its own) ══ -->
+        <div id="tab-all" class="tab-panel">
+            <div class="table-card">
+                <div style="padding:14px 20px;border-bottom:1px solid #f3f4f6;">
+                    <input type="text" id="allRegisteredSearch" class="form-control-m" style="max-width:280px;"
+                           placeholder="Search by name, email or mobile...">
+                </div>
+                <table class="evac-table" id="allRegisteredTable">
+                    <thead>
+                        <tr>
+                            <th>Resident</th>
+                            <th>Contact</th>
+                            <th>Municipality / Barangay</th>
+                            <th>Registered On</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($citizens as $citizen)
+                        <tr>
+                            <td class="td-name">{{ $citizen->full_name }}</td>
+                            <td>
+                                {{ $citizen->email }}
+                                @if($citizen->mobile)
+                                    <div class="td-sub">{{ $citizen->mobile }}</div>
+                                @endif
+                            </td>
+                            <td>
+                                {{ $citizen->municipality ?? '—' }}
+                                @if($citizen->barangay)
+                                    <div class="td-sub">Brgy. {{ $citizen->barangay }}</div>
+                                @endif
+                            </td>
+                            <td>{{ $citizen->created_at->format('M d, Y g:i A') }}</td>
+                            <td>
+                                @if($citizen->verification_status === 'verified')
+                                    <span class="badge-verified">Verified</span>
+                                @elseif($citizen->verification_status === 'rejected')
+                                    <span class="badge-rejected">Rejected</span>
+                                @else
+                                    <span class="badge-pending">Pending</span>
+                                @endif
+                            </td>
+                        </tr>
+                        @empty
+                        <tr>
+                            <td colspan="5" class="empty-state">
+                                No residents have registered yet.
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         {{-- Modals live OUTSIDE the tables on purpose — see the original
              note: a <form> placed directly inside <tbody> is invalid HTML
              and browsers "foster parent" it, breaking the form's internal
@@ -564,6 +614,22 @@
         document.getElementById('tab-' + id).classList.add('active');
         btn.classList.add('active');
     }
+
+    // "All Registered" tab — simple client-side search (name/email/mobile).
+    // No new endpoint needed since the full registration list is already
+    // rendered server-side (same $citizens collection as the other tabs).
+    (function () {
+        var input = document.getElementById('allRegisteredSearch');
+        var table = document.getElementById('allRegisteredTable');
+        if (!input || !table) return;
+        input.addEventListener('input', function () {
+            var term = input.value.trim().toLowerCase();
+            table.querySelectorAll('tbody tr').forEach(function (row) {
+                if (row.children.length < 2) return; // skip empty-state row
+                row.style.display = row.textContent.toLowerCase().includes(term) ? '' : 'none';
+            });
+        });
+    })();
 
     const swalTheme = {
         confirmButtonColor: '#1a3c8f',
