@@ -8,14 +8,6 @@ use App\Http\Controllers\Api\IncidentController;
 use App\Http\Controllers\Api\EvacuationCenterController;
 use App\Http\Controllers\Api\ResponderAuthController;
 
-// ── TEMPORARY DIAGNOSTIC ROUTE ───────────────────────────────────────
-// Not part of the app — added purely to check whether the live server
-// is actually loading THIS file at all. Visit /api/ping-test-123 in a
-// browser; if it doesn't return "PONG-<timestamp>", the deployed
-// routes/api.php isn't this one. Safe to delete once confirmed either
-// way.
-Route::get('/ping-test-123', fn () => 'PONG-' . now()->timestamp);
-
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
@@ -55,6 +47,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/responder/me', [ResponderAuthController::class, 'me']);
     Route::post('/responder/logout', [ResponderAuthController::class, 'logout']);
     Route::get('/responder/incidents', [IncidentController::class, 'assignedToResponder']);
+    // Report History screen — resolved incidents this responder personally
+    // accepted/backed up on. Deliberately separate from the route above,
+    // which excludes resolved incidents by design (it's the "still active"
+    // feed for the home screen's Active/Critical/Accepted tiles).
+    Route::get('/responder/incidents/history', [IncidentController::class, 'resolvedForResponder']);
 
     Route::post('/evacuation-centers', [EvacuationCenterController::class, 'store']);
     Route::get('/evacuation-centers/evacuees', [EvacuationCenterController::class, 'evacuees']);
@@ -64,6 +61,4 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/responder/incidents/{incident}/accept', [IncidentController::class, 'accept']);
     Route::post('/responder/incidents/{incident}/decline', [IncidentController::class, 'decline']);
     Route::post('/responder/incidents/{incident}/resolve', [IncidentController::class, 'resolve']);
-
-    Route::get('/responder/incidents/history', [IncidentController::class, 'history']);
 });

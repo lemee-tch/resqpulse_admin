@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Citizen;
+use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -165,6 +166,16 @@ class AuthController extends Controller
         }
 
         $token = $citizen->createToken('mobile-app')->plainTextToken;
+
+        // Resident activity trail — shows up in the admin Audit Log
+        // page (filterable by action=login). auth()->id()/auth()->user()
+        // inside AuditLogService refer to the ADMIN web guard, which is
+        // never authenticated here (this is the citizen mobile API), so
+        // user_id/user_name stay null on this row — the actual actor is
+        // captured via $auditable (this Citizen) and named directly in
+        // the description, same convention already used for
+        // approve/reject in Admin\CitizenVerificationController.
+        AuditLogService::log('login', "Citizen {$citizen->full_name} logged in.", $citizen);
 
         return response()->json(['message' => 'Login successful', 'citizen' => $citizen, 'token' => $token]);
     }

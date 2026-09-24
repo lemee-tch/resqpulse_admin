@@ -181,6 +181,37 @@
         }
         .notif-view-all:hover { background: #f8faff; }
 
+        /* ── Sound-enable pill ──
+             Browsers block audio.play() with sound until the page has
+             had a real click/keydown — see the script below. Rather
+             than silently hoping the admin clicks *something* before
+             the first alert arrives (which is what caused reports of
+             "it didn't make a sound"), this pill is a visible,
+             one-click way to unlock it immediately on page load. It
+             disappears the moment sound is unlocked (by clicking it,
+             or by clicking anywhere else on the page). */
+        .sound-enable-btn {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            background: #fef3c7;
+            color: #92400e;
+            border: 1.5px solid #fde68a;
+            border-radius: 20px;
+            padding: 5px 12px;
+            font-size: .74rem;
+            font-weight: 700;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            white-space: nowrap;
+            animation: soundPillPulse 2s ease-in-out infinite;
+        }
+        .sound-enable-btn:hover { background: #fde68a; }
+        @keyframes soundPillPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(217,119,6,.25); }
+            50% { box-shadow: 0 0 0 5px rgba(217,119,6,0); }
+        }
+
         .topbar-user {
             display: flex;
             align-items: center;
@@ -442,7 +473,7 @@
                 padding-bottom: 88px !important;
             }
         }
-    
+
         /* ── App-style nav polish ── */
         .sidebar-nav a {
             display: flex;
@@ -567,6 +598,9 @@
     <div class="topbar">
         <div class="topbar-title">Dashboard Overview</div>
         <div class="topbar-right">
+            <button type="button" class="sound-enable-btn" id="soundEnableBtn" title="Click to enable alert sounds for this session">
+                <i class="bi bi-volume-mute-fill"></i> Enable alert sound
+            </button>
             <div class="topbar-bell" id="notifBell">
                 <i class="bi bi-bell"></i>
                 <span class="notif-badge" id="notifBadge"></span>
@@ -578,7 +612,7 @@
             </div>
             <audio id="notifSound" src="{{ asset('sounds/notification.mp3') }}" preload="auto"></audio>
             <div class="topbar-user">
-    
+
                 <a href="{{ route('audit-log') }}" style="text-decoration:none;color:inherit;">
                     <i class="bi bi-person-circle"></i>
                      {{ auth()->user()->name }}
@@ -606,7 +640,7 @@
                     <div class="stat-badge text-danger">High Priority</div>
                 </div>
             </a>
-            
+
             <a href="{{ route('sos-alerts') }}" class="stat-card-link">
                 <div class="stat-card">
                     <div class="stat-label text-danger">SOS Alerts</div>
@@ -889,6 +923,172 @@ new Chart(document.getElementById('lineChart'), {
     }
 })();
 </script>
+
+{{-- ══════ Topbar notification bell — polling + sound ══════
+     The bell icon, badge, dropdown markup and <audio id="notifSound">
+     already existed in the topbar above, and the backend endpoint
+     (IncidentController::latestIncidentNotifications, route
+     'notifications.incidents') already worked — but nothing ever
+     called it. This is what was missing: poll it, fill the dropdown,
+     and play the sound when a genuinely NEW (non-SOS) report shows up.
+     SOS reports are excluded server-side already (they have their own
+     siren via sos-alert-overlay), so this never double-announces.
+
+     Guest reports and outside-Rosales reports are NOT excluded here —
+     latestIncidentNotifications() only filters out SOS Emergency, so
+     they trigger the badge/list/sound exactly like any other report
+     (needs_review only withholds the RESPONDER push, never this admin
+     notification). --}}
+<script>
+(function () {
+    const bell = document.getElementById('notifBell');
+    const badge = document.getElementById('notifBadge');
+    const dropdown = document.getElementById('notifDropdown');
+    const list = document.getElementById('notifList');
+    const sound = document.getElementById('notifSound');
+    const soundBtn = document.getElementById('soundEnableBtn');
+    if (!bell || !badge || !dropdown || !list || !sound) return;
+
+    const POLL_MS = 15000;
+    const LAST_SEEN_KEY = 'resqpulse_last_seen_incident_at';
+    // Starts from whatever was persisted last visit, so a page refresh
+    // doesn't re-announce reports already seen. Empty on a first-ever
+    // visit — the first poll below is treated as a baseline, not a
+    // burst of "new" reports, so it never dings for the whole history.
+    let lastSeenAt = localStorage.getItem(LAST_SEEN_KEY) || null;
+
+    // ── Audio unlock ──────────────────────────────────────────────
+    // Browsers refuse audio.play() unless the page has had a real user
+    // gesture (click/keydown/tap) — poll() runs on a setInterval, so
+    // with no unlock the FIRST alert after a fresh page load never
+    // makes a sound, no matter what triggered it (guest report,
+    // outside-Rosales, or an ordinary one). This was the actual cause
+    // behind "it didn't make a sound": the badge/list still updated
+    // (that part doesn't need audio permission), but sound.play()'s
+    // promise was silently rejected because nothing had been clicked
+    // on the page yet since it loaded.
+    //
+    // Fix: a visible "Enable alert sound" pill in the topbar gives the
+    // admin an obvious, one-click way to grant that permission the
+    // moment the dashboard opens, instead of hoping their first click
+    // anywhere happens to land before the first real alert. Clicking
+    // ANYTHING on the page still unlocks it too (see the document
+    // listeners below) — the pill just makes it discoverable and hides
+    // itself once sound is actually unlocked.
+    let soundUnlocked = false;
+
+    function showSoundPill() {
+        if (soundBtn && !soundUnlocked) soundBtn.style.display = 'flex';
+    }
+
+    function hideSoundPill() {
+        if (soundBtn) soundBtn.style.display = 'none';
+    }
+
+    function unlockNotifSound() {
+        if (soundUnlocked) return;
+        sound.muted = true;
+        sound.play().then(function () {
+            sound.pause();
+            sound.currentTime = 0;
+            sound.muted = false;
+            soundUnlocked = true;
+            hideSoundPill();
+        }).catch(function () {
+            // Still blocked (e.g. this "click" happened before the
+            // browser considered it a real gesture) — leave the pill
+            // showing so the admin can try again.
+        });
+    }
+
+    document.addEventListener('click', unlockNotifSound);
+    document.addEventListener('keydown', unlockNotifSound, { once: true });
+    document.addEventListener('touchstart', unlockNotifSound, { once: true, passive: true });
+    if (soundBtn) {
+        soundBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            unlockNotifSound();
+        });
+    }
+
+    // Show the pill once the page has settled, unless sound is somehow
+    // already unlocked (e.g. a very fast click during page load beat
+    // this to it).
+    showSoundPill();
+
+    function timeAgo(isoString) {
+        if (!isoString) return '';
+        const seconds = Math.max(0, Math.floor((Date.now() - new Date(isoString).getTime()) / 1000));
+        if (seconds < 60) return 'just now';
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return minutes + ' min ago';
+        const hours = Math.floor(minutes / 60);
+        return hours + (hours === 1 ? ' hour ago' : ' hours ago');
+    }
+
+    function escapeHtml(str) {
+        return String(str ?? '').replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function render(recent) {
+        if (!recent || !recent.length) {
+            list.innerHTML = '<div class="notif-empty">No recent reports.</div>';
+            return;
+        }
+        list.innerHTML = recent.map(function (inc) {
+            return '<a href="{{ url('/incidents') }}/' + inc.id + '" class="notif-item">' +
+                '<div class="notif-item-type">' + escapeHtml(inc.emergency_type) + '</div>' +
+                '<div class="notif-item-loc">' + escapeHtml(inc.location || 'Location unavailable') + '</div>' +
+                '<div class="notif-item-time">' + timeAgo(inc.created_at) + '</div>' +
+                '</a>';
+        }).join('');
+    }
+
+    async function poll() {
+        try {
+            const url = "{{ route('notifications.incidents') }}" + (lastSeenAt ? ('?since=' + encodeURIComponent(lastSeenAt)) : '');
+            const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const data = await res.json();
+
+            render(data.recent);
+
+            if (lastSeenAt && data.newCount > 0) {
+                badge.textContent = data.newCount > 9 ? '9+' : data.newCount;
+                badge.style.display = 'flex';
+                sound.currentTime = 0;
+                sound.play().catch(() => {
+                    // Still not unlocked — make sure the pill is visible
+                    // so the admin notices and can fix it for the next
+                    // alert, instead of this failing silently forever.
+                    showSoundPill();
+                });
+            }
+
+            lastSeenAt = data.serverTime;
+            localStorage.setItem(LAST_SEEN_KEY, lastSeenAt);
+        } catch (e) { /* silent — next poll tries again */ }
+    }
+
+    bell.addEventListener('click', function (e) {
+        e.stopPropagation();
+        const opening = dropdown.style.display !== 'block';
+        dropdown.style.display = opening ? 'block' : 'none';
+        if (opening) {
+            badge.style.display = 'none';
+        }
+    });
+    document.addEventListener('click', function () {
+        dropdown.style.display = 'none';
+    });
+    dropdown.addEventListener('click', function (e) { e.stopPropagation(); });
+
+    poll();
+    setInterval(poll, POLL_MS);
+})();
+</script>
+
 @include('partials.sos-alert-overlay')
 <script>
 (function () {

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Citizen;
 use App\Models\Incident;
 use App\Models\Responder;
+use App\Services\AuditLogService;
 use App\Services\BarangayLocationService;
 use App\Services\ImageAnalysisService;
 use App\Services\PushNotificationService;
@@ -103,16 +104,38 @@ class IncidentController extends Controller
         ]);
 
         if ($photoPaths) {
+            // Manual/regular reports: the citizen already told us the
+            // type via the "Type of Emergency" dropdown, so we don't
+            // need — or show — a second, possibly-conflicting AI guess
+            // here (ai_detected_type/ai_confidence/ai_analysis stay
+            // null, which also keeps the "AI Photo Analysis" block off
+            // incident-details.blade.php — it's gated on
+            // $incident->ai_detected_type). The photo is still worth
+            // running through the analyzer for ONE thing: letting it
+            // bump priority up (e.g. a photo that clearly shows an
+            // active fire) beyond whatever TYPE_PRIORITY would assign
+            // from the citizen's stated type alone.
             $analysis = $imageAnalysis->classify($photoPaths[0], $request->emergency_type);
             if ($analysis) {
                 $incident->update([
-                    'ai_detected_type' => $analysis['type'],
-                    'ai_confidence'    => $analysis['confidence'],
-                    'ai_analysis'      => $analysis['notes'],
-                    'priority'         => $analysis['priority'],
+                    'priority' => $analysis['priority'],
                 ]);
             }
         }
+
+        // Resident activity trail — shows up in the admin Audit Log page
+        // (filterable by action=created). Same convention as login() in
+        // Api\AuthController: user_id/user_name stay null (the admin web
+        // guard is never authenticated here), so the actual actor is
+        // captured via $auditable (this Incident, which carries
+        // citizen_id) and named directly in the description.
+        AuditLogService::log(
+            'created',
+            $isGuest
+                ? "A guest reported a {$incident->emergency_type} incident."
+                : "Citizen {$citizen->full_name} reported a {$incident->emergency_type} incident.",
+            $incident
+        );
 
         // Reports needing review never notify responders until an admin
         // approves — see Admin\IncidentController::approve(), which
@@ -208,6 +231,18 @@ class IncidentController extends Controller
             }
         }
 
+        // Same resident activity trail as store() above — an SOS is still
+        // "reporting an incident" from the audit log's point of view, so
+        // it shows up in the same Audit Log page (action=created), just
+        // with wording that makes clear it came from the SOS button.
+        AuditLogService::log(
+            'created',
+            $isGuest
+                ? 'A guest sent an SOS alert.'
+                : "Citizen {$citizen->full_name} sent an SOS alert.",
+            $incident
+        );
+
         if (! $incident->needs_review) {
             $push->dispatchToRespondersForIncident($incident);
         }
@@ -249,6 +284,35 @@ class IncidentController extends Controller
             // withheld for them, so this is a belt-and-suspenders check.
             ->where('needs_review', false)
             ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json($incidents);
+    }
+
+    /**
+     * Report History — resolved incidents this responder personally
+     * accepted (or backed up on). assignedToResponder() above filters
+     * OUT resolved incidents by design (it's the "what's still active"
+     * feed), so a resolved incident simply disappears from it the moment
+     * it's closed — this is the separate feed the Report History screen
+     * needs instead. Scoped via the incident_responder pivot rather than
+     * the deprecated singular responder_id column, matching how
+     * accept()/decline() actually record responders now.
+     */
+    public function resolvedForResponder(Request $request)
+    {
+        $responder = $request->user();
+
+        if (! $responder instanceof Responder) {
+            return response()->json(['message' => 'Not a responder account.'], 403);
+        }
+
+        $incidents = Incident::with(['citizen', 'responders'])
+            ->where('status', 'resolved')
+            ->whereHas('responders', function ($q) use ($responder) {
+                $q->where('responders.id', $responder->id);
+            })
+            ->orderByDesc('updated_at')
             ->get();
 
         return response()->json($incidents);
