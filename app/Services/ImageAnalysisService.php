@@ -33,14 +33,18 @@ class ImageAnalysisService
      * Returns null on any failure — this is best-effort and must never
      * block an incident/SOS from being saved.
      *
-     * $description, when given, is the reporter's own text — folded into
-     * the prompt so the AI's read on the photo isn't made in isolation
-     * from what the person actually said happened. It never changes
-     * whether analysis runs, only sharpens what the AI is looking for.
+     * $reportedType is what the citizen themselves picked before
+     * submitting (the "Type of Emergency" dropdown on the report/SOS
+     * screen) — passed through as a hint the model should weigh heavily
+     * but still verify against what the photo actually shows, rather
+     * than trusted blindly. A citizen under panic can mis-tap the wrong
+     * option, and the photo is the one piece of independent evidence
+     * that can catch that; a hint that's simply echoed back defeats the
+     * point of running AI analysis at all.
      *
      * @return array{type: string, confidence: string, notes: string, priority: string}|null
      */
-    public function classify(string $storagePath, ?string $description = null): ?array
+    public function classify(string $storagePath, ?string $reportedType = null): ?array
     {
         $apiKey = config('services.gemini.api_key');
         if (! $apiKey) {
@@ -64,27 +68,24 @@ class ImageAnalysisService
             // recommended Flash-tier model).
             $model = config('services.gemini.model', 'gemini-3.5-flash');
 
-            $description = $description ? trim($description) : null;
+            // Only pass along a reported type that's actually one of our
+            // known categories — free-typed "Other" text isn't a category
+            // the model can weigh against, and an unrecognized string in
+            // the prompt would just be noise.
+            $matchedReportedType = $reportedType
+                ? collect(self::EMERGENCY_TYPES)->first(fn ($type) => strcasecmp(trim($reportedType), $type) === 0)
+                : null;
 
             $prompt = "You are triage software for a municipal disaster response system. "
                 . "Look at this photo, submitted with an emergency report. "
-                . ($description
-                    ? "The reporter described the emergency as: \"{$description}\". Weigh this alongside what the photo itself shows. "
+                . ($matchedReportedType
+                    ? "The person reporting this selected \"{$matchedReportedType}\" as the emergency type when they submitted it. "
+                        . "Treat that as a strong hint, but verify it against what the photo actually shows — if the photo "
+                        . "clearly shows something else, classify what you actually see instead of the hint. "
                     : '')
                 . "Classify it into exactly one of these categories: {$typesList}. "
-                . 'Then write the notes as a first responder\'s dispatch note, not a neutral photo '
-                . 'caption. Focus on the disaster itself: what is actually dangerous in the scene, '
-                . 'how severe it looks, and anything a responder needs to know before arriving — '
-                . 'e.g. rising or moving water, people in the water or trapped, structural damage or '
-                . 'collapse risk, active fire and its spread, smoke, blocked or unsafe access. Write '
-                . "with appropriate urgency for what's shown — this note is read by a responder "
-                . 'deciding how fast to move, so a genuinely severe scene should read as severe. '
-                . 'Stay strictly factual: only describe hazards actually visible in the photo (and '
-                . 'consistent with the reporter\'s description, if given) — never invent details, '
-                . 'assume anything outside the frame, or escalate the tone beyond what the image '
-                . 'itself supports. '
                 . 'Respond with ONLY raw JSON in this exact shape: '
-                . '{"type": "<one of the categories above>", "confidence": "high|medium|low", "notes": "<one urgent, hazard-focused sentence for a responder who has not seen the photo>"}';
+                . '{"type": "<one of the categories above>", "confidence": "high|medium|low", "notes": "<one short sentence describing what is visible, for a responder who has not seen the photo>"}';
 
             // Retries transient failures with a short backoff: both
             // overload/rate-limit responses (503, 429) and connection-level

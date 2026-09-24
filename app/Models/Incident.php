@@ -11,6 +11,7 @@ class Incident extends Model
         'description', 'photo_path', 'status', 'priority', 'admin_notes',
         'resolution_notes', 'resolution_photo_path',
         'ai_detected_type', 'ai_confidence', 'ai_analysis', 'needs_review', 'reviewed_at',
+        'sos_emergency_type',
     ];
 
     protected function casts(): array
@@ -22,6 +23,12 @@ class Incident extends Model
         'needs_review' => 'boolean',
         'reviewed_at'  => 'datetime',
     ];
+
+    // Includes display_type (see getDisplayTypeAttribute() below) in
+    // every JSON response automatically — both apps read incidents as
+    // JSON over the API, so without this they'd each have to
+    // reimplement the same "SOS Alert — {type}" formatting themselves.
+    protected $appends = ['display_type'];
 
     public function citizen()
     {
@@ -51,5 +58,25 @@ class Incident extends Model
         return $this->belongsToMany(Responder::class, 'incident_responder')
             ->withPivot('accepted_at')
             ->withTimestamps();
+    }
+
+    /**
+     * "SOS Alert — Accident", "SOS Alert — Fire", etc. — what admins and
+     * responders actually want to see instead of a bare "SOS Emergency"
+     * label, once the citizen has picked a hazard type on the SOS screen
+     * (sos_emergency_type). Falls back to the plain emergency_type for
+     * everything else (regular reports already carry their real type
+     * there) and to the bare label for an SOS with no type picked yet
+     * (older app builds, or the citizen skipped it).
+     */
+    public function getDisplayTypeAttribute(): string
+    {
+        if ($this->emergency_type === 'SOS Emergency') {
+            return $this->sos_emergency_type
+                ? "SOS Alert — {$this->sos_emergency_type}"
+                : 'SOS Emergency';
+        }
+
+        return (string) $this->emergency_type;
     }
 }

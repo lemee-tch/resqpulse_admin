@@ -479,7 +479,7 @@
                     <div class="sos-body">
                         <div class="sos-top-row">
                             <div class="sos-title">
-                                🆘 SOS Emergency
+                                🆘 {{ $sos->display_type }}
                                 <span class="badge-status {{ $statusClass }}">{{ $statusLabel }}</span>
                                 @if($sos->ai_detected_type)
                                     <span class="badge-ai text-danger">{{ $sos->ai_detected_type }}</span>

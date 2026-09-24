@@ -31,8 +31,8 @@
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
-        .content { padding: 32px 36px; flex: 1; }
+        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        .content { padding: 32px 36px; flex: 1; min-width: 0; }
 
         /* ── PAGE HEADER ── */
         .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
@@ -82,9 +82,15 @@
         .btn-call { background: #10b981; color: #fff; }
         .btn-approve-lg { background: #1a3c8f; color: #fff; }
 
-        /* ── THREE COLUMN GRID ── */
-        .detail-grid { display: grid; grid-template-columns: 1fr 1fr 220px; gap: 16px; margin-bottom: 20px; }
-        .panel-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px 20px; }
+        /* ── THREE COLUMN GRID ──
+           minmax(0, ...) lets each track shrink below its content's
+           natural width instead of forcing the whole grid wider than
+           the viewport (the old bare `1fr`/`220px` tracks refused to
+           shrink past their min-content, so on laptop-width windows
+           the grid overflowed the page and the right-most panel got
+           sliced off with no scrollbar). */
+        .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 220px); gap: 16px; margin-bottom: 20px; }
+        .panel-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px 20px; min-width: 0; }
         .panel-label { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1rem; color: #111827; margin-bottom: 12px; }
 
         /* Location */
@@ -94,9 +100,9 @@
         .btn-gmaps:hover { border-color: #1a3c8f; color: #1a3c8f; }
 
         /* Details */
-        .detail-desc { font-size: .83rem; color: #4b5563; line-height: 1.6; margin-bottom: 14px; }
+        .detail-desc { font-size: .83rem; color: #4b5563; line-height: 1.6; margin-bottom: 14px; overflow-wrap: break-word; }
         .detail-sub { font-size: .75rem; font-weight: 700; color: #111827; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .3px; }
-        .detail-val { font-size: .82rem; color: #6b7280; margin-bottom: 12px; }
+        .detail-val { font-size: .82rem; color: #6b7280; margin-bottom: 12px; overflow-wrap: break-word; }
 
         /* Photos */
         .photos-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
@@ -160,6 +166,15 @@
             z-index: 150;
         }
         .sidebar-overlay.show { display: block; }
+
+        /* ── Grid: ease from 3 columns down to 2, then 1, before the
+           sidebar itself collapses at 900px. */
+        @media (max-width: 1150px) {
+            .detail-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+        }
+        @media (max-width: 700px) {
+            .detail-grid { grid-template-columns: minmax(0, 1fr); }
+        }
 
         @media (max-width: 900px) {
             .mobile-menu-btn { display: flex; }
@@ -317,6 +332,7 @@
             $priority = $incident->priority ?? 'critical';
             $priorityLabel = ucfirst($priority);
             $reporter = $incident->citizen?->full_name ?? ($incident->citizen_id ? 'Unknown' : 'Guest');
+            $mobile = $incident->citizen?->mobile;
             $lat = $incident->latitude  ?? 15.8952;
             $lng = $incident->longitude ?? 120.6263;
             $icon = '🆘';
@@ -345,7 +361,11 @@
         <div class="incident-banner {{ $priority }}">
             <div class="banner-left">
                 <div class="banner-icon">{{ $icon }}</div>
-                <div class="banner-type">SOS Emergency</div>
+                {{-- display_type reads "SOS Alert — Accident" etc. once the
+                     citizen picked a hazard type on the SOS screen, and
+                     falls back to the plain "SOS Emergency" label
+                     otherwise — see Incident::getDisplayTypeAttribute(). --}}
+                <div class="banner-type">{{ $incident->display_type }}</div>
                 <span class="badge-priority">{{ $priorityLabel }}</span>
             </div>
             <div class="banner-meta">

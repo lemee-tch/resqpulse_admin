@@ -31,8 +31,8 @@
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
-        .content { padding: 32px 36px; flex: 1; }
+        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        .content { padding: 32px 36px; flex: 1; min-width: 0; }
 
         /* ── PAGE HEADER ── */
         .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
@@ -59,9 +59,15 @@
         .banner-meta span { font-size: .78rem; color: rgba(255,255,255,.9); font-weight: 500; }
         .banner-meta strong { color: #fff; font-weight: 700; }
 
-        /* ── THREE COLUMN GRID ── */
-        .detail-grid { display: grid; grid-template-columns: 1fr 1fr 220px; gap: 16px; margin-bottom: 20px; }
-        .panel-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px 20px; }
+        /* ── THREE COLUMN GRID ──
+           minmax(0, ...) lets each track shrink below its content's
+           natural width instead of forcing the whole grid wider than
+           the viewport (the old bare `1fr`/`220px` tracks refused to
+           shrink past their min-content, so on laptop-width screens
+           the grid overflowed the page and the right-most panel got
+           sliced off with no scrollbar). */
+        .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 220px); gap: 16px; margin-bottom: 20px; }
+        .panel-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px 20px; min-width: 0; }
         .panel-label { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1rem; color: #111827; margin-bottom: 12px; }
 
         /* Location */
@@ -71,9 +77,9 @@
         .btn-gmaps:hover { border-color: #1a3c8f; color: #1a3c8f; }
 
         /* Details */
-        .detail-desc { font-size: .83rem; color: #4b5563; line-height: 1.6; margin-bottom: 14px; }
+        .detail-desc { font-size: .83rem; color: #4b5563; line-height: 1.6; margin-bottom: 14px; overflow-wrap: break-word; }
         .detail-sub { font-size: .75rem; font-weight: 700; color: #111827; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .3px; }
-        .detail-val { font-size: .82rem; color: #6b7280; margin-bottom: 12px; }
+        .detail-val { font-size: .82rem; color: #6b7280; margin-bottom: 12px; overflow-wrap: break-word; }
 
         /* Photos */
         .photos-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
@@ -137,6 +143,17 @@
             z-index: 150;
         }
         .sidebar-overlay.show { display: block; }
+
+        /* ── Grid: ease from 3 columns down to 2, then 1, before the
+           sidebar itself collapses at 900px — this is what actually
+           keeps the "Details" / "Responding Team" / "Status" panels
+           from being squeezed off-screen on laptop-width windows. */
+        @media (max-width: 1150px) {
+            .detail-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+        }
+        @media (max-width: 700px) {
+            .detail-grid { grid-template-columns: minmax(0, 1fr); }
+        }
 
         @media (max-width: 900px) {
             .mobile-menu-btn { display: flex; }
@@ -377,6 +394,21 @@
                                  alt="Incident photo {{ $index + 1 }}">
                         @endforeach
                     </div>
+                @endif
+
+                @if($incident->ai_detected_type)
+                    <div class="detail-sub" style="margin-top:14px;">AI Photo Analysis</div>
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                        <span style="background:#eef2ff;color:#4338ca;font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">
+                            <i></i> Likely: {{ $incident->ai_detected_type }}
+                        </span>
+                        <span style="font-size:.72rem;color:#9ca3af;text-transform:capitalize;">
+                            {{ $incident->ai_confidence }} confidence
+                        </span>
+                    </div>
+                    @if($incident->ai_analysis)
+                        <div class="detail-val" style="font-style:italic;">{{ $incident->ai_analysis }}</div>
+                    @endif
                 @endif
 
                 @if($incident->admin_notes)

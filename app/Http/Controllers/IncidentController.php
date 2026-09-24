@@ -98,7 +98,7 @@ class IncidentController extends Controller
             ['priority' => $old],
             ['priority' => $request->priority]
         );
-        
+
         return back()->with('success', 'Priority updated.');
     }
 
@@ -110,7 +110,7 @@ class IncidentController extends Controller
 
         $old=$incident->status;
         $incident->update(['status' => $request->status]);
-        
+
         AuditLogService::log(
             'updated',
             "Set status of Incident #{$incident->id} to {$request->status}.",
@@ -167,10 +167,7 @@ class IncidentController extends Controller
     public function show(Incident $incident)
     {
         $incident->load(['citizen', 'responders']);
-        return view('incident-details', [
-            'incident'     => $incident,
-            'boundaryData' => MapViewController::getBoundaryData(),
-        ]);
+        return view('incident-details', compact('incident'));
     }
 
     /**
@@ -184,10 +181,7 @@ class IncidentController extends Controller
     public function sosShow(Incident $incident)
     {
         $incident->load(['citizen', 'responders']);
-        return view('sos-details', [
-            'incident'     => $incident,
-            'boundaryData' => MapViewController::getBoundaryData(),
-        ]);
+        return view('sos-details', compact('incident'));
     }
 
     public function latestSos()
@@ -234,7 +228,18 @@ class IncidentController extends Controller
         return response()->json([
             'newCount'   => $newCount,
             'recent'     => $recent,
-            'serverTime' => now()->toIso8601String(),
+            // Plain 'Y-m-d H:i:s', NOT toIso8601String(). created_at is
+            // stored as a naive DATETIME (no timezone suffix) — the
+            // client round-trips this value straight back as ?since= on
+            // the next poll, and MySQL compares it against created_at
+            // as a plain string/date. An ISO-8601 string carries a
+            // "+08:00" offset that a DATETIME column comparison doesn't
+            // understand, so `where('created_at', '>', $since)` matched
+            // nothing and newCount was always 0 — the bell's dropdown
+            // still rendered fine (it isn't since-filtered), but the
+            // badge and notifSound, both gated on newCount > 0, never
+            // fired. Matching the column's own format fixes the compare.
+            'serverTime' => now()->format('Y-m-d H:i:s'),
         ]);
     }
 

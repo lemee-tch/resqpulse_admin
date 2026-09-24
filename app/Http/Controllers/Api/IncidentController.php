@@ -9,9 +9,7 @@ use App\Models\Responder;
 use App\Services\BarangayLocationService;
 use App\Services\ImageAnalysisService;
 use App\Services\PushNotificationService;
-use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -105,14 +103,7 @@ class IncidentController extends Controller
         ]);
 
         if ($photoPaths) {
-            // Description rides along with the photo so the AI's read on
-            // the scene isn't made blind to what the reporter actually
-            // said — see ImageAnalysisService::classify(). This is what
-            // sets ai_detected_type/ai_confidence/ai_analysis and the
-            // auto-adjusted priority below; none of that is surfaced as
-            // its own "AI Photo Analysis" UI for a manual report anymore,
-            // it just quietly informs the priority the incident gets.
-            $analysis = $imageAnalysis->classify($photoPaths[0], $request->description);
+            $analysis = $imageAnalysis->classify($photoPaths[0], $request->emergency_type);
             if ($analysis) {
                 $incident->update([
                     'ai_detected_type' => $analysis['type'],
@@ -153,9 +144,15 @@ class IncidentController extends Controller
         $isGuest = ! $citizen;
 
         $validator = Validator::make($request->all(), [
-            'latitude'  => ['required', 'numeric', 'between:-90,90'],
-            'longitude' => ['required', 'numeric', 'between:-180,180'],
-            'photo'     => ['nullable', 'file', 'image', 'max:5120'],
+            'latitude'       => ['required', 'numeric', 'between:-90,90'],
+            'longitude'      => ['required', 'numeric', 'between:-180,180'],
+            'photo'          => ['nullable', 'file', 'image', 'max:5120'],
+            // Optional — the citizen now picks a hazard type on the SOS
+            // screen before holding the button, but the button still has
+            // to work even if this is never sent (e.g. an older app
+            // build). Free text is allowed via "Other" on the app side,
+            // so this isn't restricted to a fixed list server-side.
+            'emergency_type' => ['nullable', 'string', 'max:255'],
         ]);
 
         if ($validator->fails()) {
@@ -172,31 +169,36 @@ class IncidentController extends Controller
         $isOutsideRosales = ! $locationService->isWithinRosales($request->latitude, $request->longitude);
 
         $incident = Incident::create([
-            'citizen_id'     => $citizen?->id,
-            'emergency_type' => 'SOS Emergency',
+            'citizen_id'         => $citizen?->id,
+            'emergency_type'     => 'SOS Emergency',
             // SOS never carries typed location text — only ever a GPS
             // pin, from a guest or logged-in citizen alike — so this
             // always needs resolving, unlike store() above where only
             // guests hit this path.
-            'location'       => $locationService->approximateSosLabel($request->latitude, $request->longitude),
-            'latitude'       => $request->latitude,
-            'longitude'      => $request->longitude,
-            'description'    => $isGuest ? 'Guest SOS — location only. Awaiting MDRRMO review.' : 'SOS panic-button alert.',
-            'photo_path'     => $photoPath ? json_encode([$photoPath]) : null,
-            'status'         => 'pending',
-            'priority'       => 'critical',
+            'location'           => $locationService->approximateSosLabel($request->latitude, $request->longitude),
+            'latitude'           => $request->latitude,
+            'longitude'          => $request->longitude,
+            'description'        => $isGuest ? 'Guest SOS — location only. Awaiting MDRRMO review.' : 'SOS panic-button alert.',
+            'photo_path'         => $photoPath ? json_encode([$photoPath]) : null,
+            'status'             => 'pending',
+            'priority'           => 'critical',
+            // What the citizen picked on the SOS screen before holding
+            // the button (Fire, Flood, Medical, etc.) — kept separate
+            // from emergency_type (always 'SOS Emergency' above, which
+            // every SOS-specific query/filter/route relies on) and from
+            // ai_detected_type (an AI guess made from the photo, set
+            // below, which can end up disagreeing with what the citizen
+            // actually said). Purely informational for MDRRMO right now
+            // — it doesn't change routing/dispatch.
+            'sos_emergency_type' => $request->emergency_type ?: null,
             // Same reasoning as store() above — a pin outside Rosales
             // needs an admin to confirm it before responders get
             // dispatched, even from a trusted logged-in citizen.
-            'needs_review'   => $isGuest || $isOutsideRosales,
+            'needs_review'       => $isGuest || $isOutsideRosales,
         ]);
 
         if ($photoPath) {
-            // No description to pass here — SOS never carries reporter
-            // text (see the Incident::create() call above), so this is
-            // photo-only, same as before. Priority also isn't touched by
-            // this analysis for SOS — it's already hardcoded 'critical'.
-            $analysis = $imageAnalysis->classify($photoPath);
+            $analysis = $imageAnalysis->classify($photoPath, $request->emergency_type);
             if ($analysis) {
                 $incident->update([
                     'ai_detected_type' => $analysis['type'],
@@ -247,22 +249,6 @@ class IncidentController extends Controller
             // withheld for them, so this is a belt-and-suspenders check.
             ->where('needs_review', false)
             ->orderByDesc('created_at')
-            ->get();
-
-        return response()->json($incidents);
-    }
-
-    public function history(Request $request)
-    {
-        $responder = $request->user();
-        if (! $responder instanceof Responder) {
-            return response()->json(['message' => 'Not a responder account.'], 403);
-        }
-
-        $incidents = Incident::with(['citizen', 'responders'])
-            ->where('status', 'resolved')
-            ->whereHas('responders', fn ($q) => $q->where('responder_id', $responder->id))
-            ->orderByDesc('updated_at')
             ->get();
 
         return response()->json($incidents);
@@ -356,33 +342,11 @@ class IncidentController extends Controller
             ? $request->file('photo')->store('incident_resolution_photos', 'public')
             : null;
 
-        // Wrapped specifically because this project has no CLI/artisan
-        // access on its deployment — migrations get applied by hand via
-        // phpMyAdmin (see 2026_09_13_175814_add_resolution_fields_to_
-        // incidents_table.php), so a column genuinely missing on the
-        // live DB is a real, recurring failure mode here, not a
-        // hypothetical one. Without this, that shows up to the
-        // responder as an opaque "Could not mark this resolved." with
-        // nothing in the app to explain why; this at least logs the
-        // real SQL error server-side and tells the responder it's a
-        // server problem rather than something they can retry their way
-        // out of.
-        try {
-            $incident->update([
-                'status'                => 'resolved',
-                'resolution_notes'      => $request->notes,
-                'resolution_photo_path' => $photoPath,
-            ]);
-        } catch (QueryException $e) {
-            Log::error('Failed to save incident resolution — possible missing column on incidents table.', [
-                'incident_id' => $incident->id,
-                'error'       => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'message' => 'Could not save the resolution — a server-side database issue. Please notify MDRRMO admin.',
-            ], 500);
-        }
+        $incident->update([
+            'status'                => 'resolved',
+            'resolution_notes'      => $request->notes,
+            'resolution_photo_path' => $photoPath,
+        ]);
 
         $incident->refresh()->load(['responders', 'citizen']);
 
