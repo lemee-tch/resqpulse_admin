@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Mail\CitizenRejected;
+use App\Models\AuditLog;
 use App\Models\Citizen;
 use App\Services\AuditLogService;
 use Illuminate\Http\Request;
@@ -21,7 +22,20 @@ class CitizenVerificationController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
-        return view('citizen-verification', compact('citizens'));
+        // "All Registered" tab — every resident/guest action (logins,
+        // incident/SOS reports, profile edits, registration itself),
+        // same rows the shared Audit Log page shows under its
+        // actor=resident filter (AuditLogController::index()), just
+        // surfaced here too since this is where residents are managed.
+        // whereNull('user_id') is what separates a resident/guest mobile
+        // API action from an admin-panel one — see
+        // AuditLog::getIsAdminActionAttribute().
+        $residentLogs = AuditLog::with(['auditable'])
+            ->whereNull('user_id')
+            ->orderByDesc('created_at')
+            ->paginate(30, ['*'], 'log_page');
+
+        return view('citizen-verification', compact('citizens', 'residentLogs'));
     }
 
     public function approve(Citizen $citizen)

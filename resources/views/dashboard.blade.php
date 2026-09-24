@@ -181,37 +181,6 @@
         }
         .notif-view-all:hover { background: #f8faff; }
 
-        /* ── Sound-enable pill ──
-             Browsers block audio.play() with sound until the page has
-             had a real click/keydown — see the script below. Rather
-             than silently hoping the admin clicks *something* before
-             the first alert arrives (which is what caused reports of
-             "it didn't make a sound"), this pill is a visible,
-             one-click way to unlock it immediately on page load. It
-             disappears the moment sound is unlocked (by clicking it,
-             or by clicking anywhere else on the page). */
-        .sound-enable-btn {
-            display: none;
-            align-items: center;
-            gap: 6px;
-            background: #fef3c7;
-            color: #92400e;
-            border: 1.5px solid #fde68a;
-            border-radius: 20px;
-            padding: 5px 12px;
-            font-size: .74rem;
-            font-weight: 700;
-            font-family: 'Inter', sans-serif;
-            cursor: pointer;
-            white-space: nowrap;
-            animation: soundPillPulse 2s ease-in-out infinite;
-        }
-        .sound-enable-btn:hover { background: #fde68a; }
-        @keyframes soundPillPulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(217,119,6,.25); }
-            50% { box-shadow: 0 0 0 5px rgba(217,119,6,0); }
-        }
-
         .topbar-user {
             display: flex;
             align-items: center;
@@ -598,9 +567,6 @@
     <div class="topbar">
         <div class="topbar-title">Dashboard Overview</div>
         <div class="topbar-right">
-            <button type="button" class="sound-enable-btn" id="soundEnableBtn" title="Click to enable alert sounds for this session">
-                <i class="bi bi-volume-mute-fill"></i> Enable alert sound
-            </button>
             <div class="topbar-bell" id="notifBell">
                 <i class="bi bi-bell"></i>
                 <span class="notif-badge" id="notifBadge"></span>
@@ -946,7 +912,6 @@ new Chart(document.getElementById('lineChart'), {
     const dropdown = document.getElementById('notifDropdown');
     const list = document.getElementById('notifList');
     const sound = document.getElementById('notifSound');
-    const soundBtn = document.getElementById('soundEnableBtn');
     if (!bell || !badge || !dropdown || !list || !sound) return;
 
     const POLL_MS = 15000;
@@ -968,22 +933,11 @@ new Chart(document.getElementById('lineChart'), {
     // promise was silently rejected because nothing had been clicked
     // on the page yet since it loaded.
     //
-    // Fix: a visible "Enable alert sound" pill in the topbar gives the
-    // admin an obvious, one-click way to grant that permission the
-    // moment the dashboard opens, instead of hoping their first click
-    // anywhere happens to land before the first real alert. Clicking
-    // ANYTHING on the page still unlocks it too (see the document
-    // listeners below) — the pill just makes it discoverable and hides
-    // itself once sound is actually unlocked.
+    // Fix: silently unlock on the admin's first click/keydown/tap
+    // anywhere on the page (no dedicated button — sound just starts
+    // working the moment they interact with the dashboard at all,
+    // same as it always eventually did, just without asking).
     let soundUnlocked = false;
-
-    function showSoundPill() {
-        if (soundBtn && !soundUnlocked) soundBtn.style.display = 'flex';
-    }
-
-    function hideSoundPill() {
-        if (soundBtn) soundBtn.style.display = 'none';
-    }
 
     function unlockNotifSound() {
         if (soundUnlocked) return;
@@ -993,28 +947,16 @@ new Chart(document.getElementById('lineChart'), {
             sound.currentTime = 0;
             sound.muted = false;
             soundUnlocked = true;
-            hideSoundPill();
         }).catch(function () {
             // Still blocked (e.g. this "click" happened before the
-            // browser considered it a real gesture) — leave the pill
-            // showing so the admin can try again.
+            // browser considered it a real gesture) — the next
+            // click/keydown/tap will simply try again.
         });
     }
 
     document.addEventListener('click', unlockNotifSound);
     document.addEventListener('keydown', unlockNotifSound, { once: true });
     document.addEventListener('touchstart', unlockNotifSound, { once: true, passive: true });
-    if (soundBtn) {
-        soundBtn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            unlockNotifSound();
-        });
-    }
-
-    // Show the pill once the page has settled, unless sound is somehow
-    // already unlocked (e.g. a very fast click during page load beat
-    // this to it).
-    showSoundPill();
 
     function timeAgo(isoString) {
         if (!isoString) return '';
@@ -1059,10 +1001,9 @@ new Chart(document.getElementById('lineChart'), {
                 badge.style.display = 'flex';
                 sound.currentTime = 0;
                 sound.play().catch(() => {
-                    // Still not unlocked — make sure the pill is visible
-                    // so the admin notices and can fix it for the next
-                    // alert, instead of this failing silently forever.
-                    showSoundPill();
+                    // Still not unlocked — nothing to do here now that
+                    // there's no pill to surface; the next admin
+                    // click/keydown/tap unlocks it for future alerts.
                 });
             }
 

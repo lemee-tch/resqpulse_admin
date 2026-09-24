@@ -345,7 +345,7 @@
         <div class="tab-bar">
             <button class="tab-btn active" onclick="switchTab('pending', this)">Pending Review ({{ $pendingCitizens->count() }})</button>
             <button class="tab-btn" onclick="switchTab('verified', this)">Verified ({{ $verifiedCitizens->count() }})</button>
-            <button class="tab-btn" onclick="switchTab('all', this)">All Registered ({{ $citizens->count() }})</button>
+            <button class="tab-btn" onclick="switchTab('all', this)">Audit Log ({{ $residentLogs->total() }})</button>
         </div>
 
         <!-- ══ TAB: PENDING REVIEW ══ -->
@@ -486,63 +486,65 @@
             </div>
         </div>
 
-        <!-- ══ TAB: ALL REGISTERED (registration record — who signed up
-             and when, independent of verification status; this is the
-             "residents log" the sidebar Audit Log page doesn't cover on
-             its own) ══ -->
+        <!-- ══ TAB: AUDIT LOG (resident/guest activity — logins, incident
+             /SOS reports, profile edits, registration itself. Same rows
+             the shared Audit Log page shows under actor=resident
+             (AuditLogController::index()), scoped here to where
+             residents are actually managed, instead of a separate
+             sidebar page. ══ -->
         <div id="tab-all" class="tab-panel">
             <div class="table-card">
-                <div style="padding:14px 20px;border-bottom:1px solid #f3f4f6;">
-                    <input type="text" id="allRegisteredSearch" class="form-control-m" style="max-width:280px;"
-                           placeholder="Search by name, email or mobile...">
-                </div>
-                <table class="evac-table" id="allRegisteredTable">
+                <table class="evac-table">
                     <thead>
                         <tr>
+                            <th>When</th>
                             <th>Resident</th>
-                            <th>Contact</th>
-                            <th>Municipality / Barangay</th>
-                            <th>Registered On</th>
-                            <th>Status</th>
+                            <th>Action</th>
+                            <th>Description</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @forelse($citizens as $citizen)
+                        @forelse($residentLogs as $log)
                         <tr>
-                            <td class="td-name">{{ $citizen->full_name }}</td>
-                            <td>
-                                {{ $citizen->email }}
-                                @if($citizen->mobile)
-                                    <div class="td-sub">{{ $citizen->mobile }}</div>
-                                @endif
+                            <td style="white-space:nowrap;">
+                                {{ $log->created_at->format('M d, Y g:i A') }}
+                                <div class="td-sub">{{ $log->created_at->diffForHumans() }}</div>
                             </td>
+                            <td class="td-name">{{ $log->actor_name }}</td>
                             <td>
-                                {{ $citizen->municipality ?? '—' }}
-                                @if($citizen->barangay)
-                                    <div class="td-sub">Brgy. {{ $citizen->barangay }}</div>
-                                @endif
+                                @php
+                                    $actionColors = [
+                                        'login'    => ['#d1fae5', '#065f46'],
+                                        'logout'   => ['#f3f4f6', '#6b7280'],
+                                        'created'  => ['#dbeafe', '#1e40af'],
+                                        'updated'  => ['#fef3c7', '#92400e'],
+                                        'deleted'  => ['#fee2e2', '#991b1b'],
+                                        'approved' => ['#d1fae5', '#065f46'],
+                                        'rejected' => ['#fee2e2', '#991b1b'],
+                                    ];
+                                    [$bg, $fg] = $actionColors[$log->action] ?? ['#f3f4f6', '#6b7280'];
+                                @endphp
+                                <span style="background:{{ $bg }};color:{{ $fg }};font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;display:inline-block;">
+                                    {{ ucfirst($log->action) }}
+                                </span>
                             </td>
-                            <td>{{ $citizen->created_at->format('M d, Y g:i A') }}</td>
-                            <td>
-                                @if($citizen->verification_status === 'verified')
-                                    <span class="badge-verified">Verified</span>
-                                @elseif($citizen->verification_status === 'rejected')
-                                    <span class="badge-rejected">Rejected</span>
-                                @else
-                                    <span class="badge-pending">Pending</span>
-                                @endif
-                            </td>
+                            <td>{{ $log->description }}</td>
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="5" class="empty-state">
-                                No residents have registered yet.
+                            <td colspan="4" class="empty-state">
+                                No resident activity logged yet.
                             </td>
                         </tr>
                         @endforelse
                     </tbody>
                 </table>
             </div>
+            @if($residentLogs->hasPages())
+                <div style="margin-top:16px;">
+                    {{ $residentLogs->links() }}
+                </div>
+            @endif
         </div>
 
         {{-- Modals live OUTSIDE the tables on purpose — see the original
@@ -615,21 +617,14 @@
         btn.classList.add('active');
     }
 
-    // "All Registered" tab — simple client-side search (name/email/mobile).
-    // No new endpoint needed since the full registration list is already
-    // rendered server-side (same $citizens collection as the other tabs).
-    (function () {
-        var input = document.getElementById('allRegisteredSearch');
-        var table = document.getElementById('allRegisteredTable');
-        if (!input || !table) return;
-        input.addEventListener('input', function () {
-            var term = input.value.trim().toLowerCase();
-            table.querySelectorAll('tbody tr').forEach(function (row) {
-                if (row.children.length < 2) return; // skip empty-state row
-                row.style.display = row.textContent.toLowerCase().includes(term) ? '' : 'none';
-            });
-        });
-    })();
+    // Re-select the Audit Log tab after a pagination click on it
+    // (?log_page=2 reloads the page, which would otherwise reset back
+    // to the Pending Review tab and hide the very page the admin just
+    // navigated to).
+    if (new URLSearchParams(window.location.search).has('log_page')) {
+        var allBtn = document.querySelector(".tab-btn[onclick*=\"'all'\"]");
+        if (allBtn) switchTab('all', allBtn);
+    }
 
     const swalTheme = {
         confirmButtonColor: '#1a3c8f',

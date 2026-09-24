@@ -12,10 +12,16 @@ class AuditLogController extends Controller
 {
     public function index(Request $request)
     {
-        // 'auditable' is eager-loaded too — AuditLog::getActorNameAttribute()
-        // reads it to recover a citizen's name for rows the admin guard
-        // never authenticated (see that accessor's doc comment).
-        $query = AuditLog::with(['user', 'auditable'])->orderByDesc('created_at');
+        // Admin actions only — every admin-panel action carries a
+        // user_id (the admin guard authenticated it). Resident/guest
+        // mobile-API activity (logins, reports, profile edits,
+        // registration — never carries a user_id, see
+        // AuditLog::getIsAdminActionAttribute()) lives on its own tab
+        // on the Residents Verification page now
+        // (Admin\CitizenVerificationController::index()'s
+        // $residentLogs), not here, so it isn't shown twice in two
+        // different places.
+        $query = AuditLog::with('user')->whereNotNull('user_id')->orderByDesc('created_at');
 
         if ($request->filled('action')) {
             $query->where('action', $request->action);
@@ -23,18 +29,6 @@ class AuditLogController extends Controller
 
         if ($request->filled('user_id')) {
             $query->where('user_id', $request->user_id);
-        }
-
-        // Admin vs. Resident/Guest — every admin-panel action carries a
-        // user_id (the admin guard authenticated it); every citizen/guest
-        // mobile-API action never does, regardless of which model it
-        // touched. See AuditLog::getIsAdminActionAttribute().
-        if ($request->filled('actor')) {
-            if ($request->actor === 'admin') {
-                $query->whereNotNull('user_id');
-            } elseif ($request->actor === 'resident') {
-                $query->whereNull('user_id');
-            }
         }
 
         if ($request->filled('date')) {

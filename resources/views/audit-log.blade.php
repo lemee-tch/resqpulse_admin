@@ -243,15 +243,9 @@
 <div class="main-wrap">
     <div class="content">
         <div class="page-title">Audit Log</div>
-        <div class="page-sub">Every admin action and resident activity — logins, reports, profile edits, and record changes — most recent first.</div>
+        <div class="page-sub">Every admin action — status changes, approvals, account and record edits — most recent first. Resident &amp; guest activity (logins, reports, profile edits, registration) has its own log on the <a href="{{ route('citizen-verification') }}">Residents Verification</a> page.</div>
 
         <form method="GET" action="{{ route('audit-log') }}" class="filter-bar">
-            <select name="actor" class="filter-select" onchange="this.form.submit()">
-                <option value="">All Actors</option>
-                <option value="admin" {{ request('actor') === 'admin' ? 'selected' : '' }}>Admins</option>
-                <option value="resident" {{ request('actor') === 'resident' ? 'selected' : '' }}>Residents &amp; Guests</option>
-            </select>
-
             <select name="action" class="filter-select" onchange="this.form.submit()">
                 <option value="">All Actions</option>
                 @foreach(['login','logout','created','updated','deleted','approved','rejected'] as $a)
@@ -282,7 +276,7 @@
                 <thead>
                     <tr>
                         <th>When</th>
-                        <th>Actor</th>
+                        <th>Admin</th>
                         <th>Action</th>
                         <th>Description</th>
                         <th>IP</th>
@@ -297,9 +291,6 @@
                         </td>
                         <td>
                             <span class="actor-name">{{ $log->actor_name }}</span>
-                            @unless($log->is_admin_action)
-                                <span class="badge-resident">{{ $log->actor_name === 'Guest' ? 'Guest' : 'Resident' }}</span>
-                            @endunless
                         </td>
                         <td><span class="badge-action badge-{{ $log->action }}">{{ ucfirst($log->action) }}</span></td>
                         <td>{{ $log->description }}</td>
