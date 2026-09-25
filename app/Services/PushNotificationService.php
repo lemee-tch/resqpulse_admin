@@ -14,25 +14,38 @@ use Kreait\Laravel\Firebase\Facades\Firebase;
 class PushNotificationService
 {
     /**
-     * Every active agency gets notified for every incident, regardless
-     * of type. This used to route by emergency type (Fire → BFP/SARS,
-     * Flood → SARS/HCU, etc.), but that meant any agency not explicitly
-     * listed for a given type — like MSWD, added later — was silently
-     * never notified for anything. Flattened to "everyone gets
-     * everything" so a newly added agency doesn't also require
-     * remembering to wire it into a per-type mapping.
+     * Which responder agency (or agencies) gets notified for each emergency
+     * type. SARS is the general-purpose responder agency (Search and
+     * Rescue) and acts as the fallback for anything not explicitly mapped —
+     * MDRRMO is the admin/dispatcher side (the Laravel admin panel), not a
+     * field agency that registers responders or receives pushes.
+     * Adjust freely — this is the single place that controls routing.
      */
-    protected const ALL_AGENCIES = ['PNP', 'BFP', 'SARS', 'HCU', 'MSWD'];
+    protected const AGENCY_MAP = [
+        'Fire'              => ['BFP', 'SARS'],
+        'Accident'          => ['PNP', 'SARS'],
+        'Flood'             => ['SARS', 'HCU'],
+        'Earthquake'        => ['SARS', 'HCU'],
+        'Landslide'         => ['SARS', 'HCU'],
+        'Medical Emergency' => ['SARS', 'HCU'],
+        'Other'             => ['SARS'],
+    ];
 
     /**
-     * Kept as a method (rather than inlining ALL_AGENCIES at the call
-     * site) so dispatchToRespondersForIncident() below doesn't need to
-     * change, and so a future return to per-type routing only touches
-     * this one place again.
+     * Used when the type isn't in AGENCY_MAP at all — e.g. a plain
+     * 'SOS Emergency' with no photo, so no AI-detected type to route by.
+     */
+    protected const DEFAULT_AGENCIES = ['SARS'];
+
+    /**
+     * Given a routing type (an ai_detected_type or emergency_type value),
+     * returns which agency/agencies should see it. Public + static so it
+     * can be reused both for push dispatch (below) and for filtering
+     * which incidents show up in a responder's "Assigned Incidents" feed.
      */
     public static function agenciesFor(?string $routingType): array
     {
-        return self::ALL_AGENCIES;
+        return self::AGENCY_MAP[$routingType] ?? self::DEFAULT_AGENCIES;
     }
 
     public function broadcastToAllCitizens(string $title, string $body): void
@@ -45,6 +58,28 @@ class PushNotificationService
         ]);
 
         $this->sendToTokens($tokens, $title, $body, 'citizen broadcast');
+    }
+
+    /**
+     * Notifies a single citizen — used when their own report/SOS is
+     * approved out of Pending Review, so they get told without waiting on
+     * the "My Reports" screen to next poll. Silently does nothing if they
+     * have no fcm_token registered (e.g. never granted notification
+     * permission), same best-effort spirit as sendToTokens() below.
+     */
+    public function notifyCitizen(Citizen $citizen, string $title, string $body): void
+    {
+        if (! $citizen->fcm_token) {
+            Log::info('FCM single-citizen send skipped: no fcm_token', ['citizen_id' => $citizen->id]);
+            return;
+        }
+
+        Log::info('FCM single-citizen send attempt', [
+            'citizen_id' => $citizen->id,
+            'title' => $title,
+        ]);
+
+        $this->sendToTokens([$citizen->fcm_token], $title, $body, "citizen #{$citizen->id}");
     }
 
     /**
@@ -195,5 +230,25 @@ class PushNotificationService
                 ]);
             }
         }
+    }
+        /**
+     * Suggests an incident priority from the AI-detected type and its
+     * confidence. Low-confidence detections are stepped down one level —
+     * an uncertain "Fire" guess shouldn't automatically page critical
+     * the same way a high-confidence one does.
+     */
+    public static function priorityFor(string $type, string $confidence): string
+    {
+        $base = self::TYPE_PRIORITY[$type] ?? 'moderate';
+
+        if (strtolower($confidence) !== 'low') {
+            return $base;
+        }
+
+        return match ($base) {
+            'critical' => 'high',
+            'high'     => 'moderate',
+            default    => 'low',
+        };
     }
 }

@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
@@ -24,20 +25,20 @@
 
         .sidebar-brand-text .title {
             font-family: 'Barlow', sans-serif;
-            font-weight: 800; 
+            font-weight: 800;
             font-size: .85rem;
-            color: #fff; 
+            color: #fff;
             letter-spacing: .5px;
             line-height: 1.1;
             }
-        .sidebar-brand-text .sub { 
-            font-size: .65rem; 
+        .sidebar-brand-text .sub {
+            font-size: .65rem;
             color: rgba(255,255,255,.6);
             letter-spacing: .5px;
          }
-        .sidebar-nav { 
-            flex: 1; 
-            padding: 18px 0; 
+        .sidebar-nav {
+            flex: 1;
+            padding: 18px 0;
         }
         .sidebar-nav a { display: block; padding: 10px 20px; font-size: .82rem; font-weight: 500; color: rgba(255,255,255,.75); text-decoration: none; border-left: 3px solid transparent; transition: all .2s; }
         .sidebar-nav a:hover { color: #fff; background: rgba(255,255,255,.08); }
@@ -195,7 +196,7 @@
                 padding-bottom: 88px !important;
             }
         }
-    
+
         /* ── App-style nav polish ── */
         .sidebar-nav a {
             display: flex;
@@ -607,7 +608,10 @@
                             </td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
                             <td onclick="event.stopPropagation()">
-                                <form action="{{ route('incident.approve', $inc->id) }}" method="POST">
+                                <form action="{{ route('incident.approve', $inc->id) }}" method="POST" class="approve-form"
+                                      data-type="{{ $inc->emergency_type }}"
+                                      data-reporter="{{ $reporterName }}"
+                                      data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
                                     @csrf
                                     <button type="submit" class="btn-approve" title="Approve and notify responders">
                                         <i class="bi bi-check-lg"></i> Approve
@@ -944,6 +948,37 @@
 
         applyFilters();
     })();
+
+    // Approve confirmation — SweetAlert2 (matches the confirm pattern used
+    // on the Residents Verification page). Blocks the form's normal
+    // submit, asks for a confirmation naming what the click will do
+    // (dispatch to responders, and notify the reporter when they're a
+    // logged-in citizen), and only submits once confirmed.
+    document.querySelectorAll('.approve-form').forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const type = form.dataset.type || 'report';
+            const notifiesCitizen = form.dataset.notifiesCitizen === '1';
+            const notifyLine = notifiesCitizen
+                ? 'The reporter will also get a notification that their report was approved.'
+                : 'This report was submitted by a guest, so there is no account to notify.';
+
+            Swal.fire({
+                icon: 'question',
+                title: 'Approve this report?',
+                html: `This will dispatch the <strong>${type}</strong> report to responders.<br><span style="font-size:.85em;color:#6b7280;">${notifyLine}</span>`,
+                showCancelButton: true,
+                confirmButtonText: 'Yes, approve',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#10b981',
+            }).then(result => {
+                if (result.isConfirmed) {
+                    form.submit();
+                }
+            });
+        });
+    });
 </script>
 @include('partials.sos-alert-overlay')
 <script>

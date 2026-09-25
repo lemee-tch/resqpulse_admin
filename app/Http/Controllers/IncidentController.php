@@ -140,6 +140,14 @@ class IncidentController extends Controller
      * needs_review, then dispatches it to responders — the exact same
      * push that would have fired immediately for a logged-in citizen's
      * report (see Api\IncidentController::store()/sos()).
+     *
+     * A "needs_review" incident isn't always a true anonymous guest,
+     * though — it can also belong to a logged-in citizen whose report
+     * simply landed outside Rosales (see the needs_review = $isGuest ||
+     * $isOutsideRosales logic in Api\IncidentController). When that's
+     * the case ($incident->citizen_id is set), the citizen also gets a
+     * push telling them their own report was approved — a pure guest
+     * submission has no account to notify, so that half is skipped.
      */
     public function approve(Incident $incident, PushNotificationService $push)
     {
@@ -153,6 +161,20 @@ class IncidentController extends Controller
         ]);
 
         $push->dispatchToRespondersForIncident($incident);
+
+        // Only a logged-in citizen's report can be told apart from a pure
+        // guest submission — a guest has no citizen_id and therefore no
+        // account to push a notification to.
+        if ($incident->citizen_id && $incident->citizen) {
+            $isSos = $incident->emergency_type === 'SOS Emergency';
+            $push->notifyCitizen(
+                $incident->citizen,
+                'Report Approved',
+                $isSos
+                    ? 'Your SOS alert has been approved and sent to responders.'
+                    : "Your {$incident->emergency_type} report has been approved and sent to responders."
+            );
+        }
 
         $label = $incident->emergency_type === 'SOS Emergency' ? 'guest SOS alert' : 'guest report';
         AuditLogService::log(
