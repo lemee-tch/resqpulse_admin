@@ -11,7 +11,7 @@ class Incident extends Model
         'description', 'photo_path', 'status', 'priority', 'admin_notes',
         'resolution_notes', 'resolution_photo_path',
         'ai_detected_type', 'ai_confidence', 'ai_analysis', 'needs_review', 'reviewed_at',
-        'sos_emergency_type',
+        'sos_emergency_type', 'decline_reason', 'declined_at',
     ];
 
     protected function casts(): array
@@ -22,6 +22,7 @@ class Incident extends Model
     protected $casts = [
         'needs_review' => 'boolean',
         'reviewed_at'  => 'datetime',
+        'declined_at'  => 'datetime',
     ];
 
     // Includes display_type (see getDisplayTypeAttribute() below) in

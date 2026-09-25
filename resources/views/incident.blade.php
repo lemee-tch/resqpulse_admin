@@ -139,7 +139,15 @@
             display: inline-flex; align-items: center; gap: 6px; transition: background .2s;
         }
         .btn-approve:hover { background: #059669; }
+        .btn-decline {
+            background: #fff; color: #dc2626; border: 1.5px solid #dc2626; border-radius: 6px;
+            padding: 5px 13px; font-size: .78rem; font-weight: 700; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px; transition: background .2s, color .2s;
+        }
+        .btn-decline:hover { background: #dc2626; color: #fff; }
+        .review-actions { display: flex; gap: 8px; }
         .guest-note { font-size: .74rem; color: #92400e; font-style: italic; }
+        .badge-declined { background: #fee2e2; color: #991b1b; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn {
@@ -330,8 +338,18 @@
             // Active so admins don't mistake an unreviewed guest report
             // for something already dispatched.
             $pendingReviewIncidents = $incidents->where('needs_review', true)->values();
-            $activeIncidents   = $incidents->where('needs_review', false)->where('status', '!=', 'resolved')->values();
-            $resolvedIncidents = $incidents->where('status', '=', 'resolved')->values();
+            // Active excludes anything still pending review AND anything
+            // declined — a declined report was never dispatched, so it
+            // doesn't belong alongside genuinely active ones. It still
+            // shows up under Resolved History below, badged "Declined".
+            $activeIncidents = $incidents
+                ->where('needs_review', false)
+                ->where('status', '!=', 'resolved')
+                ->whereNull('declined_at')
+                ->values();
+            $resolvedIncidents = $incidents
+                ->filter(fn ($inc) => $inc->status === 'resolved' || $inc->declined_at)
+                ->values();
 
             // Shared row-rendering data, computed once per incident.
             $rowData = function ($inc) {
@@ -339,15 +357,18 @@
                 $priorityClass = 'priority-'.$priorityVal;
                 $priorityLabel = $inc->priority ? ucfirst($inc->priority) : 'Not Set';
                 $isResolved    = $inc->status === 'resolved';
-                $statusBadge   = match($inc->status) {
-                    'responding' => 'badge-responding',
-                    'resolved'   => 'badge-resolved',
-                    default      => 'badge-pending',
+                $isDeclined    = (bool) $inc->declined_at;
+                $statusBadge   = match(true) {
+                    $isDeclined              => 'badge-declined',
+                    $inc->status === 'responding' => 'badge-responding',
+                    $inc->status === 'resolved'   => 'badge-resolved',
+                    default                        => 'badge-pending',
                 };
-                $statusLabel = match($inc->status) {
-                    'responding' => 'Responding',
-                    'resolved'   => 'Resolved',
-                    default      => 'Pending',
+                $statusLabel = match(true) {
+                    $isDeclined              => 'Declined',
+                    $inc->status === 'responding' => 'Responding',
+                    $inc->status === 'resolved'   => 'Resolved',
+                    default                        => 'Pending',
                 };
                 $reporterName = $inc->citizen?->full_name ?? ($inc->citizen_id ? 'Unknown' : 'Guest');
 
@@ -361,7 +382,7 @@
                     $incPhotos = is_array($decoded) ? collect($decoded) : collect([$inc->photo_path]);
                 }
 
-                return compact('priorityVal', 'priorityClass', 'priorityLabel', 'isResolved', 'statusBadge', 'statusLabel', 'reporterName','responderLabel', 'incPhotos');
+                return compact('priorityVal', 'priorityClass', 'priorityLabel', 'isResolved', 'isDeclined', 'statusBadge', 'statusLabel', 'reporterName','responderLabel', 'incPhotos');
             };
         @endphp
 
@@ -608,15 +629,27 @@
                             </td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
                             <td onclick="event.stopPropagation()">
-                                <form action="{{ route('incident.approve', $inc->id) }}" method="POST" class="approve-form"
-                                      data-type="{{ $inc->emergency_type }}"
-                                      data-reporter="{{ $reporterName }}"
-                                      data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
-                                    @csrf
-                                    <button type="submit" class="btn-approve" title="Approve and notify responders">
-                                        <i class="bi bi-check-lg"></i> Approve
-                                    </button>
-                                </form>
+                                <div class="review-actions">
+                                    <form action="{{ route('incident.approve', $inc->id) }}" method="POST" class="approve-form"
+                                          data-type="{{ $inc->emergency_type }}"
+                                          data-reporter="{{ $reporterName }}"
+                                          data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
+                                        @csrf
+                                        <button type="submit" class="btn-approve" title="Approve and notify responders">
+                                            <i class="bi bi-check-lg"></i> Approve
+                                        </button>
+                                    </form>
+                                    <form action="{{ route('incident.decline', $inc->id) }}" method="POST" class="decline-form"
+                                          data-type="{{ $inc->emergency_type }}"
+                                          data-reporter="{{ $reporterName }}"
+                                          data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
+                                        @csrf
+                                        <input type="hidden" name="decline_reason" class="decline-reason-input">
+                                        <button type="submit" class="btn-decline" title="Decline this report">
+                                            <i class="bi bi-x-lg"></i> Decline
+                                        </button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
 
@@ -974,6 +1007,44 @@
                 confirmButtonColor: '#10b981',
             }).then(result => {
                 if (result.isConfirmed) {
+                    form.submit();
+                }
+            });
+        });
+    });
+
+    // Decline confirmation — asks for a short reason (required), which is
+    // both logged to the audit trail and, for a logged-in citizen's
+    // report, sent to them as the notification body so they know why.
+    document.querySelectorAll('.decline-form').forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const type = form.dataset.type || 'report';
+            const notifiesCitizen = form.dataset.notifiesCitizen === '1';
+            const notifyLine = notifiesCitizen
+                ? 'The reporter will get a notification with this reason.'
+                : 'This report was submitted by a guest, so there is no account to notify.';
+
+            Swal.fire({
+                icon: 'warning',
+                title: 'Decline this report?',
+                html: `<div style="text-align:left;font-size:.85em;color:#6b7280;margin-bottom:8px;">Declining the <strong>${type}</strong> report — responders will NOT be dispatched.<br>${notifyLine}</div>`,
+                input: 'textarea',
+                inputPlaceholder: 'Reason for declining (required)…',
+                inputAttributes: { 'aria-label': 'Reason for declining' },
+                showCancelButton: true,
+                confirmButtonText: 'Decline report',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc2626',
+                inputValidator: (value) => {
+                    if (!value || !value.trim()) {
+                        return 'Please enter a reason.';
+                    }
+                },
+            }).then(result => {
+                if (result.isConfirmed) {
+                    form.querySelector('.decline-reason-input').value = result.value.trim();
                     form.submit();
                 }
             });

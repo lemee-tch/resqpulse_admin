@@ -14,6 +14,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/citizen-verification', [CitizenVerificationController::class, 'index'])->name('citizen-verification');
     Route::post('/citizen-verification/{citizen}/approve', [CitizenVerificationController::class, 'approve'])->name('citizen-verification.approve');
     Route::post('/citizen-verification/{citizen}/reject', [CitizenVerificationController::class, 'reject'])->name('citizen-verification.reject');
+    // Serves a citizen's uploaded valid-ID image from the PRIVATE disk
+    // (storage/app/private) — admin-only, auth-gated, replacing the old
+    // Storage::url() link which exposed these photos to anyone with the
+    // URL via the public disk symlink. See Api\AuthController::register()
+    // and CitizenVerificationController::idPhoto().
+    Route::get('/citizen-verification/{citizen}/id-photo', [CitizenVerificationController::class, 'idPhoto'])->name('citizen-verification.id-photo');
 
     Route::get('/responder-accounts', [ResponderAccountController::class, 'index'])->name('responder-accounts');
     Route::post('/responder-accounts/{responder}/send-email-otp', [ResponderAccountController::class, 'sendEmailOtp'])->name('responder-accounts.send-email-otp');
@@ -24,14 +30,18 @@ Route::middleware('auth')->group(function () {
 
 Route::get('/', fn() => redirect()->route('login'));
 Route::get('/login',     [AuthController::class, 'showLogin'])->name('login');
-Route::post('/login',    [AuthController::class, 'login']);
+// Throttled to 5 attempts/minute per IP+email combo — slows down brute-force
+// and credential-stuffing against the admin panel. Laravel's default
+// 'throttle' limiter uses the 'database' cache store configured in
+// config/cache.php, so this works on shared hosting with no Redis needed.
+Route::post('/login',    [AuthController::class, 'login'])->middleware('throttle:5,1');
 Route::post('/logout',   [AuthController::class, 'logout'])->name('logout');
 
 //fogot password
 Route::get('/forgot-password', [AuthController::class, 'showForgotPassword'])->name('password.request');
-Route::post('/forgot-password', [AuthController::class, 'sendResetOtp'])->name('password.email');
+Route::post('/forgot-password', [AuthController::class, 'sendResetOtp'])->name('password.email')->middleware('throttle:5,1');
 Route::get('/reset-password', [AuthController::class, 'showResetPassword'])->name('password.reset');
-Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.update');
+Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.update')->middleware('throttle:5,1');
 
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard',  [AuthController::class, 'dashboard'])->name('dashboard');
@@ -61,6 +71,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('/incidents/{incident}/status', [IncidentController::class, 'updateStatus'])->name('incident.status');
     Route::patch('/incidents/{incident}/note', [IncidentController::class, 'updateNote'])->name('incident.note');
     Route::post('/incidents/{incident}/approve', [IncidentController::class, 'approve'])->name('incident.approve');
+    Route::post('/incidents/{incident}/decline', [IncidentController::class, 'decline'])->name('incident.decline');
 
     Route::get('/sos-alerts/latest', [IncidentController::class, 'latestSos'])->name('sos-alerts.latest');
     Route::get('/notifications/incidents', [IncidentController::class, 'latestIncidentNotifications'])->name('notifications.incidents');

@@ -186,6 +186,51 @@ class IncidentController extends Controller
         return back()->with('success', 'Report approved and sent to responders.');
     }
 
+    /**
+     * Declines a Pending Review report instead of approving it — e.g.
+     * spam, a duplicate, or too vague to dispatch on. Requires a reason
+     * (shown to the citizen, if there is one to notify) and never
+     * dispatches to responders. Same citizen_id-gated notification rule
+     * as approve(): a pure guest submission has no account to notify.
+     */
+    public function decline(Request $request, Incident $incident, PushNotificationService $push)
+    {
+        if (! $incident->needs_review) {
+            return back()->with('success', 'This report was already reviewed.');
+        }
+
+        $request->validate([
+            'decline_reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        $incident->update([
+            'needs_review'    => false,
+            'reviewed_at'     => now(),
+            'declined_at'     => now(),
+            'decline_reason'  => $request->decline_reason,
+        ]);
+
+        if ($incident->citizen_id && $incident->citizen) {
+            $isSos = $incident->emergency_type === 'SOS Emergency';
+            $push->notifyCitizen(
+                $incident->citizen,
+                'Report Declined',
+                $isSos
+                    ? "Your SOS alert was declined: {$request->decline_reason}"
+                    : "Your {$incident->emergency_type} report was declined: {$request->decline_reason}"
+            );
+        }
+
+        $label = $incident->emergency_type === 'SOS Emergency' ? 'guest SOS alert' : 'guest report';
+        AuditLogService::log(
+            'rejected',
+            "Declined {$label} #{$incident->id} — {$request->decline_reason}",
+            $incident
+        );
+
+        return back()->with('success', 'Report declined.');
+    }
+
     public function show(Incident $incident)
     {
         $incident->load(['citizen', 'responders']);
