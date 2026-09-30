@@ -7,7 +7,6 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
@@ -676,13 +675,22 @@
     </div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    const map = L.map('detail-map', { zoomControl: false, dragging: false, scrollWheelZoom: false })
-                 .setView([{{ $lat }}, {{ $lng }}], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-    L.marker([{{ $lat }}, {{ $lng }}]).addTo(map);
+    function initDetailMap() {
+        const map = new google.maps.Map(document.getElementById('detail-map'), {
+            center: { lat: {{ $lat }}, lng: {{ $lng }} },
+            zoom: 15,
+            disableDefaultUI: true,
+            gestureHandling: 'none',
+            keyboardShortcuts: false,
+            clickableIcons: false,
+        });
+        new google.maps.Marker({
+            position: { lat: {{ $lat }}, lng: {{ $lng }} },
+            map,
+        });
+    }
 
     function showPhotoSlide(index) {
         const carouselEl = document.getElementById('photoCarousel');
@@ -691,6 +699,7 @@
         carousel.to(index);
     }
 </script>
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google.maps_key') }}&callback=initDetailMap&v=weekly" async defer></script>
 @include('partials.sos-alert-overlay')
 <script>
 (function () {

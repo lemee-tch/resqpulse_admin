@@ -9,16 +9,9 @@ use Illuminate\Support\Facades\Log;
 class BarangayLocationService
 {
     /**
-     * Nominatim reverse-geocoding zoom level — 16 resolves to
-     * suburb/neighbourhood-level detail (close to barangay granularity)
-     * rather than zooming out to city/province level.
-     */
-    protected const NOMINATIM_ZOOM = 16;
-
-    /**
      * How long a resolved coordinate's address is cached. SOS/report
      * coordinates from repeat testing or a stationary reporter hit the
-     * same cache entry instead of re-hitting the public Nominatim
+     * same cache entry instead of re-hitting the billed Google Geocoding
      * endpoint every time.
      */
     protected const CACHE_TTL_HOURS = 24;
@@ -27,18 +20,18 @@ class BarangayLocationService
      * Beyond this distance from the closest barangay centroid, the pin
      * is treated as outside Rosales entirely (GPS drift, an emulator's
      * default location, testing from another town, etc.) — used only
-     * for the offline fallback table below, when Nominatim itself is
+     * for the offline fallback table below, when Google Geocoding is
      * unavailable. Rosales spans roughly ~10km edge-to-edge from HQ, so
      * 5km covers the municipality itself with some margin.
      */
     protected const MAX_BARANGAY_DISTANCE_KM = 5;
 
     /**
-     * Offline fallback only — used when Nominatim can't be reached at
-     * all (network failure, timeout, rate limit). Same verified centroid
-     * table used client-side in evacuation.blade.php's
-     * BARANGAY_COORDINATES, kept in sync so the approximation always
-     * matches what the Add Center dropdown would pin.
+     * Offline fallback only — used when Google Geocoding can't be reached
+     * at all (network failure, timeout, quota exceeded, missing/invalid
+     * API key). Same verified centroid table used client-side in
+     * evacuation.blade.php's BARANGAY_COORDINATES, kept in sync so the
+     * approximation always matches what the Add Center dropdown would pin.
      */
     protected const BARANGAY_COORDINATES = [
         'Acop' => [15.867531, 120.652154],
@@ -83,8 +76,8 @@ class BarangayLocationService
     /**
      * Resolves a GPS pin to a real, human-readable location string.
      * Order of precedence:
-     *   1. Nominatim reverse geocoding (actual street/area/barangay name)
-     *   2. Nearest-barangay centroid table, if Nominatim fails and the
+     *   1. Google Geocoding reverse lookup (actual street/area/barangay name)
+     *   2. Nearest-barangay centroid table, if Google fails and the
      *      pin is close enough to a known barangay to approximate
      *   3. Raw coordinates, if both of the above come up empty
      */
@@ -124,11 +117,11 @@ class BarangayLocationService
      * *anyone* once the location itself looks wrong.
      *
      * Order of precedence mirrors resolve() above, reusing the SAME
-     * cached Nominatim call rather than a second network round-trip:
-     *   1. Nominatim's own municipality/county field, if it resolved
-     *   2. Nearest-barangay-centroid distance, if Nominatim didn't
+     * cached Google Geocoding call rather than a second network round-trip:
+     *   1. Google's own municipality/county field, if it resolved
+     *   2. Nearest-barangay-centroid distance, if Google didn't
      * Returns true (assume inside, don't gate) when NEITHER check can
-     * produce an answer — a Nominatim outage should never block or
+     * produce an answer — a Geocoding outage should never block or
      * delay dispatch for what might be a completely genuine local
      * emergency; it fails open, not closed.
      */
@@ -145,7 +138,7 @@ class BarangayLocationService
             return str_contains(strtolower($geo['municipality']), 'rosales');
         }
 
-        // Nominatim didn't resolve at all (offline/rate-limited) — fall
+        // Google didn't resolve at all (offline/quota/invalid key) — fall
         // back to the same offline barangay-distance table resolve()
         // uses for its own fallback.
         return $this->nearestBarangay($lat, $lng) !== null;
@@ -174,40 +167,43 @@ class BarangayLocationService
     }
 
     /**
-     * Calls Nominatim's reverse-geocoding endpoint for an actual address
-     * (barangay/suburb + city, not just a centroid guess). Cached for
-     * 24h per rounded coordinate pair so repeated reports from the same
-     * spot don't hammer the public endpoint. Returns null on any
+     * Calls the Google Geocoding API's reverse-geocoding endpoint for an
+     * actual address (barangay/suburb + city, not just a centroid guess).
+     * Cached for 24h per rounded coordinate pair so repeated reports from
+     * the same spot don't hammer the billed endpoint. Returns null on any
      * failure — this must never block an incident/SOS submission.
      *
      * Returns the parsed pieces (locality/municipality/display_name)
      * rather than a pre-joined string, so both resolve() (display text)
      * and isWithinRosales() (boundary check) can reuse this ONE cached
-     * call instead of each hitting Nominatim separately.
+     * call instead of each hitting Google separately.
      */
     private function reverseGeocode(float $lat, float $lng): ?array
     {
         // Round to ~11m precision for the cache key — enough to dedupe
         // GPS jitter from the same physical spot without merging
         // genuinely different locations.
-        $cacheKey = 'nominatim_reverse:' . round($lat, 4) . ',' . round($lng, 4);
+        $cacheKey = 'google_reverse_geocode:' . round($lat, 4) . ',' . round($lng, 4);
 
         return Cache::remember($cacheKey, now()->addHours(self::CACHE_TTL_HOURS), function () use ($lat, $lng) {
+            $apiKey = config('services.google.maps_key');
+
+            if (empty($apiKey)) {
+                Log::warning('Google Geocoding skipped: GOOGLE_MAPS_API_KEY is not configured', [
+                    'lat' => $lat,
+                    'lng' => $lng,
+                ]);
+                return null;
+            }
+
             try {
-                $response = Http::withHeaders([
-                    // Nominatim's usage policy requires an identifying
-                    // User-Agent on every request.
-                    'User-Agent' => 'ResQPulse-MDRRMO-Rosales/1.0',
-                ])->timeout(8)->get('https://nominatim.openstreetmap.org/reverse', [
-                    'format'         => 'jsonv2',
-                    'lat'            => $lat,
-                    'lon'            => $lng,
-                    'zoom'           => self::NOMINATIM_ZOOM,
-                    'addressdetails' => 1,
+                $response = Http::timeout(8)->get('https://maps.googleapis.com/maps/api/geocode/json', [
+                    'latlng' => "{$lat},{$lng}",
+                    'key'    => $apiKey,
                 ]);
 
                 if (! $response->successful()) {
-                    Log::warning('Nominatim reverse geocode failed', [
+                    Log::warning('Google Geocoding reverse lookup failed', [
                         'status' => $response->status(),
                         'lat'    => $lat,
                         'lng'    => $lng,
@@ -216,42 +212,80 @@ class BarangayLocationService
                 }
 
                 $data = $response->json();
-                $addr = $data['address'] ?? null;
+                $status = $data['status'] ?? 'UNKNOWN_ERROR';
 
-                if (! $addr) {
+                // ZERO_RESULTS is a normal outcome (open water, way outside
+                // any mapped address), not a failure worth logging loudly.
+                if ($status === 'ZERO_RESULTS') {
                     return null;
                 }
 
-                // Prefer the most specific locality field Nominatim gives
-                // us — barangay-equivalent tags first, falling back to
-                // broader ones.
-                $locality = $addr['village']
-                    ?? $addr['suburb']
-                    ?? $addr['neighbourhood']
-                    ?? $addr['quarter']
-                    ?? $addr['town']
-                    ?? $addr['city_district']
+                if ($status !== 'OK') {
+                    Log::warning('Google Geocoding reverse lookup returned a non-OK status', [
+                        'status'       => $status,
+                        'error_message' => $data['error_message'] ?? null,
+                        'lat'          => $lat,
+                        'lng'          => $lng,
+                    ]);
+                    return null;
+                }
+
+                $result = $data['results'][0] ?? null;
+                if (! $result) {
+                    return null;
+                }
+
+                // Flatten address_components into type => long_name so the
+                // fields below can be picked out by Google's component type
+                // rather than by parsing the formatted address string.
+                $byType = [];
+                foreach (($result['address_components'] ?? []) as $component) {
+                    foreach (($component['types'] ?? []) as $type) {
+                        $byType[$type] = $component['long_name'] ?? null;
+                    }
+                }
+
+                // Prefer the most specific locality field Google gives us —
+                // barangay-equivalent tags first, falling back to broader
+                // ones. In Philippine addresses Google typically returns
+                // the barangay as sublocality_level_1/sublocality, and the
+                // city/municipality as locality.
+                $locality = $byType['sublocality_level_1']
+                    ?? $byType['sublocality']
+                    ?? $byType['neighborhood']
+                    ?? $byType['locality']
                     ?? null;
 
-                // Deliberately NOT defaulting this to 'Rosales' when
-                // Nominatim doesn't return municipality/city/county —
-                // that produced a real bug: a pin in Vacante (an actual
-                // barangay, but of Binalonan, not Rosales) got silently
-                // labeled "Vacante, Rosales" and then passed
-                // isWithinRosales() because the fabricated municipality
-                // obviously "contained Rosales." Falling back to the
-                // province is honest about what Nominatim actually told
-                // us; null (unknown) is used downstream to fall through
-                // to the barangay-distance check instead of assuming.
-                $municipality = $addr['municipality'] ?? $addr['city'] ?? $addr['county'] ?? $addr['state'] ?? null;
+                // Deliberately NOT defaulting this to 'Rosales' when Google
+                // doesn't return a locality/administrative_area_level_2 —
+                // the same bug this guarded against with Nominatim (a pin
+                // in a barangay of a NEIGHBOURING town getting silently
+                // relabeled as "in Rosales") applies here too. Falling back
+                // to the province/region is honest about what Google
+                // actually told us; null (unknown) is used downstream to
+                // fall through to the barangay-distance check instead of
+                // assuming.
+                $municipality = $byType['locality']
+                    ?? $byType['administrative_area_level_2']
+                    ?? $byType['administrative_area_level_1']
+                    ?? null;
+
+                // If locality and municipality resolved to the same value
+                // (Google put the city/town in 'locality' and we have no
+                // more specific barangay tag), don't show it twice as
+                // "Rosales, Rosales" — resolve() already falls back to
+                // display_name in that case.
+                if ($locality !== null && $locality === $municipality) {
+                    $locality = null;
+                }
 
                 return [
                     'locality'     => $locality,
                     'municipality' => $municipality,
-                    'display_name' => $data['display_name'] ?? null,
+                    'display_name' => $result['formatted_address'] ?? null,
                 ];
             } catch (\Throwable $e) {
-                Log::warning('Nominatim reverse geocode threw an exception', [
+                Log::warning('Google Geocoding reverse lookup threw an exception', [
                     'error' => $e->getMessage(),
                     'lat'   => $lat,
                     'lng'   => $lng,
@@ -263,10 +297,10 @@ class BarangayLocationService
 
     /**
      * Nearest barangay name by straight-line (Haversine) distance from
-     * the offline centroid table — only used when Nominatim itself is
-     * unreachable. Returns null if the closest one is still farther than
-     * MAX_BARANGAY_DISTANCE_KM away, since at that point the pin almost
-     * certainly isn't in Rosales at all.
+     * the offline centroid table — only used when Google Geocoding itself
+     * is unreachable. Returns null if the closest one is still farther
+     * than MAX_BARANGAY_DISTANCE_KM away, since at that point the pin
+     * almost certainly isn't in Rosales at all.
      */
     private function nearestBarangay(float $lat, float $lng): ?string
     {

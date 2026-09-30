@@ -7,7 +7,6 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -766,7 +765,6 @@
 </div><!-- /main-wrap -->
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // Donut chart
 new Chart(document.getElementById('donutChart'), {
@@ -836,24 +834,19 @@ new Chart(document.getElementById('lineChart'), {
 });
 
 // Dashboard preview map — non-interactive, click-through to full Map View
-(function () {
-    const incidents = @json($mapIncidents);
-    const rosalesCenter = [15.8952, 120.6263];
+const dashboardMapIncidents = @json($mapIncidents);
 
-    const map = L.map('dashboardMap', {
-        zoomControl: false,
-        dragging: false,
-        scrollWheelZoom: false,
-        doubleClickZoom: false,
-        boxZoom: false,
-        keyboard: false,
-        touchZoom: false,
-        attributionControl: false,
-    }).setView(rosalesCenter, 13);
+function initDashboardMap() {
+    const rosalesCenter = { lat: 15.8952, lng: 120.6263 };
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-    }).addTo(map);
+    const map = new google.maps.Map(document.getElementById('dashboardMap'), {
+        center: rosalesCenter,
+        zoom: 13,
+        disableDefaultUI: true,
+        gestureHandling: 'none',
+        keyboardShortcuts: false,
+        clickableIcons: false,
+    });
 
     const statusColor = { pending: '#92400e', responding: '#1e40af', acknowledged: '#1e40af' };
     const typeEmoji = {
@@ -862,33 +855,48 @@ new Chart(document.getElementById('lineChart'), {
     };
 
     function pinIcon(emoji, color) {
-        return L.divIcon({
-            className: '',
-            html: `<div style="width:26px;height:26px;border-radius:50%;background:${color};
-                        border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);
-                        display:flex;align-items:center;justify-content:center;font-size:13px;">${emoji}</div>`,
-            iconSize: [26, 26],
-            iconAnchor: [13, 13],
-        });
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26">
+            <circle cx="13" cy="13" r="12" fill="${color}" stroke="#fff" stroke-width="2"/>
+            <text x="13" y="17.5" font-size="12" text-anchor="middle">${emoji}</text>
+        </svg>`;
+        return {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            scaledSize: new google.maps.Size(26, 26),
+            anchor: new google.maps.Point(13, 13),
+        };
     }
 
-    const points = [];
-    incidents.forEach(inc => {
+    const bounds = new google.maps.LatLngBounds();
+    let hasPoints = false;
+
+    dashboardMapIncidents.forEach(inc => {
         const lat = parseFloat(inc.latitude);
         const lng = parseFloat(inc.longitude);
         if (isNaN(lat) || isNaN(lng)) return;
-        points.push([lat, lng]);
+
+        const position = { lat, lng };
+        bounds.extend(position);
+        hasPoints = true;
 
         const emoji = typeEmoji[inc.emergency_type] || '⚠️';
         const color = statusColor[inc.status] || '#92400e';
-        L.marker([lat, lng], { icon: pinIcon(emoji, color) }).addTo(map);
+        new google.maps.Marker({
+            position,
+            map,
+            icon: pinIcon(emoji, color),
+            clickable: false,
+        });
     });
 
-    if (points.length) {
-        map.fitBounds(points, { padding: [24, 24], maxZoom: 15 });
+    if (hasPoints) {
+        map.fitBounds(bounds, 24);
+        google.maps.event.addListenerOnce(map, 'bounds_changed', function () {
+            if (map.getZoom() > 15) map.setZoom(15);
+        });
     }
-})();
+}
 </script>
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google.maps_key') }}&callback=initDashboardMap&v=weekly" async defer></script>
 
 {{-- ══════ Topbar notification bell — polling + sound ══════
      The bell icon, badge, dropdown markup and <audio id="notifSound">

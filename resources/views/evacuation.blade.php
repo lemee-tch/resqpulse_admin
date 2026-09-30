@@ -7,7 +7,6 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
@@ -207,7 +206,7 @@
                 padding-bottom: 88px !important;
             }
         }
-    
+
         /* ── App-style nav polish ── */
         .sidebar-nav a {
             display: flex;
@@ -495,7 +494,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google.maps_key') }}&v=weekly" async defer></script>
 <script>
     // Static, verified barangay centroids — computed from official PSGC
     // boundary polygons, same table used by the citizen app's report form
@@ -566,9 +565,11 @@
     });
 
     // Lazy-init each view-location map only when its modal actually opens —
-    // initializing Leaflet inside a display:none element gives a blank/grey
-    // map, and invalidateSize() after a short delay fixes the tile sizing
-    // once the modal transition finishes.
+    // Google Maps needs a visible, correctly-sized container, so waiting
+    // for the modal's 'shown.bs.modal' event (same reasoning as the old
+    // Leaflet version) avoids a blank/mis-sized map. A short delay plus
+    // triggering a resize event handles the modal's fade-in transition
+    // finishing after the map was created.
     document.querySelectorAll('[id^="viewModal"]').forEach(modalEl => {
         let map = null;
         modalEl.addEventListener('shown.bs.modal', function () {
@@ -580,13 +581,15 @@
             if (!lat || !lng) return;
 
             if (!map) {
-                map = L.map(mapId).setView([lat, lng], 15);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
-                }).addTo(map);
-                L.marker([lat, lng]).addTo(map).bindPopup(name).openPopup();
+                map = new google.maps.Map(document.getElementById(mapId), {
+                    center: { lat, lng },
+                    zoom: 15,
+                });
+                const marker = new google.maps.Marker({ position: { lat, lng }, map });
+                const infoWindow = new google.maps.InfoWindow({ content: name });
+                infoWindow.open({ map, anchor: marker });
             }
-            setTimeout(() => map.invalidateSize(), 200);
+            setTimeout(() => google.maps.event.trigger(map, 'resize'), 200);
         });
     });
 </script>

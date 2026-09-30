@@ -7,7 +7,6 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -159,7 +158,7 @@
         /* Checkbox toggle */
         .form-check-input:checked { background-color: #1a3c8f; border-color: #1a3c8f; }
 
-        /* Leaflet popup content */
+        /* Map popup content */
         .incident-popup { font-family: 'Inter', sans-serif; font-size: .78rem; min-width: 170px; }
         .incident-popup .pop-type { font-weight: 700; font-size: .85rem; margin-bottom: 4px; text-transform: capitalize; }
         .incident-popup .pop-row { color: #6b7280; margin-bottom: 2px; }
@@ -178,9 +177,10 @@
             color: #1a1a1a;
             text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
             pointer-events: none;
+            position: absolute;
         }
-        .map-text-label.municipality { font-weight: 800; font-size: 16px; }
-        .map-text-label.barangay { font-weight: 600; font-size: 11px; }
+        .map-text-label.municipality { font-weight: 800; font-size: 16px; transform: translate(-50%, -50%); }
+        .map-text-label.barangay { font-weight: 600; font-size: 11px; transform: translate(-50%, -50%); }
 
         .status-note { font-size: .78rem; color: #6b7280; margin-top: -8px; margin-bottom: 12px; }
 
@@ -255,7 +255,7 @@
                 padding-bottom: 88px !important;
             }
         }
-    
+
         /* ── App-style nav polish ── */
         .sidebar-nav a {
             display: flex;
@@ -447,7 +447,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     // ── Data passed from Laravel controller ──
     const incidentsData = @json($incidents);
@@ -484,12 +483,12 @@
     const HQ_LNG = 120.6265;
 
     let map;
-    let incidentLayer = L.layerGroup();
-    let evacLayer = L.layerGroup();
-    let respLayer = L.layerGroup();
-    let boundaryLayer = L.layerGroup();
+    let incidentMarkers = [];
+    let evacMarkers = [];
+    let respMarkers = [];
+    let boundaryOverlays = [];
     let hqMarker = null;
-    let roadLayer, satelliteLayer;
+    const layerVisible = { incidents: true, evac: true, resp: true, boundary: true };
 
     // Lightens a #rrggbb color by `amt` (0-255) — used to build the subtle
     // top-to-bottom gradient on each pin so it reads as a glossy droplet
@@ -508,75 +507,149 @@
     let pinUid = 0;
 
     /**
-     * A polished map pin: gradient-filled teardrop, white outline so it pops
-     * against any tile color, a white badge circle behind the emoji for
-     * contrast/legibility, and a soft blurred shadow instead of a flat oval.
-     * Pass `pulse: true` for markers that need urgent attention (e.g.
-     * pending incidents) — draws an animated ring under the pin.
+     * A polished map pin drawn as a plain DOM overlay positioned by the
+     * Google Maps projection — same gradient-filled teardrop, white
+     * outline, badge circle and optional pulsing ring the Leaflet version
+     * used (emojiDivIcon), just reimplemented on top of
+     * google.maps.OverlayView since Google Maps doesn't have a built-in
+     * arbitrary-HTML marker like Leaflet's L.divIcon.
      */
-    function emojiDivIcon(emoji, color, opts = {}) {
-        const { pulse = false, size = 40 } = opts;
-        const h = Math.round(size * 1.25);
-        const uid = 'pin' + (pinUid++);
-        const light = lightenColor(color, 55);
+    class EmojiMarker extends google.maps.OverlayView {
+        constructor(lat, lng, emoji, color, opts = {}) {
+            super();
+            this.lat = lat;
+            this.lng = lng;
+            this.emoji = emoji;
+            this.color = color;
+            this.pulse = opts.pulse || false;
+            this.size = opts.size || 40;
+            this.popupContent = opts.popupContent || null;
+            this.div = null;
+            this.infoWindow = null;
+        }
 
-        const pulseHtml = pulse
-            ? `<div class="pin-pulse" style="left:${size * 0.5 - size * 0.32}px; top:${size * 0.34}px; width:${size * 0.64}px; height:${size * 0.64}px; background:${color};"></div>`
-            : '';
+        onAdd() {
+            const size = this.size;
+            const h = Math.round(size * 1.25);
+            const uid = 'pin' + (pinUid++);
+            const light = lightenColor(this.color, 55);
+            const color = this.color;
 
-        return L.divIcon({
-            className: '',
-            html: `
-                <div class="pin-wrap" style="position:relative;width:${size}px;height:${h}px;">
-                    ${pulseHtml}
-                    <svg width="${size}" height="${h}" viewBox="0 0 40 50" style="position:absolute;top:0;left:0;overflow:visible;">
-                        <defs>
-                            <linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stop-color="${light}"/>
-                                <stop offset="100%" stop-color="${color}"/>
-                            </linearGradient>
-                            <filter id="${uid}-shadow" x="-60%" y="-20%" width="220%" height="180%">
-                                <feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="#000" flood-opacity=".35"/>
-                            </filter>
-                        </defs>
-                        <ellipse cx="20" cy="45.5" rx="7" ry="2.2" fill="rgba(0,0,0,.22)"/>
-                        <path d="M20 2 C10.6 2 3 9.6 3 19 C3 30.5 20 47.5 20 47.5 C20 47.5 37 30.5 37 19 C37 9.6 29.4 2 20 2Z"
-                              fill="url(#${uid})" stroke="#ffffff" stroke-width="2" filter="url(#${uid}-shadow)"/>
-                        <circle cx="20" cy="19" r="12.5" fill="#ffffff" opacity=".95"/>
-                        <circle cx="20" cy="19" r="12.5" fill="none" stroke="${color}" stroke-width="1"/>
-                        <text x="20" y="24.5" text-anchor="middle" font-size="15">${emoji}</text>
-                    </svg>
-                </div>`,
-            iconSize: [size, h],
-            iconAnchor: [size / 2, h - size * 0.06],
-            popupAnchor: [0, -h + 6],
-        });
+            const pulseHtml = this.pulse
+                ? `<div class="pin-pulse" style="left:${size * 0.5 - size * 0.32}px; top:${size * 0.34}px; width:${size * 0.64}px; height:${size * 0.64}px; background:${color};"></div>`
+                : '';
+
+            const div = document.createElement('div');
+            div.className = 'pin-wrap';
+            div.style.position = 'absolute';
+            div.style.width = size + 'px';
+            div.style.height = h + 'px';
+            if (this.popupContent) div.style.cursor = 'pointer';
+            div.innerHTML = `
+                ${pulseHtml}
+                <svg width="${size}" height="${h}" viewBox="0 0 40 50" style="position:absolute;top:0;left:0;overflow:visible;">
+                    <defs>
+                        <linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="${light}"/>
+                            <stop offset="100%" stop-color="${color}"/>
+                        </linearGradient>
+                        <filter id="${uid}-shadow" x="-60%" y="-20%" width="220%" height="180%">
+                            <feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="#000" flood-opacity=".35"/>
+                        </filter>
+                    </defs>
+                    <ellipse cx="20" cy="45.5" rx="7" ry="2.2" fill="rgba(0,0,0,.22)"/>
+                    <path d="M20 2 C10.6 2 3 9.6 3 19 C3 30.5 20 47.5 20 47.5 C20 47.5 37 30.5 37 19 C37 9.6 29.4 2 20 2Z"
+                          fill="url(#${uid})" stroke="#ffffff" stroke-width="2" filter="url(#${uid}-shadow)"/>
+                    <circle cx="20" cy="19" r="12.5" fill="#ffffff" opacity=".95"/>
+                    <circle cx="20" cy="19" r="12.5" fill="none" stroke="${color}" stroke-width="1"/>
+                    <text x="20" y="24.5" text-anchor="middle" font-size="15">${this.emoji}</text>
+                </svg>`;
+
+            if (this.popupContent) {
+                div.addEventListener('click', () => {
+                    if (!this.infoWindow) {
+                        this.infoWindow = new google.maps.InfoWindow({ content: this.popupContent });
+                    }
+                    this.infoWindow.setPosition({ lat: this.lat, lng: this.lng });
+                    this.infoWindow.open({ map: this.getMap() });
+                });
+            }
+
+            this.div = div;
+            this.getPanes().overlayMouseTarget.appendChild(div);
+        }
+
+        draw() {
+            if (!this.div) return;
+            const proj = this.getProjection();
+            if (!proj) return;
+            const point = proj.fromLatLngToDivPixel(new google.maps.LatLng(this.lat, this.lng));
+            if (!point) return;
+            const size = this.size;
+            const h = Math.round(size * 1.25);
+            this.div.style.left = (point.x - size / 2) + 'px';
+            this.div.style.top = (point.y - (h - size * 0.06)) + 'px';
+        }
+
+        onRemove() {
+            if (this.div && this.div.parentNode) this.div.parentNode.removeChild(this.div);
+            this.div = null;
+        }
     }
 
-    function textDivIcon(text, cssClass) {
-        return L.divIcon({
-            className: '',
-            html: `<div class="map-text-label ${cssClass}">${text}</div>`,
-            iconSize: [0, 0],
-        });
+    function emojiOverlay(lat, lng, emoji, color, opts = {}) {
+        const marker = new EmojiMarker(lat, lng, emoji, color, opts);
+        marker.setMap(map);
+        return marker;
+    }
+
+    /** A plain text label (municipality / barangay name) positioned over the map. */
+    class TextOverlay extends google.maps.OverlayView {
+        constructor(lat, lng, text, cssClass) {
+            super();
+            this.lat = lat;
+            this.lng = lng;
+            this.text = text;
+            this.cssClass = cssClass;
+            this.div = null;
+        }
+        onAdd() {
+            const div = document.createElement('div');
+            div.className = `map-text-label ${this.cssClass}`;
+            div.textContent = this.text;
+            this.div = div;
+            this.getPanes().overlayLayer.appendChild(div);
+        }
+        draw() {
+            if (!this.div) return;
+            const proj = this.getProjection();
+            if (!proj) return;
+            const point = proj.fromLatLngToDivPixel(new google.maps.LatLng(this.lat, this.lng));
+            if (!point) return;
+            this.div.style.left = point.x + 'px';
+            this.div.style.top = point.y + 'px';
+        }
+        onRemove() {
+            if (this.div && this.div.parentNode) this.div.parentNode.removeChild(this.div);
+            this.div = null;
+        }
+    }
+
+    function textOverlay(lat, lng, text, cssClass) {
+        const overlay = new TextOverlay(lat, lng, text, cssClass);
+        overlay.setMap(map);
+        return overlay;
     }
 
     function initMap() {
-        map = L.map('map', { zoomControl: true }).setView([15.8952, 120.6263], 13);
-
-        roadLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
-        }).addTo(map);
-
-        // Free satellite imagery — no API key required.
-        satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: 'Tiles &copy; Esri', maxZoom: 19,
+        map = new google.maps.Map(document.getElementById('map'), {
+            center: { lat: 15.8952, lng: 120.6263 },
+            zoom: 13,
+            mapTypeId: 'roadmap',
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: false,
         });
-
-        incidentLayer.addTo(map);
-        evacLayer.addTo(map);
-        respLayer.addTo(map);
-        boundaryLayer.addTo(map);
 
         renderBoundaryAndLabels();
         renderIncidentMarkers();
@@ -587,20 +660,22 @@
 
     function toggleSatellite() {
         const btn = document.getElementById('btnSatellite');
-        const isSatellite = map.hasLayer(satelliteLayer);
+        const isSatellite = map.getMapTypeId() === 'satellite';
 
         if (isSatellite) {
-            map.removeLayer(satelliteLayer);
-            map.addLayer(roadLayer);
+            map.setMapTypeId('roadmap');
             btn.innerHTML = '<i class="bi bi-globe-americas"></i> Satellite View';
         } else {
-            map.removeLayer(roadLayer);
-            map.addLayer(satelliteLayer);
+            map.setMapTypeId('satellite');
             btn.innerHTML = '<i class="bi bi-map"></i> Map View';
         }
     }
 
     // ── Rosales municipal boundary (dashed) + barangay name labels ──
+    // Geometry parsing (joining raw Overpass way segments into closed
+    // rings) is plain JS and unchanged from the Leaflet version — only
+    // the drawing calls at the bottom of renderBoundaryAndLabels() below
+    // switch from L.polygon/L.marker to google.maps.Polygon/TextOverlay.
     function pointsEqual(a, b) {
         return Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
     }
@@ -641,8 +716,34 @@
         return [cx / ring.length, cy / ring.length];
     }
 
+    // Signed area (shoelace, lat=y/lng=x) — used only to normalize ring
+    // winding direction so the "dim everything outside Rosales" polygon
+    // (a world rectangle with the Rosales ring(s) cut out as holes) renders
+    // correctly: Google Maps treats a Polygon's additional paths as holes
+    // when they wind opposite the first path.
+    function signedArea(ring) {
+        let sum = 0;
+        for (let i = 0; i < ring.length - 1; i++) {
+            const [y1, x1] = ring[i];
+            const [y2, x2] = ring[i + 1];
+            sum += (x1 * y2 - x2 * y1);
+        }
+        return sum / 2;
+    }
+
+    function ringWithWinding(ring, wantPositive) {
+        const positive = signedArea(ring) > 0;
+        return positive === wantPositive ? ring : ring.slice().reverse();
+    }
+
+    function toLatLngPath(ring) {
+        return ring.map(([lat, lng]) => ({ lat, lng }));
+    }
+
     function renderBoundaryAndLabels() {
-        boundaryLayer.clearLayers();
+        boundaryOverlays.forEach(o => o.setMap(null));
+        boundaryOverlays = [];
+
         let barangayCount = 0;
         let municipalityDrawn = false;
         let firstBoundaryBounds = null;
@@ -675,40 +776,58 @@
                 }
 
                 console.log('Rosales boundary rings (lat,lon):', rings);
-                const bounds = L.latLngBounds(rings.flat());
-                console.log('Boundary bounds:', bounds.toBBoxString());
+                const bounds = new google.maps.LatLngBounds();
+                rings.flat().forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+                console.log('Boundary bounds:', bounds.toString());
 
-                // Dim everything outside Rosales: one big rectangle covering the
-                // whole world with the Rosales ring(s) cut out as holes, using
-                // Leaflet's even-odd fill so only the outside gets shaded.
-                const worldRing = [[-85, -180], [85, -180], [85, 180], [-85, 180]];
-                L.polygon([worldRing, ...rings], {
-                    stroke: false,
+                // Dim everything outside Rosales: one big rectangle covering
+                // the whole world with the Rosales ring(s) cut out as holes.
+                // Google Maps' Polygon treats a path as a hole when it winds
+                // opposite the first (outer) path, so both are normalized
+                // to opposite windings before drawing.
+                const worldRingRaw = [[-85, -180], [85, -180], [85, 180], [-85, 180]];
+                const worldRing = ringWithWinding(worldRingRaw, true);
+                const holeRings = rings.map(r => ringWithWinding(r, false));
+
+                const dimPolygon = new google.maps.Polygon({
+                    paths: [toLatLngPath(worldRing), ...holeRings.map(toLatLngPath)],
+                    strokeOpacity: 0,
                     fillColor: '#0b1f4d',
                     fillOpacity: 0.45,
-                    interactive: false,
-                }).addTo(boundaryLayer);
+                    clickable: false,
+                });
+                dimPolygon.setMap(layerVisible.boundary ? map : null);
+                boundaryOverlays.push(dimPolygon);
 
-                // Crisp solid outline right on the municipal boundary — this is
-                // the "highlight" line, no fill inside so Rosales itself stays
-                // at normal map brightness.
-                L.polygon(rings, {
-                    color: '#ffcc00',
-                    weight: 3,
-                    opacity: 1,
-                    fill: false,
-                    interactive: false,
-                }).addTo(boundaryLayer);
+                // Crisp solid outline right on the municipal boundary — this
+                // is the "highlight" line, no fill inside so Rosales itself
+                // stays at normal map brightness.
+                rings.forEach(ring => {
+                    const outline = new google.maps.Polygon({
+                        paths: toLatLngPath(ring),
+                        strokeColor: '#ffcc00',
+                        strokeWeight: 3,
+                        strokeOpacity: 1,
+                        fillOpacity: 0,
+                        clickable: false,
+                    });
+                    outline.setMap(layerVisible.boundary ? map : null);
+                    boundaryOverlays.push(outline);
+                });
 
                 municipalityDrawn = true;
                 firstBoundaryBounds = firstBoundaryBounds || bounds;
 
                 const [clat, clon] = centroidOf(rings[0]);
-                L.marker([clat, clon], { icon: textDivIcon(name, 'municipality'), interactive: false }).addTo(boundaryLayer);
+                const label = textOverlay(clat, clon, name, 'municipality');
+                if (!layerVisible.boundary) label.setMap(null);
+                boundaryOverlays.push(label);
             } else if (level === '10') {
                 barangayCount++;
                 const [clat, clon] = centroidOf(rings[0]);
-                L.marker([clat, clon], { icon: textDivIcon(name, 'barangay'), interactive: false }).addTo(boundaryLayer);
+                const label = textOverlay(clat, clon, name, 'barangay');
+                if (!layerVisible.boundary) label.setMap(null);
+                boundaryOverlays.push(label);
             }
         });
 
@@ -718,7 +837,7 @@
         // highlighted area is framed nicely instead of relying on the fixed
         // center/zoom guess.
         if (firstBoundaryBounds) {
-            map.fitBounds(firstBoundaryBounds, { padding: [24, 24] });
+            map.fitBounds(firstBoundaryBounds, 24);
         }
 
         const statusEl = document.getElementById('boundaryStatus');
@@ -728,7 +847,8 @@
     }
 
     function renderIncidentMarkers() {
-        incidentLayer.clearLayers();
+        incidentMarkers.forEach(m => m.setMap(null));
+        incidentMarkers = [];
 
         incidentsData.forEach(incident => {
             const lat = parseFloat(incident.latitude);
@@ -741,10 +861,6 @@
             const badgeClass = statusClass[statusKey] || 'pop-pending';
             const badgeLabel = statusLabel[statusKey] || incident.status || 'Pending';
 
-            const marker = L.marker([lat, lng], {
-                icon: emojiDivIcon(iconInfo.emoji, pinColor, { pulse: statusKey === 'pending' }),
-            }).addTo(incidentLayer);
-
             const content = `
                 <div class="incident-popup">
                     <div class="pop-type">${iconInfo.emoji} ${incident.emergency_type ?? 'Unknown'}</div>
@@ -752,19 +868,24 @@
                     ${incident.description ? `<div class="pop-row">${incident.description}</div>` : ''}
                     <span class="pop-status ${badgeClass}">${badgeLabel}</span>
                 </div>`;
-            marker.bindPopup(content);
+
+            const marker = emojiOverlay(lat, lng, iconInfo.emoji, pinColor, {
+                pulse: statusKey === 'pending',
+                popupContent: content,
+            });
+            if (!layerVisible.incidents) marker.setMap(null);
+            incidentMarkers.push(marker);
         });
     }
 
     function renderEvacuationMarkers() {
-        evacLayer.clearLayers();
+        evacMarkers.forEach(m => m.setMap(null));
+        evacMarkers = [];
 
         evacCentersData.forEach(center => {
             const lat = parseFloat(center.latitude);
             const lng = parseFloat(center.longitude);
             if (isNaN(lat) || isNaN(lng)) return;
-
-            const marker = L.marker([lat, lng], { icon: emojiDivIcon('🏕️', '#1a3c8f') }).addTo(evacLayer);
 
             const statusKey = (center.status || 'open').toLowerCase();
             const badgeClass = evacStatusClass[statusKey] || 'pop-open';
@@ -777,7 +898,10 @@
                     <div class="pop-row">Occupancy: ${center.occupancy ?? 0} / ${center.capacity ?? 0}</div>
                     <span class="pop-status ${badgeClass}">${badgeLabel}</span>
                 </div>`;
-            marker.bindPopup(content);
+
+            const marker = emojiOverlay(lat, lng, '🏕️', '#1a3c8f', { popupContent: content });
+            if (!layerVisible.evac) marker.setMap(null);
+            evacMarkers.push(marker);
         });
     }
 
@@ -801,7 +925,8 @@
     // off (their responders are done), and multiple backup responders on
     // the same incident fan out slightly so they don't stack unreadably.
     function renderResponderMarkers() {
-        respLayer.clearLayers();
+        respMarkers.forEach(m => m.setMap(null));
+        respMarkers = [];
 
         incidentsData.forEach(incident => {
             if (incident.status === 'resolved') return;
@@ -821,10 +946,6 @@
                 const rLng = lng + Math.cos(angle) * radius;
 
                 const emoji = agencyIcon[r.agency] || '🚑';
-                const marker = L.marker([rLat, rLng], {
-                    icon: emojiDivIcon(emoji, '#7c3aed', { size: 34 }),
-                }).addTo(respLayer);
-
                 const acceptedAt = formatAcceptedAt(r.pivot && r.pivot.accepted_at);
                 const content = `
                     <div class="incident-popup">
@@ -833,25 +954,31 @@
                         <div class="pop-row">Responding to: ${incident.emergency_type ?? 'Incident'}${incident.location ? ' — ' + incident.location : ''}</div>
                         ${acceptedAt ? `<div class="pop-row">Accepted: ${acceptedAt}</div>` : ''}
                     </div>`;
-                marker.bindPopup(content);
+
+                const marker = emojiOverlay(rLat, rLng, emoji, '#7c3aed', { size: 34, popupContent: content });
+                if (!layerVisible.resp) marker.setMap(null);
+                respMarkers.push(marker);
             });
         });
     }
 
     function renderHqMarker() {
-        if (hqMarker) map.removeLayer(hqMarker);
-        hqMarker = L.marker([HQ_LAT, HQ_LNG], { icon: emojiDivIcon('🏛️', '#111827', { size: 46 }) }).addTo(map);
-        hqMarker.bindPopup(`<div class="incident-popup"><b>🏛️ MDRRMO HQ</b><br>Operations Center</div>`);
+        if (hqMarker) hqMarker.setMap(null);
+        hqMarker = emojiOverlay(HQ_LAT, HQ_LNG, '🏛️', '#111827', {
+            size: 46,
+            popupContent: `<div class="incident-popup"><b>🏛️ MDRRMO HQ</b><br>Operations Center</div>`,
+        });
     }
 
     function toggleLayer(type, show) {
-        let layer;
-        if (type === 'evac') layer = evacLayer;
-        if (type === 'resp') layer = respLayer;
-        if (type === 'incidents') layer = incidentLayer;
-        if (type === 'boundary') layer = boundaryLayer;
-        if (!layer) return;
-        if (show) map.addLayer(layer); else map.removeLayer(layer);
+        layerVisible[type] = show;
+        let list;
+        if (type === 'evac') list = evacMarkers;
+        if (type === 'resp') list = respMarkers;
+        if (type === 'incidents') list = incidentMarkers;
+        if (type === 'boundary') list = boundaryOverlays;
+        if (!list) return;
+        list.forEach(o => o.setMap(show ? map : null));
     }
 
     function refreshMap() {
@@ -859,9 +986,8 @@
         // boundary data gets a fresh Overpass fetch, not just a reload.
         document.getElementById('refreshBoundaryForm').submit();
     }
-
-    initMap();
 </script>
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google.maps_key') }}&callback=initMap&v=weekly" async defer></script>
 @include('partials.sos-alert-overlay')
 <script>
 (function () {
