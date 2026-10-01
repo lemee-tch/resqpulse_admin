@@ -546,7 +546,7 @@ document.querySelectorAll('.reset-password-form').forEach(form => {
         // Password::min(8)->mixedCase()->numbers() rule exactly. The field's
         // minlength="8" only checks length, so e.g. "rosales2025" (all
         // lowercase) sailed past the browser's own validation and got
-        // silently rejected server-side — see the @error('password') block
+        // silently rejected server-side — see the password-error alert
         // above this script for what that looked like from here. Catching
         // it here means the modal stays open and you find out immediately,
         // instead of after the page has already reloaded.
