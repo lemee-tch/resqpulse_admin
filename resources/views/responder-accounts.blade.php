@@ -391,7 +391,26 @@
                 </div>
                 <div class="modal-body pt-3">
                     <label class="form-label-m">New Password</label>
-                    <input type="text" name="password" class="form-control-m" placeholder="At least 8 characters, upper &amp; lower case, and a number" minlength="8" required>
+                    <!-- type="text" with no autocomplete attribute meant this silently
+                         risked two separate failure modes: the browser's password
+                         manager treating a field literally named "password" as fair
+                         game to autofill or suggest-save over (so what actually gets
+                         submitted isn't necessarily what you see typed), and no way
+                         to double-check the exact characters before hitting Reset.
+                         type="password" + autocomplete="new-password" stops the
+                         browser from touching it, and the eye toggle below lets you
+                         actually verify what's about to be saved — the same pattern
+                         responder_login.dart already uses for this exact reason. -->
+                    <div style="position:relative;">
+                        <input type="password" name="password" id="resetPasswordInput{{ $r->id }}" class="form-control-m"
+                               placeholder="At least 8 characters, upper &amp; lower case, and a number" minlength="8"
+                               autocomplete="new-password" required style="padding-right:42px;">
+                        <button type="button" class="action-btn" onclick="toggleResetPasswordVisibility({{ $r->id }})"
+                                tabindex="-1" title="Show/hide password"
+                                style="position:absolute; right:2px; top:50%; transform:translateY(-50%);">
+                            <i class="bi bi-eye" id="resetPasswordIcon{{ $r->id }}"></i>
+                        </button>
+                    </div>
                     <div class="form-hint">This immediately signs out every device currently using this account — share the new password with the {{ $r->agency }} team afterward.</div>
                 </div>
                 <div class="modal-footer border-0 pt-0">
@@ -468,6 +487,16 @@ function sendEmailOtp(id) {
             btn.disabled = false;
             btn.textContent = 'Get Code';
         });
+}
+
+function toggleResetPasswordVisibility(id) {
+    var input = document.getElementById('resetPasswordInput' + id);
+    var icon = document.getElementById('resetPasswordIcon' + id);
+    if (!input || !icon) return;
+
+    var showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    icon.className = showing ? 'bi bi-eye' : 'bi bi-eye-slash';
 }
 
 const swalTheme = {
