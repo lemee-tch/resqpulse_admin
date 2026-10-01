@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\PasswordResetOtp;
 use App\Models\User;
 use App\Services\AuditLogService;
+use App\Services\BarangayLocationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -350,12 +351,23 @@ class AuthController extends Controller
                 ->count()];
         });
 
+        // report-analytics.blade.php's barangay filter dropdown expects
+        // this as a view variable rather than defining it inline, which is
+        // what was missing and threw "Undefined variable $barangayList" in
+        // production. Sourced from BarangayLocationService::names() — the
+        // single source of truth for the 37-barangay list — rather than
+        // yet another hardcoded copy (evacuation.blade.php, incident.blade.php
+        // and evacuation-log.blade.php each already have their own; that
+        // kind of duplication is exactly how this view ended up with no
+        // list to work from in the first place).
+        $barangayList = BarangayLocationService::names();
+
         return view('report-analytics', compact(
             'totalIncidents', 'resolvedIncidents', 'resolutionRate', 'avgResponseMinutes',
             'totalTrend', 'resolvedTrend', 'resolutionRateTrend', 'responseTimeTrend',
             'reportsByType', 'reportsByTypePending', 'reportsByLocation',
             'trendWeek', 'trendMonth', 'trendYear',
-            'fromDate', 'toDate'
+            'fromDate', 'toDate', 'barangayList'
         ));
     }
 

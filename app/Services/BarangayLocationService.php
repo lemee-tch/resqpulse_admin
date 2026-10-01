@@ -74,6 +74,22 @@ class BarangayLocationService
     ];
 
     /**
+     * Public accessor for the 37 barangay names above, in the fixed order
+     * they're declared in — the single source of truth for every "all
+     * barangays" dropdown in the app (evacuation.blade.php, incident.blade.php,
+     * evacuation-log.blade.php, report-analytics.blade.php's filter, etc.),
+     * which previously each hardcoded their own copy of this same list.
+     * That duplication is exactly what caused report-analytics.blade.php's
+     * "Undefined variable $barangayList" in production: the one place this
+     * list needed to be passed in from a controller had simply never been
+     * updated to match. Call this instead of copy-pasting the array again.
+     */
+    public static function names(): array
+    {
+        return array_keys(self::BARANGAY_COORDINATES);
+    }
+
+    /**
      * Resolves a GPS pin to a real, human-readable location string.
      * Order of precedence:
      *   1. Google Geocoding reverse lookup (actual street/area/barangay name)
