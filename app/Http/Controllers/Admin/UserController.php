@@ -8,6 +8,7 @@ use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 class UserController extends Controller
 {
@@ -26,7 +27,10 @@ class UserController extends Controller
             'last_name'   => ['required', 'string', 'max:255'],
             'suffix'      => ['nullable', 'string', 'max:20'],
             'email'       => ['required', 'email', 'unique:users,email'],
-            'password'    => ['required', 'string', 'min:6'],
+            // Was min:6 with no complexity requirement — these are admin
+            // accounts with full access to the panel, so they get the
+            // same strengthened rule as citizen accounts (Api\AuthController).
+            'password'    => ['required', 'string', Password::min(8)->mixedCase()->numbers()],
         ]);
 
         User::create([
@@ -53,7 +57,9 @@ class UserController extends Controller
             'last_name'   => ['required', 'string', 'max:255'],
             'suffix'      => ['nullable', 'string', 'max:20'],
             'email'       => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],
-            'password'    => ['nullable', 'string', 'min:6'],
+            // Same strengthened rule as store() above — nullable since
+            // this field is optional on edit (blank = keep current password).
+            'password'    => ['nullable', 'string', Password::min(8)->mixedCase()->numbers()],
         ]);
 
         $user->first_name  = $validated['first_name'];

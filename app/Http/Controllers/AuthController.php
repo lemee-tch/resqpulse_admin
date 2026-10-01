@@ -9,28 +9,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
-    /**
-     * Same 36 barangays as BarangayLocationService::BARANGAY_COORDINATES
-     * (kept in sync manually — this list only needs names, not
-     * coordinates, so it isn't worth injecting that service here just
-     * for its array keys). Used to populate the Reports & Analytics
-     * barangay filter dropdown and to validate the incoming ?barangay=
-     * value against a known list rather than accepting arbitrary text.
-     */
-    private const BARANGAYS = [
-        'Acop', 'Bakitbakit', 'Balingcanaway', 'Cabalaoangan Norte', 'Cabalaoangan Sur',
-        'Calanutan', 'Camangaan', 'Capitan Tomas', 'Carmay East', 'Carmay West',
-        'Carmen East', 'Carmen West', 'Casanicolasan', 'Coliling', 'Don Antonio Village',
-        'Guiling', 'Palakipak', 'Pangaoan', 'Rabago', 'Rizal', 'Salvacion',
-        'San Angel', 'San Antonio', 'San Bartolome', 'San Isidro', 'San Luis',
-        'San Pedro East', 'San Pedro West', 'San Vicente', 'Station District',
-        'Tomana East', 'Tomana West', 'Zone I (Poblacion)', 'Zone II (Poblacion)',
-        'Zone III (Poblacion)', 'Zone IV (Poblacion)', 'Zone V (Poblacion)',
-    ];
-
     public function showLogin()
     {
         return view('auth.login');
@@ -45,7 +27,7 @@ class AuthController extends Controller
 
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
-            
+
             AuditLogService::log('login', auth()->user()->name . ' logged in.');
 
             return redirect()->route('dashboard');
@@ -104,7 +86,10 @@ class AuthController extends Controller
         $request->validate([
             'email'    => ['required', 'email'],
             'otp'      => ['required', 'string'],
-            'password' => ['required', 'string', 'min:6', 'confirmed'],
+            // Was min:6 with no complexity requirement — same strengthened
+            // rule as the citizen app's AuthController (Api\AuthController),
+            // so the admin panel isn't the weaker link.
+            'password' => ['required', 'string', 'confirmed', Password::min(8)->mixedCase()->numbers()],
         ]);
 
         $user = User::where('email', $request->email)
@@ -216,7 +201,7 @@ class AuthController extends Controller
     {
         return view('incident-details');
     }
-    
+
     public function mapview()
     {
         return view('mapview');
@@ -232,9 +217,8 @@ class AuthController extends Controller
     public function reportsAnalytics(Request $request)
     {
         $validated = $request->validate([
-            'from'     => ['nullable', 'date'],
-            'to'       => ['nullable', 'date', 'after_or_equal:from'],
-            'barangay' => ['nullable', 'string', 'in:' . implode(',', self::BARANGAYS)],
+            'from' => ['nullable', 'date'],
+            'to'   => ['nullable', 'date', 'after_or_equal:from'],
         ]);
 
         // Default: last 30 days ending today. The date range at the top
@@ -248,18 +232,6 @@ class AuthController extends Controller
             ? \Carbon\Carbon::parse($validated['from'])->startOfDay()
             : now()->subDays(29)->startOfDay();
 
-        // There's no dedicated barangay column on incidents — `location`
-        // is free text (a citizen's typed "Rosales, Acop", or an
-        // auto-resolved "SOS Alert — Approx. Acop, Rosales" / a Nominatim
-        // address string — see BarangayLocationService). A LIKE match
-        // against the barangay name catches all of those forms without
-        // needing a schema change or a slow per-row distance recompute.
-        $barangay = $validated['barangay'] ?? null;
-        $scopeBarangay = fn ($query) => $query->when(
-            $barangay,
-            fn ($q) => $q->where('location', 'like', "%{$barangay}%")
-        );
-
         // Previous period of equal length, immediately before $fromDate —
         // this is what makes the trend arrows real instead of the
         // hardcoded "+12%" / "+5%" that never moved no matter what the
@@ -268,17 +240,17 @@ class AuthController extends Controller
         $prevToDate = $fromDate->copy()->subSecond();
         $prevFromDate = $prevToDate->copy()->subDays($periodLengthDays - 1)->startOfDay();
 
-        $totalIncidents = $scopeBarangay(\App\Models\Incident::whereBetween('created_at', [$fromDate, $toDate]))->count();
-        $resolvedIncidents = $scopeBarangay(\App\Models\Incident::whereBetween('created_at', [$fromDate, $toDate]))
+        $totalIncidents = \App\Models\Incident::whereBetween('created_at', [$fromDate, $toDate])->count();
+        $resolvedIncidents = \App\Models\Incident::whereBetween('created_at', [$fromDate, $toDate])
             ->where('status', 'resolved')->count();
         $resolutionRate = $totalIncidents > 0 ? round($resolvedIncidents / $totalIncidents * 100) : 0;
-        $avgResponseMinutes = $this->averageResponseMinutes($fromDate, $toDate, $barangay);
+        $avgResponseMinutes = $this->averageResponseMinutes($fromDate, $toDate);
 
-        $prevTotal = $scopeBarangay(\App\Models\Incident::whereBetween('created_at', [$prevFromDate, $prevToDate]))->count();
-        $prevResolved = $scopeBarangay(\App\Models\Incident::whereBetween('created_at', [$prevFromDate, $prevToDate]))
+        $prevTotal = \App\Models\Incident::whereBetween('created_at', [$prevFromDate, $prevToDate])->count();
+        $prevResolved = \App\Models\Incident::whereBetween('created_at', [$prevFromDate, $prevToDate])
             ->where('status', 'resolved')->count();
         $prevResolutionRate = $prevTotal > 0 ? round($prevResolved / $prevTotal * 100) : 0;
-        $prevAvgResponseMinutes = $this->averageResponseMinutes($prevFromDate, $prevToDate, $barangay);
+        $prevAvgResponseMinutes = $this->averageResponseMinutes($prevFromDate, $prevToDate);
 
         $totalTrend = $this->percentChange($prevTotal, $totalIncidents);
         $resolvedTrend = $this->percentChange($prevResolved, $resolvedIncidents);
@@ -311,7 +283,7 @@ class AuthController extends Controller
         //     photo would silently get counted as whatever the AI saw
         //     instead of as an SOS, undercounting genuine panic-button
         //     triggers in this breakdown.
-        $reportsByType = $scopeBarangay(\App\Models\Incident::selectRaw("
+        $reportsByType = \App\Models\Incident::selectRaw("
                 CASE
                     WHEN emergency_type = 'SOS Emergency' THEN 'SOS Emergency'
                     WHEN COALESCE(ai_detected_type, emergency_type) = 'Vehicular Accident' THEN 'Accident'
@@ -322,7 +294,7 @@ class AuthController extends Controller
                 END as type,
                 COUNT(*) as total
             ")
-            ->whereBetween('created_at', [$fromDate, $toDate]))
+            ->whereBetween('created_at', [$fromDate, $toDate])
             ->groupBy('type')
             ->orderByDesc('total')
             ->pluck('total', 'type');
@@ -332,7 +304,7 @@ class AuthController extends Controller
         // count that doesn't say whether any of them still need
         // attention. Uses the same CASE WHEN as $reportsByType above so
         // a type here always matches a type there.
-        $reportsByTypePending = $scopeBarangay(\App\Models\Incident::selectRaw("
+        $reportsByTypePending = \App\Models\Incident::selectRaw("
                 CASE
                     WHEN emergency_type = 'SOS Emergency' THEN 'SOS Emergency'
                     WHEN COALESCE(ai_detected_type, emergency_type) = 'Vehicular Accident' THEN 'Accident'
@@ -343,38 +315,38 @@ class AuthController extends Controller
                 END as type,
                 COUNT(*) as total
             ")
-            ->whereBetween('created_at', [$fromDate, $toDate]))
+            ->whereBetween('created_at', [$fromDate, $toDate])
             ->where('status', 'pending')
             ->groupBy('type')
             ->pluck('total', 'type');
 
-        $reportsByLocation = $scopeBarangay(\App\Models\Incident::selectRaw('location, COUNT(*) as total')
+        $reportsByLocation = \App\Models\Incident::selectRaw('location, COUNT(*) as total')
             ->whereNotNull('location')
-            ->whereBetween('created_at', [$fromDate, $toDate]))
+            ->whereBetween('created_at', [$fromDate, $toDate])
             ->groupBy('location')
             ->orderByDesc('total')
             ->take(5)
             ->pluck('total', 'location');
 
         // Last 7 days, one bucket per day
-        $trendWeek = collect(range(6, 0))->mapWithKeys(function ($daysAgo) use ($scopeBarangay) {
+        $trendWeek = collect(range(6, 0))->mapWithKeys(function ($daysAgo) {
             $date = now()->subDays($daysAgo);
-            return [$date->format('D') => $scopeBarangay(\App\Models\Incident::whereDate('created_at', $date->toDateString()))->count()];
+            return [$date->format('D') => \App\Models\Incident::whereDate('created_at', $date->toDateString())->count()];
         });
 
         // Last 5 weeks, one bucket per week
-        $trendMonth = collect(range(4, 0))->mapWithKeys(function ($weeksAgo) use ($scopeBarangay) {
+        $trendMonth = collect(range(4, 0))->mapWithKeys(function ($weeksAgo) {
             $start = now()->subWeeks($weeksAgo)->startOfWeek();
             $end = now()->subWeeks($weeksAgo)->endOfWeek();
             $label = 'Wk ' . (5 - $weeksAgo);
-            return [$label => $scopeBarangay(\App\Models\Incident::whereBetween('created_at', [$start, $end]))->count()];
+            return [$label => \App\Models\Incident::whereBetween('created_at', [$start, $end])->count()];
         });
 
         // Last 12 months, one bucket per month
-        $trendYear = collect(range(11, 0))->mapWithKeys(function ($monthsAgo) use ($scopeBarangay) {
+        $trendYear = collect(range(11, 0))->mapWithKeys(function ($monthsAgo) {
             $date = now()->subMonths($monthsAgo);
-            return [$date->format('M') => $scopeBarangay(\App\Models\Incident::whereYear('created_at', $date->year)
-                ->whereMonth('created_at', $date->month))
+            return [$date->format('M') => \App\Models\Incident::whereYear('created_at', $date->year)
+                ->whereMonth('created_at', $date->month)
                 ->count()];
         });
 
@@ -383,8 +355,8 @@ class AuthController extends Controller
             'totalTrend', 'resolvedTrend', 'resolutionRateTrend', 'responseTimeTrend',
             'reportsByType', 'reportsByTypePending', 'reportsByLocation',
             'trendWeek', 'trendMonth', 'trendYear',
-            'fromDate', 'toDate', 'barangay'
-        ) + ['barangayList' => self::BARANGAYS]);
+            'fromDate', 'toDate'
+        ));
     }
 
     /**
@@ -413,9 +385,8 @@ class AuthController extends Controller
     public function exportReport(Request $request)
     {
         $validated = $request->validate([
-            'from'     => ['nullable', 'date'],
-            'to'       => ['nullable', 'date', 'after_or_equal:from'],
-            'barangay' => ['nullable', 'string', 'in:' . implode(',', self::BARANGAYS)],
+            'from' => ['nullable', 'date'],
+            'to'   => ['nullable', 'date', 'after_or_equal:from'],
         ]);
 
         $toDate = isset($validated['to'])
@@ -424,11 +395,9 @@ class AuthController extends Controller
         $fromDate = isset($validated['from'])
             ? \Carbon\Carbon::parse($validated['from'])->startOfDay()
             : now()->subDays(29)->startOfDay();
-        $barangay = $validated['barangay'] ?? null;
 
         $incidents = \App\Models\Incident::with('citizen')
             ->whereBetween('created_at', [$fromDate, $toDate])
-            ->when($barangay, fn ($q) => $q->where('location', 'like', "%{$barangay}%"))
             ->orderBy('created_at')
             ->get();
 
@@ -436,27 +405,14 @@ class AuthController extends Controller
         $resolvedIncidents = $incidents->where('status', 'resolved')->count();
         $resolutionRate = $totalIncidents > 0 ? round($resolvedIncidents / $totalIncidents * 100) : 0;
 
-        // Who's actually pulling this report — printed on the PDF/CSV
-        // itself so a report can't circulate without a name attached to
-        // it, and logged the same way every other admin action is (see
-        // AuditLogService::log calls elsewhere in this controller).
-        $exportedBy = auth()->user()->name;
-
-        AuditLogService::log(
-            'exported',
-            "{$exportedBy} exported the incident report for {$fromDate->format('M d, Y')} – {$toDate->format('M d, Y')}"
-                . ($barangay ? " (Barangay {$barangay})" : '')
-                . " ({$totalIncidents} incidents)."
-        );
-
         if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-            return $this->exportReportAsPdf($incidents, $fromDate, $toDate, $totalIncidents, $resolvedIncidents, $resolutionRate, $exportedBy, $barangay);
+            return $this->exportReportAsPdf($incidents, $fromDate, $toDate, $totalIncidents, $resolvedIncidents, $resolutionRate);
         }
 
-        return $this->exportReportAsCsv($incidents, $fromDate, $toDate, $exportedBy, $barangay);
+        return $this->exportReportAsCsv($incidents, $fromDate, $toDate);
     }
 
-    private function exportReportAsPdf($incidents, $fromDate, $toDate, $totalIncidents, $resolvedIncidents, $resolutionRate, $exportedBy, $barangay = null)
+    private function exportReportAsPdf($incidents, $fromDate, $toDate, $totalIncidents, $resolvedIncidents, $resolutionRate)
     {
         $filename = 'resqpulse-report_' . $fromDate->format('Y-m-d') . '_to_' . $toDate->format('Y-m-d') . '.pdf';
 
@@ -467,14 +423,12 @@ class AuthController extends Controller
             'totalIncidents'    => $totalIncidents,
             'resolvedIncidents' => $resolvedIncidents,
             'resolutionRate'    => $resolutionRate,
-            'exportedBy'        => $exportedBy,
-            'barangay'          => $barangay,
         ])->setPaper('a4', 'portrait');
 
         return $pdf->download($filename);
     }
 
-    private function exportReportAsCsv($incidents, $fromDate, $toDate, $exportedBy, $barangay = null)
+    private function exportReportAsCsv($incidents, $fromDate, $toDate)
     {
         $filename = 'resqpulse-report_' . $fromDate->format('Y-m-d') . '_to_' . $toDate->format('Y-m-d') . '.csv';
 
@@ -483,22 +437,11 @@ class AuthController extends Controller
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ];
 
-        $callback = function () use ($incidents, $exportedBy, $barangay) {
+        $callback = function () use ($incidents) {
             $handle = fopen('php://output', 'w');
             // UTF-8 BOM so Excel renders barangay names with ñ/special
             // characters correctly instead of mangling them.
             fwrite($handle, "\xEF\xBB\xBF");
-            // A one-cell metadata line above the real header row — Excel
-            // and Sheets both just show it as row 1 without disrupting
-            // the data table starting on row 3, but it means the CSV
-            // itself carries who pulled it even after it's been
-            // forwarded, renamed, or saved outside the admin panel.
-            $meta = "Exported by {$exportedBy} on " . now()->format('M d, Y g:i A');
-            if ($barangay) {
-                $meta .= " — Barangay {$barangay}";
-            }
-            fputcsv($handle, [$meta]);
-            fputcsv($handle, []);
             fputcsv($handle, ['ID', 'Type', 'Priority', 'Status', 'Location', 'Reporter', 'Mobile', 'Reported At']);
 
             foreach ($incidents as $inc) {
@@ -528,13 +471,12 @@ class AuthController extends Controller
      * Returns null (not 0) when nothing in range has been accepted yet,
      * so the view can show "—" instead of a misleading "0m".
      */
-    private function averageResponseMinutes($from, $to, ?string $barangay = null): ?int
+    private function averageResponseMinutes($from, $to): ?int
     {
         $avg = \Illuminate\Support\Facades\DB::table('incident_responder')
             ->join('incidents', 'incidents.id', '=', 'incident_responder.incident_id')
             ->whereBetween('incidents.created_at', [$from, $to])
             ->whereNotNull('incident_responder.accepted_at')
-            ->when($barangay, fn ($q) => $q->where('incidents.location', 'like', "%{$barangay}%"))
             ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, incidents.created_at, incident_responder.accepted_at)) as avg_minutes')
             ->value('avg_minutes');
 

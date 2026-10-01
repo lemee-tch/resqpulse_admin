@@ -147,7 +147,7 @@
                 padding-bottom: 88px !important;
             }
         }
-    
+
         /* ── App-style nav polish ── */
         .sidebar-nav a {
             display: flex;
@@ -391,7 +391,7 @@
                 </div>
                 <div class="modal-body pt-3">
                     <label class="form-label-m">New Password</label>
-                    <input type="text" name="password" class="form-control-m" placeholder="At least 6 characters" minlength="6" required>
+                    <input type="text" name="password" class="form-control-m" placeholder="At least 8 characters, upper &amp; lower case, and a number" minlength="8" required>
                     <div class="form-hint">This immediately signs out every device currently using this account — share the new password with the {{ $r->agency }} team afterward.</div>
                 </div>
                 <div class="modal-footer border-0 pt-0">

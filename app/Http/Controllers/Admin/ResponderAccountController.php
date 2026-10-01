@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 class ResponderAccountController extends Controller
 {
@@ -96,7 +97,11 @@ class ResponderAccountController extends Controller
     public function resetPassword(Request $request, Responder $responder)
     {
         $request->validate([
-            'password' => ['required', 'string', 'min:6'],
+            // Was min:6 with no complexity requirement — same strengthened
+            // rule as citizen/admin accounts (Api\AuthController,
+            // Admin\UserController). A responder password is shared by an
+            // entire agency team, so it's worth the same bar.
+            'password' => ['required', 'string', Password::min(8)->mixedCase()->numbers()],
         ]);
 
         $responder->update([

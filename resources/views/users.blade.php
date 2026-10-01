@@ -183,7 +183,7 @@
                 padding-bottom: 88px !important;
             }
         }
-    
+
         /* ── App-style nav polish ── */
         .sidebar-nav a {
             display: flex;
@@ -397,7 +397,7 @@
                         </div>
                         <div class="col-12">
                             <label class="form-label-m">Password</label>
-                            <input type="password" name="password" class="form-control-m" placeholder="At least 6 characters" minlength="6" required>
+                            <input type="password" name="password" class="form-control-m" placeholder="At least 8 characters, upper &amp; lower case, and a number" minlength="8" required>
                         </div>
                     </div>
                 </div>
@@ -447,8 +447,8 @@
                         </div>
                         <div class="col-12">
                             <label class="form-label-m">New Password</label>
-                            <input type="password" name="password" class="form-control-m" placeholder="Leave blank to keep current password" minlength="6">
-                            <div class="form-hint">Only fill this in if you want to change the password.</div>
+                            <input type="password" name="password" class="form-control-m" placeholder="Leave blank to keep current password" minlength="8">
+                            <div class="form-hint">Only fill this in if you want to change the password. At least 8 characters, with upper &amp; lower case and a number.</div>
                         </div>
                     </div>
                 </div>

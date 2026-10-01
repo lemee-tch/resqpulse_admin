@@ -72,7 +72,7 @@ class ResponderSeeder extends Seeder
 
         if ($this->command) {
             $this->command->newLine();
-            $this->command->warn('Responder agency credentials — copy these now, they will NOT be shown again:');
+            $this->command->warn('Responder agency credentials:');
             $this->command->table(['Agency', 'Email', 'Password'], $credentialsForDisplay);
             $this->command->newLine();
         }
