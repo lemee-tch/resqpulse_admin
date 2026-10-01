@@ -283,6 +283,25 @@
             </div>
         @enderror
 
+        {{--
+            resetPassword()'s $request->validate() rejects anything that
+            doesn't meet Password::min(8)->mixedCase()->numbers() by
+            redirecting back with a 'password' validation error — this page
+            never rendered that error anywhere, so a rejected reset looked
+            IDENTICAL to a successful one: modal closes, page reloads, no
+            success banner, no visible error. The admin had no way to tell
+            the two apart. The client-side check added to the submit
+            handler below should catch this before it ever reaches the
+            server, but this stays as a fallback for anything that doesn't
+            (JS disabled, a future validation rule the JS check doesn't
+            mirror, etc.) so a rejected reset is never silent again.
+        --}}
+        @error('password')
+            <div class="alert alert-danger" style="border-radius:10px;font-size:.85rem;margin-bottom:16px;">
+                <strong>Password wasn't reset:</strong> {{ $message }}
+            </div>
+        @enderror
+
         <div class="info-note">
             <i class="bi bi-info-circle"></i>
             <span>These accounts are pre-built — there's no self-registration anymore. To hand a login to an agency, reset its password below and share the new credentials directly with the team.</span>
@@ -520,6 +539,33 @@ document.querySelectorAll('.reset-password-form').forEach(form => {
         e.preventDefault();
 
         const agency = form.dataset.agency;
+        const passwordInput = form.querySelector('input[name="password"]');
+        const password = passwordInput.value;
+
+        // Mirrors Admin\ResponderAccountController::resetPassword()'s
+        // Password::min(8)->mixedCase()->numbers() rule exactly. The field's
+        // minlength="8" only checks length, so e.g. "rosales2025" (all
+        // lowercase) sailed past the browser's own validation and got
+        // silently rejected server-side — see the @error('password') block
+        // above this script for what that looked like from here. Catching
+        // it here means the modal stays open and you find out immediately,
+        // instead of after the page has already reloaded.
+        const meetsRule = password.length >= 8
+            && /[a-z]/.test(password)
+            && /[A-Z]/.test(password)
+            && /[0-9]/.test(password);
+
+        if (!meetsRule) {
+            Swal.fire({
+                ...swalTheme,
+                icon: 'error',
+                title: "That password won't be accepted",
+                text: 'Needs at least 8 characters, with upper case, lower case, AND a number — all three.',
+                confirmButtonText: 'OK',
+            });
+            return;
+        }
+
         const parentModalEl = form.closest('.modal');
         const bsModal = parentModalEl ? bootstrap.Modal.getOrCreateInstance(parentModalEl) : null;
 
