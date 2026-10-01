@@ -11,7 +11,7 @@ class AdminUserSeeder extends Seeder
     public function run(): void
     {
         User::firstOrCreate(
-            ['email' => 'admin@rosales.gov.ph'],
+            ['email' => 'rosalesadmin11@gmail.com'],
             [
                 'name' => 'MDRRMO Rosales Admin',
                 'password' => Hash::make('rosalesadmin'),
