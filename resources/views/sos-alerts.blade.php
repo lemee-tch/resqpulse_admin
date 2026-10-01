@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
@@ -16,107 +17,107 @@
             display: flex; flex-direction: column; position: fixed; top: 0; left: 0; z-index: 100;
         }
         .sidebar-brand {
-             display: flex; 
-             align-items: center; 
-             gap: 10px; 
-             padding: 18px 16px 16px; 
+             display: flex;
+             align-items: center;
+             gap: 10px;
+             padding: 18px 16px 16px;
              border-bottom: 1px solid rgba(255,255,255,.12);
             }
         .sidebar-brand img {
-             width: 38px; 
-             height: 38px; 
-             border-radius: 50%; 
-             object-fit: cover; 
-             border: 2px solid rgba(255,255,255,.3); 
+             width: 38px;
+             height: 38px;
+             border-radius: 50%;
+             object-fit: cover;
+             border: 2px solid rgba(255,255,255,.3);
             }
         .sidebar-brand-text .title {
-             font-family: 'Barlow', sans-serif; 
-             font-weight: 800; 
-             font-size: .85rem; 
-             color: #fff; 
-             letter-spacing: .5px; 
-             line-height: 1.1; 
+             font-family: 'Barlow', sans-serif;
+             font-weight: 800;
+             font-size: .85rem;
+             color: #fff;
+             letter-spacing: .5px;
+             line-height: 1.1;
             }
         .sidebar-brand-text .sub {
-             font-size: .65rem; 
-             color: rgba(255,255,255,.6); 
-             letter-spacing: .5px; 
+             font-size: .65rem;
+             color: rgba(255,255,255,.6);
+             letter-spacing: .5px;
             }
-        .sidebar-nav { 
-            flex: 1; 
-            padding: 18px 0; 
+        .sidebar-nav {
+            flex: 1;
+            padding: 18px 0;
         }
         .sidebar-nav a {
-             display: block; 
-             padding: 10px 20px; 
-             font-size: .82rem; 
-             font-weight: 500; 
-             color: rgba(255,255,255,.75); 
-             text-decoration: none; 
-             border-left: 3px solid transparent; 
-             transition: all .2s; 
+             display: block;
+             padding: 10px 20px;
+             font-size: .82rem;
+             font-weight: 500;
+             color: rgba(255,255,255,.75);
+             text-decoration: none;
+             border-left: 3px solid transparent;
+             transition: all .2s;
         }
 
         .sidebar-nav a:hover { color: #fff; background: rgba(255,255,255,.08); }
         .sidebar-nav a.active { color: #fff; font-weight: 700; border-left-color: #fff; background: rgba(255,255,255,.1); }
         .sidebar-logout { padding: 16px 20px; border-top: 1px solid rgba(255,255,255,.12); }
-        .sidebar-logout a { 
-            display: flex; 
-            align-items: center; 
-            gap: 8px; 
-            font-size: .82rem; 
-            color: rgba(255,255,255,.75); 
-            text-decoration: none; 
-            font-weight: 500; 
-            transition: color .2s; 
+        .sidebar-logout a {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: .82rem;
+            color: rgba(255,255,255,.75);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color .2s;
         }
-        .sidebar-logout a:hover { 
-            color: #fff; 
+        .sidebar-logout a:hover {
+            color: #fff;
         }
 
         .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 32px 36px; flex: 1; }
 
-        .page-header { 
-            display: flex; 
-            align-items: center; 
-            justify-content: space-between; 
-            margin-bottom: 6px; 
-            flex-wrap: wrap; 
-            gap: 10px; 
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+            gap: 10px;
         }
-        .page-title { 
-            font-family: 'Barlow', sans-serif; 
-            font-weight: 800; 
-            font-size: 1.5rem; 
-            color: #111827; 
-            display: flex; 
-            align-items: center; 
-            gap: 10px; 
+        .page-title {
+            font-family: 'Barlow', sans-serif;
+            font-weight: 800;
+            font-size: 1.5rem;
+            color: #111827;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-        .page-sub { 
-            font-size: .82rem; 
+        .page-sub {
+            font-size: .82rem;
             color: #6b7280;
-            margin-bottom: 20px; 
+            margin-bottom: 20px;
             }
 
         .live-pill {
-            display: inline-flex; 
-            align-items: center; 
+            display: inline-flex;
+            align-items: center;
             gap: 6px;
-            background: #fee2e2; 
-            color: #991b1b; 
-            font-size: .75rem; 
+            background: #fee2e2;
+            color: #991b1b;
+            font-size: .75rem;
             font-weight: 700;
-            padding: 5px 12px; 
+            padding: 5px 12px;
             border-radius: 20px;
         }
-        .live-dot { 
-            width: 7px; 
-            height: 7px; 
-            border-radius: 50%; 
-            background: #dc2626; 
-            animation: pulse-dot 1s infinite; 
+        .live-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #dc2626;
+            animation: pulse-dot 1s infinite;
         }
         @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
@@ -124,8 +125,8 @@
             0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); border-color:#dc2626; background:#fff5f5; }
             50%      { box-shadow: 0 0 0 14px rgba(220,38,38,0); border-color:#fecaca; background:#fff; }
         }
-        .sos-card.is-new-alert { 
-            animation: sosFlicker 1s ease-in-out infinite; 
+        .sos-card.is-new-alert {
+            animation: sosFlicker 1s ease-in-out infinite;
         }
 
         /* ── TABS ── */
@@ -192,6 +193,10 @@
         .sos-card--review {
             border-left-color: #f59e0b;
         }
+        .sos-card--declined {
+            border-left-color: #991b1b;
+            opacity: .8;
+        }
 
         .sos-photo {
             width: 92px; height: 92px; border-radius: 12px; object-fit: cover;
@@ -218,6 +223,7 @@
         .badge-responding   { background: #e0f2f1; color: #0369a1; }
         .badge-resolved     { background: #d1fae5; color: #065f46; }
         .badge-review       { background: #fef3c7; color: #92400e; }
+        .badge-declined     { background: #fee2e2; color: #991b1b; }
 
         .badge-ai { background: #eef2ff; color: #4338ca; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 
@@ -230,16 +236,26 @@
         .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
         .empty-state i { font-size: 2.4rem; display: block; margin-bottom: 12px; color: #d1d5db; }
 
+        .review-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
         .btn-approve {
             background: #10b981; color: #fff; border: none; border-radius: 8px;
             padding: 8px 16px; font-size: .8rem; font-weight: 700; cursor: pointer;
             display: inline-flex; align-items: center; gap: 6px; transition: background .2s;
-            margin-top: 10px;
         }
         .btn-approve:hover { background: #059669; }
+        .btn-decline {
+            background: #fff; color: #dc2626; border: 1.5px solid #dc2626; border-radius: 8px;
+            padding: 8px 16px; font-size: .8rem; font-weight: 700; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px; transition: background .2s, color .2s;
+        }
+        .btn-decline:hover { background: #dc2626; color: #fff; }
         .review-banner {
             background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;
             font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;
+        }
+        .declined-reason-note {
+            margin-top: 8px; font-size: .8rem; color: #991b1b; font-style: italic;
+            background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px;
         }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
@@ -297,7 +313,7 @@
                 padding-bottom: 88px !important;
             }
         }
-    
+
         /* ── App-style nav polish ── */
         .sidebar-nav a {
             display: flex;
@@ -420,8 +436,12 @@
 
         @php
             $pendingReviewSos = $sosAlerts->where('needs_review', true)->values();
-            $activeSos   = $sosAlerts->where('needs_review', false)->where('status', '!=', 'resolved')->values();
-            $resolvedSos = $sosAlerts->where('status', '=', 'resolved')->values();
+            // Active excludes anything still pending review AND anything
+            // declined — a declined SOS was never dispatched, so it
+            // doesn't belong alongside genuinely active ones. It still
+            // shows up under Resolved History below, badged "Declined".
+            $activeSos   = $sosAlerts->where('needs_review', false)->where('status', '!=', 'resolved')->whereNull('declined_at')->values();
+            $resolvedSos = $sosAlerts->filter(fn ($s) => $s->status === 'resolved' || $s->declined_at)->values();
         @endphp
 
         <div class="page-header">
@@ -564,12 +584,22 @@
                             </div>
                         </div>
 
-                        <form action="{{ route('incident.approve', $sos->id) }}" method="POST">
-                            @csrf
-                            <button type="submit" class="btn-approve">
-                                <i class="bi bi-check-lg"></i> Approve &amp; Dispatch to Responders
-                            </button>
-                        </form>
+                        <div class="review-actions">
+                            <form action="{{ route('incident.approve', $sos->id) }}" method="POST">
+                                @csrf
+                                <button type="submit" class="btn-approve">
+                                    <i class="bi bi-check-lg"></i> Approve &amp; Dispatch to Responders
+                                </button>
+                            </form>
+                            <form action="{{ route('incident.decline', $sos->id) }}" method="POST" class="decline-form"
+                                  data-notifies-citizen="{{ $sos->citizen_id ? '1' : '0' }}">
+                                @csrf
+                                <input type="hidden" name="decline_reason" class="decline-reason-input">
+                                <button type="submit" class="btn-decline">
+                                    <i class="bi bi-x-lg"></i> Decline
+                                </button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             @empty
@@ -616,6 +646,7 @@
                     $reporter = $sos->citizen?->full_name ?? ($sos->citizen_id ? 'Unknown' : 'Guest');
                     $mobile = $sos->citizen?->mobile;
                     $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
+                    $isDeclined = (bool) $sos->declined_at;
 
                     $sosPhoto = null;
                     if ($sos->photo_path) {
@@ -623,7 +654,7 @@
                         $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
                     }
                 @endphp
-                <div class="sos-card sos-card--resolved history-row"
+                <div class="sos-card sos-card--{{ $isDeclined ? 'declined' : 'resolved' }} history-row"
                     data-date="{{ $sos->created_at->format('Y-m-d') }}"
                     data-ai="{{ $sos->ai_detected_type }}"
                     data-search="{{ strtolower($reporter.' '.$sos->location.' '.$sos->ai_detected_type.' '.$sos->ai_analysis) }}"
@@ -639,7 +670,11 @@
                         <div class="sos-top-row">
                             <div class="sos-title">
                                 🆘 SOS Emergency
-                                <span class="badge-status badge-resolved">Resolved</span>
+                                @if($isDeclined)
+                                    <span class="badge-status badge-declined">Declined</span>
+                                @else
+                                    <span class="badge-status badge-resolved">Resolved</span>
+                                @endif
                                 @if($sos->ai_detected_type)
                                     <span class="badge-ai text-danger">{{ $sos->ai_detected_type }}</span>
                                 @endif
@@ -661,7 +696,11 @@
                             </div>
                         </div>
 
-                        @if($sos->ai_analysis)
+                        @if($isDeclined && $sos->decline_reason)
+                            <div class="declined-reason-note">
+                                Declined: "{{ \Illuminate\Support\Str::limit($sos->decline_reason, 120) }}"
+                            </div>
+                        @elseif($sos->ai_analysis)
                             <div style="margin-top:8px;font-size:.8rem;color:#6b7280;font-style:italic;">
                                 "{{ $sos->ai_analysis }}"
                             </div>
@@ -761,6 +800,44 @@
 
         applyFilters();
     })();
+
+    // Decline confirmation — asks for a short reason (required), which is
+    // both logged to the audit trail and, for a logged-in citizen's SOS,
+    // sent to them as the notification body so they know why. Mirrors the
+    // same pattern used on the regular Incidents "Pending Review" tab.
+    document.querySelectorAll('.decline-form').forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const notifiesCitizen = form.dataset.notifiesCitizen === '1';
+            const notifyLine = notifiesCitizen
+                ? 'The reporter will get a notification with this reason.'
+                : 'This SOS was submitted by a guest, so there is no account to notify.';
+
+            Swal.fire({
+                icon: 'warning',
+                title: 'Decline this SOS alert?',
+                html: `<div style="text-align:left;font-size:.85em;color:#6b7280;margin-bottom:8px;">Declining this SOS alert — responders will NOT be dispatched.<br>${notifyLine}</div>`,
+                input: 'textarea',
+                inputPlaceholder: 'Reason for declining (required)…',
+                inputAttributes: { 'aria-label': 'Reason for declining' },
+                showCancelButton: true,
+                confirmButtonText: 'Decline alert',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc2626',
+                inputValidator: (value) => {
+                    if (!value || !value.trim()) {
+                        return 'Please enter a reason.';
+                    }
+                },
+            }).then(result => {
+                if (result.isConfirmed) {
+                    form.querySelector('.decline-reason-input').value = result.value.trim();
+                    form.submit();
+                }
+            });
+        });
+    });
 </script>
 @include('partials.sos-alert-overlay')
 <script>

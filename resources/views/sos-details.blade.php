@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
@@ -80,6 +81,8 @@
         .btn-quick:hover { opacity: .9; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
         .btn-call { background: #10b981; color: #fff; }
         .btn-approve-lg { background: #1a3c8f; color: #fff; }
+        .btn-decline-lg { background: #fff; color: #dc2626; border: 1.5px solid #dc2626; }
+        .btn-decline-lg:hover { background: #dc2626; color: #fff; }
 
         /* ── THREE COLUMN GRID ──
            minmax(0, ...) lets each track shrink below its content's
@@ -139,6 +142,9 @@
         /* Resolution (submitted by the responder from the field) */
         .resolution-notes-box { background: #ecfdf5; border: 1.5px solid #a7f3d0; border-left: 3px solid #10b981; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #065f46; line-height: 1.6; min-height: 44px; }
         .resolution-empty { font-size: .8rem; color: #9ca3af; font-style: italic; }
+
+        /* Decline reason (set by admin when declining a guest SOS) */
+        .decline-reason-box { background: #fef2f2; border: 1.5px solid #fecaca; border-left: 3px solid #dc2626; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #991b1b; line-height: 1.6; min-height: 44px; }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn {
@@ -336,6 +342,7 @@
             $lat = $incident->latitude  ?? 15.8952;
             $lng = $incident->longitude ?? 120.6263;
             $icon = '🆘';
+            $isDeclined = (bool) $incident->declined_at;
 
             $detailPhotos = collect();
             if ($incident->photo_path) {
@@ -369,7 +376,7 @@
                 <span class="badge-priority">{{ $priorityLabel }}</span>
             </div>
             <div class="banner-meta">
-                <span><strong>Status</strong> {{ $incident->needs_review ? 'Pending Review' : ucfirst($incident->status) }}</span>
+                <span><strong>Status</strong> {{ $incident->needs_review ? 'Pending Review' : ($isDeclined ? 'Declined' : ucfirst($incident->status)) }}</span>
                 <span><strong>Reported</strong> {{ $incident->created_at->format('M d, Y g:i A') }}</span>
                 <span><strong>Reporter</strong> {{ $reporter }}</span>
             </div>
@@ -389,6 +396,14 @@
                     @csrf
                     <button type="submit" class="btn-quick btn-approve-lg">
                         <i class="bi bi-check-circle-fill"></i> Approve &amp; Notify Responders
+                    </button>
+                </form>
+                <form action="{{ route('incident.decline', $incident->id) }}" method="POST" class="decline-form" style="margin:0;"
+                      data-notifies-citizen="{{ $incident->citizen_id ? '1' : '0' }}">
+                    @csrf
+                    <input type="hidden" name="decline_reason" class="decline-reason-input">
+                    <button type="submit" class="btn-quick btn-decline-lg">
+                        <i class="bi bi-x-circle-fill"></i> Decline
                     </button>
                 </form>
             @endif
@@ -458,6 +473,13 @@
                     <div class="admin-notes-box">{{ $incident->admin_notes }}</div>
                 @endif
 
+                @if($isDeclined)
+                    <div class="detail-sub" style="margin-top:14px;">
+                        <i class="bi bi-x-circle-fill" style="color:#dc2626;"></i> Decline Reason
+                    </div>
+                    <div class="decline-reason-box">{{ $incident->decline_reason }}</div>
+                @endif
+
                 @if($incident->status === 'resolved')
                     <div class="detail-sub" style="margin-top:14px;">
                         <i class="bi bi-check-circle-fill" style="color:#10b981;"></i> Resolution (from responder)
@@ -520,10 +542,11 @@
                 <div class="panel-label">Status</div>
                 <div class="action-panel">
                     @php
-                        $statusMeta = match($incident->status) {
-                            'responding' => ['bg' => '#e0f2fe', 'border' => '#bae6fd', 'text' => '#0369a1', 'icon' => 'bi-lightning-charge-fill', 'label' => 'Responding'],
-                            'resolved'   => ['bg' => '#ecfdf5', 'border' => '#a7f3d0', 'text' => '#065f46', 'icon' => 'bi-check-circle-fill', 'label' => 'Resolved'],
-                            default      => ['bg' => '#fef3c7', 'border' => '#fde68a', 'text' => '#92400e', 'icon' => 'bi-hourglass-split', 'label' => 'Pending'],
+                        $statusMeta = match(true) {
+                            $isDeclined                   => ['bg' => '#fee2e2', 'border' => '#fecaca', 'text' => '#991b1b', 'icon' => 'bi-x-circle-fill', 'label' => 'Declined'],
+                            $incident->status === 'responding' => ['bg' => '#e0f2fe', 'border' => '#bae6fd', 'text' => '#0369a1', 'icon' => 'bi-lightning-charge-fill', 'label' => 'Responding'],
+                            $incident->status === 'resolved'   => ['bg' => '#ecfdf5', 'border' => '#a7f3d0', 'text' => '#065f46', 'icon' => 'bi-check-circle-fill', 'label' => 'Resolved'],
+                            default                             => ['bg' => '#fef3c7', 'border' => '#fde68a', 'text' => '#92400e', 'icon' => 'bi-hourglass-split', 'label' => 'Pending'],
                         };
                     @endphp
 
@@ -534,7 +557,7 @@
                         </span>
                     </div>
 
-                    @if(!$incident->needs_review && $incident->status !== 'resolved')
+                    @if(!$incident->needs_review && !$isDeclined && $incident->status !== 'resolved')
                         <div class="dispatch-note">
                             <i class="bi bi-broadcast"></i>
                             <span>Responders were automatically notified when this SOS was triggered. Status updates as they act on it.</span>
@@ -566,6 +589,16 @@
                         <div class="tl-time">—</div>
                         <div class="tl-dot warning"></div>
                         <div class="tl-text">Flagged for review — guest report, not yet approved</div>
+                    </div>
+                @endif
+                @if($isDeclined)
+                    <div class="tl-row">
+                        <div class="tl-time">{{ $incident->declined_at->format('g:i A') }}</div>
+                        <div class="tl-dot danger"></div>
+                        <div class="tl-text">
+                            SOS <strong>declined</strong>
+                            @if($incident->decline_reason) — "{{ \Illuminate\Support\Str::limit($incident->decline_reason, 60) }}" @endif
+                        </div>
                     </div>
                 @endif
                 @if(in_array($incident->status, ['acknowledged', 'responding', 'resolved']))
@@ -698,6 +731,45 @@
         const carousel = bootstrap.Carousel.getOrCreateInstance(carouselEl);
         carousel.to(index);
     }
+
+    // Decline confirmation — asks for a short reason (required), which is
+    // both logged to the audit trail and, for a logged-in citizen's SOS,
+    // sent to them as the notification body so they know why. Mirrors the
+    // same pattern used on the regular Incidents "Pending Review" tab and
+    // on the SOS Alerts list page.
+    document.querySelectorAll('.decline-form').forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const notifiesCitizen = form.dataset.notifiesCitizen === '1';
+            const notifyLine = notifiesCitizen
+                ? 'The reporter will get a notification with this reason.'
+                : 'This SOS was submitted by a guest, so there is no account to notify.';
+
+            Swal.fire({
+                icon: 'warning',
+                title: 'Decline this SOS alert?',
+                html: `<div style="text-align:left;font-size:.85em;color:#6b7280;margin-bottom:8px;">Declining this SOS alert — responders will NOT be dispatched.<br>${notifyLine}</div>`,
+                input: 'textarea',
+                inputPlaceholder: 'Reason for declining (required)…',
+                inputAttributes: { 'aria-label': 'Reason for declining' },
+                showCancelButton: true,
+                confirmButtonText: 'Decline alert',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc2626',
+                inputValidator: (value) => {
+                    if (!value || !value.trim()) {
+                        return 'Please enter a reason.';
+                    }
+                },
+            }).then(result => {
+                if (result.isConfirmed) {
+                    form.querySelector('.decline-reason-input').value = result.value.trim();
+                    form.submit();
+                }
+            });
+        });
+    });
 </script>
 <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google.maps_key') }}&callback=initDetailMap&v=weekly" async defer></script>
 @include('partials.sos-alert-overlay')
