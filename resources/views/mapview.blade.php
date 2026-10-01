@@ -506,6 +506,21 @@
 
     let pinUid = 0;
 
+    // EmojiMarker/TextOverlay are declared here but only CONSTRUCTED
+    // (the `class ... extends google.maps.OverlayView` statement itself)
+    // inside defineMapOverlayClasses(), called from initMap() once the
+    // Google Maps library has actually loaded. A class's `extends`
+    // clause is evaluated immediately when the class statement runs —
+    // and this script block executes on page load, BEFORE the async
+    // Google Maps <script> tag below has finished loading, so
+    // `google.maps.OverlayView` would not exist yet and defining the
+    // class up here throws "ReferenceError: google is not defined"
+    // before initMap (further down this same file) ever gets defined.
+    let EmojiMarker, TextOverlay;
+
+    function defineMapOverlayClasses() {
+        if (EmojiMarker) return; // already defined (e.g. Refresh Map re-running initMap logic)
+
     /**
      * A polished map pin drawn as a plain DOM overlay positioned by the
      * Google Maps projection — same gradient-filled teardrop, white
@@ -514,7 +529,7 @@
      * google.maps.OverlayView since Google Maps doesn't have a built-in
      * arbitrary-HTML marker like Leaflet's L.divIcon.
      */
-    class EmojiMarker extends google.maps.OverlayView {
+    EmojiMarker = class extends google.maps.OverlayView {
         constructor(lat, lng, emoji, color, opts = {}) {
             super();
             this.lat = lat;
@@ -595,16 +610,10 @@
             if (this.div && this.div.parentNode) this.div.parentNode.removeChild(this.div);
             this.div = null;
         }
-    }
-
-    function emojiOverlay(lat, lng, emoji, color, opts = {}) {
-        const marker = new EmojiMarker(lat, lng, emoji, color, opts);
-        marker.setMap(map);
-        return marker;
-    }
+    };
 
     /** A plain text label (municipality / barangay name) positioned over the map. */
-    class TextOverlay extends google.maps.OverlayView {
+    TextOverlay = class extends google.maps.OverlayView {
         constructor(lat, lng, text, cssClass) {
             super();
             this.lat = lat;
@@ -633,6 +642,13 @@
             if (this.div && this.div.parentNode) this.div.parentNode.removeChild(this.div);
             this.div = null;
         }
+    };
+    } // end defineMapOverlayClasses()
+
+    function emojiOverlay(lat, lng, emoji, color, opts = {}) {
+        const marker = new EmojiMarker(lat, lng, emoji, color, opts);
+        marker.setMap(map);
+        return marker;
     }
 
     function textOverlay(lat, lng, text, cssClass) {
@@ -642,6 +658,8 @@
     }
 
     function initMap() {
+        defineMapOverlayClasses();
+
         map = new google.maps.Map(document.getElementById('map'), {
             center: { lat: 15.8952, lng: 120.6263 },
             zoom: 13,
