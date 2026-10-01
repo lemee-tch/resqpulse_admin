@@ -253,6 +253,21 @@
             background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;
             font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;
         }
+        /* Decline-reason modal — same dropdown pattern as the Residents
+           Verification rejection modal. */
+        .form-label-m { font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 5px; display: block; }
+        .form-control-m {
+            width: 100%; border: 1.5px solid #d1d5db; border-radius: 8px;
+            padding: 9px 13px; font-size: .85rem; font-family: 'Inter', sans-serif;
+            color: #374151; background: #fafafa; transition: border-color .2s;
+        }
+        .form-control-m:focus { outline: none; border-color: #1a3c8f; background: #fff; }
+        .btn-decline-confirm {
+            background: #dc2626; color: #fff; border: none; border-radius: 8px;
+            padding: 9px 22px; font-family: 'Barlow', sans-serif; font-weight: 700;
+            font-size: .88rem; cursor: pointer; transition: background .2s;
+        }
+        .btn-decline-confirm:hover { background: #b91c1c; }
         .declined-reason-note {
             margin-top: 8px; font-size: .8rem; color: #991b1b; font-style: italic;
             background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px;
@@ -591,13 +606,43 @@
                                     <i class="bi bi-check-lg"></i> Approve &amp; Dispatch to Responders
                                 </button>
                             </form>
+                            <button type="button" class="btn-decline" data-bs-toggle="modal" data-bs-target="#declineModal{{ $sos->id }}">
+                                <i class="bi bi-x-lg"></i> Decline
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal fade" id="declineModal{{ $sos->id }}" tabindex="-1">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content" style="border-radius:14px;border:none;">
                             <form action="{{ route('incident.decline', $sos->id) }}" method="POST" class="decline-form"
                                   data-notifies-citizen="{{ $sos->citizen_id ? '1' : '0' }}">
                                 @csrf
-                                <input type="hidden" name="decline_reason" class="decline-reason-input">
-                                <button type="submit" class="btn-decline">
-                                    <i class="bi bi-x-lg"></i> Decline
-                                </button>
+                                <div class="modal-header border-0 pb-0">
+                                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1.1rem;">Decline this SOS alert?</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body pt-3">
+                                    <p style="font-size:.82rem;color:#6b7280;margin-bottom:12px;">
+                                        Responders will NOT be dispatched.
+                                        {{ $sos->citizen_id ? 'The reporter will get a notification with this reason.' : 'This SOS was submitted by a guest, so there is no account to notify.' }}
+                                    </p>
+                                    <label class="form-label-m">Reason for declining</label>
+                                    <select name="decline_reason" class="form-control-m" required>
+                                        <option value="" disabled selected>Select a reason...</option>
+                                        <option value="Duplicate of another report already received">Duplicate of another report already received</option>
+                                        <option value="Spam, prank, or test submission">Spam, prank, or test submission</option>
+                                        <option value="Insufficient details to dispatch responders">Insufficient details to dispatch responders</option>
+                                        <option value="Location is outside Rosales / MDRRMO service area">Location is outside Rosales / MDRRMO service area</option>
+                                        <option value="Unable to verify — no credible evidence of an emergency">Unable to verify — no credible evidence of an emergency</option>
+                                        <option value="Reported by mistake (accidental submission)">Reported by mistake (accidental submission)</option>
+                                    </select>
+                                </div>
+                                <div class="modal-footer border-0 pt-0">
+                                    <button type="submit" class="btn-decline-confirm">Decline Alert</button>
+                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
+                                </div>
                             </form>
                         </div>
                     </div>
@@ -801,41 +846,56 @@
         applyFilters();
     })();
 
-    // Decline confirmation — asks for a short reason (required), which is
-    // both logged to the audit trail and, for a logged-in citizen's SOS,
-    // sent to them as the notification body so they know why. Mirrors the
-    // same pattern used on the regular Incidents "Pending Review" tab.
+    // Decline confirmation — the reason is picked from the dropdown inside
+    // the Bootstrap modal (not free text), same pattern as the Residents
+    // Verification rejection modal. Validates a reason was selected,
+    // closes the modal (firing a SweetAlert while a Bootstrap modal is
+    // still open can cause stacking/focus-trap issues), then asks for one
+    // final confirmation before submitting.
     document.querySelectorAll('.decline-form').forEach(form => {
         form.addEventListener('submit', function (e) {
             e.preventDefault();
+
+            const reasonSelect = form.querySelector('select[name="decline_reason"]');
+            if (!reasonSelect.value) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Reason required',
+                    text: 'Please select a reason for declining before continuing.',
+                    confirmButtonText: 'OK',
+                    confirmButtonColor: '#1a3c8f',
+                });
+                return;
+            }
 
             const notifiesCitizen = form.dataset.notifiesCitizen === '1';
             const notifyLine = notifiesCitizen
                 ? 'The reporter will get a notification with this reason.'
                 : 'This SOS was submitted by a guest, so there is no account to notify.';
 
-            Swal.fire({
-                icon: 'warning',
-                title: 'Decline this SOS alert?',
-                html: `<div style="text-align:left;font-size:.85em;color:#6b7280;margin-bottom:8px;">Declining this SOS alert — responders will NOT be dispatched.<br>${notifyLine}</div>`,
-                input: 'textarea',
-                inputPlaceholder: 'Reason for declining (required)…',
-                inputAttributes: { 'aria-label': 'Reason for declining' },
-                showCancelButton: true,
-                confirmButtonText: 'Decline alert',
-                cancelButtonText: 'Cancel',
-                confirmButtonColor: '#dc2626',
-                inputValidator: (value) => {
-                    if (!value || !value.trim()) {
-                        return 'Please enter a reason.';
-                    }
-                },
-            }).then(result => {
-                if (result.isConfirmed) {
-                    form.querySelector('.decline-reason-input').value = result.value.trim();
-                    form.submit();
-                }
-            });
+            const parentModalEl = form.closest('.modal');
+            const bsModal = parentModalEl ? bootstrap.Modal.getOrCreateInstance(parentModalEl) : null;
+
+            const confirmDecline = () => {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Decline this SOS alert?',
+                    html: `<div style="text-align:left;font-size:.85em;color:#6b7280;">Declining this SOS alert — responders will NOT be dispatched.<br>${notifyLine}</div>`,
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, decline',
+                    cancelButtonText: 'Cancel',
+                    confirmButtonColor: '#dc2626',
+                }).then(result => {
+                    if (result.isConfirmed) form.submit();
+                });
+            };
+
+            if (bsModal && parentModalEl.classList.contains('show')) {
+                parentModalEl.addEventListener('hidden.bs.modal', confirmDecline, { once: true });
+                bsModal.hide();
+            } else {
+                confirmDecline();
+            }
         });
     });
 </script>

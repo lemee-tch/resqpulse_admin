@@ -283,6 +283,13 @@ class IncidentController extends Controller
             // responder feed — dispatchToRespondersForIncident() is also
             // withheld for them, so this is a belt-and-suspenders check.
             ->where('needs_review', false)
+            // Hides an incident only from the one responder who
+            // personally declined it (see decline()/accept() below and
+            // Incident::declinedBy()) — everyone else, same agency or
+            // not, still sees it exactly as before.
+            ->whereDoesntHave('declinedBy', function ($q) use ($responder) {
+                $q->where('responders.id', $responder->id);
+            })
             ->orderByDesc('created_at')
             ->get();
 
@@ -345,6 +352,13 @@ class IncidentController extends Controller
             $incident->responders()->attach($responder->id, ['accepted_at' => now()]);
         }
 
+        // Accepting after an earlier decline (reconsidering, or reached
+        // via a push notification rather than the now-filtered Active
+        // Incidents list) should put this incident back in the
+        // responder's normal feed — not leave a stale decline hiding an
+        // incident they're now actually on.
+        $incident->declinedBy()->detach($responder->id);
+
         // First acceptance (by anyone) moves the incident out of
         // 'pending' — later backup joins don't need to change status
         // again, it's already 'responding'.
@@ -362,8 +376,44 @@ class IncidentController extends Controller
         ]);
     }
 
+    /**
+     * Records that THIS responder, personally, is opting out of this
+     * incident — see the incident_declines migration and
+     * Incident::declinedBy(). It never touches the incident itself (no
+     * status change, no effect on anyone else): assignedToResponder()
+     * above is the only place that reads it, to drop the incident from
+     * this one responder's own Active Incidents feed. Everyone else
+     * (same agency or not) keeps seeing it normally.
+     */
     public function decline(Request $request, Incident $incident)
     {
+        $responder = $request->user();
+
+        if (! $responder instanceof Responder) {
+            return response()->json(['message' => 'Not a responder account.'], 403);
+        }
+
+        // Nothing left to opt out of once it's closed out.
+        if ($incident->status === 'resolved') {
+            return response()->json(['message' => 'This incident has already been resolved.'], 409);
+        }
+
+        // Already on this incident — the app already disables Decline
+        // once joined, so this only guards a stale/racing request from
+        // hiding an incident this responder is actually working.
+        $alreadyJoined = $incident->responders()->where('responder_id', $responder->id)->exists();
+
+        if ($alreadyJoined) {
+            return response()->json(['message' => "You're already responding to this incident."], 409);
+        }
+
+        // syncWithoutDetaching so declining twice (a stale UI retry,
+        // etc.) just refreshes declined_at instead of hitting the
+        // unique(incident_id, responder_id) constraint.
+        $incident->declinedBy()->syncWithoutDetaching([
+            $responder->id => ['declined_at' => now()],
+        ]);
+
         return response()->json(['message' => 'Mission declined.']);
     }
 

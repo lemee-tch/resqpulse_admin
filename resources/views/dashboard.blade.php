@@ -835,6 +835,113 @@ new Chart(document.getElementById('lineChart'), {
 
 // Dashboard preview map — non-interactive, click-through to full Map View
 const dashboardMapIncidents = @json($mapIncidents);
+const boundaryData = @json($boundaryData);
+
+// ── Rosales municipal boundary — same "dim everything outside + solid
+// yellow outline on Rosales" treatment as the full Map View page
+// (mapview.blade.php), scaled down for this small preview. Ring-joining/
+// winding logic is duplicated here rather than shared, since this is
+// just a small inline script on its own Blade page, not a JS module.
+function pointsEqual(a, b) {
+    return Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
+}
+
+function joinSegments(segments) {
+    const segs = segments.map(s => s.slice());
+    const rings = [];
+    while (segs.length) {
+        let ring = segs.shift();
+        let extended = true;
+        while (extended && !pointsEqual(ring[0], ring[ring.length - 1])) {
+            extended = false;
+            for (let i = 0; i < segs.length; i++) {
+                const seg = segs[i];
+                if (pointsEqual(ring[ring.length - 1], seg[0])) { ring = ring.concat(seg.slice(1)); segs.splice(i, 1); extended = true; break; }
+                if (pointsEqual(ring[ring.length - 1], seg[seg.length - 1])) { ring = ring.concat(seg.slice(0, -1).reverse()); segs.splice(i, 1); extended = true; break; }
+                if (pointsEqual(ring[0], seg[seg.length - 1])) { ring = seg.slice(0, -1).concat(ring); segs.splice(i, 1); extended = true; break; }
+                if (pointsEqual(ring[0], seg[0])) { ring = seg.slice(1).reverse().concat(ring); segs.splice(i, 1); extended = true; break; }
+            }
+        }
+        rings.push(ring);
+    }
+    return rings;
+}
+
+function ringsFromRelation(el) {
+    if (!el.members) return [];
+    const segs = el.members
+        .filter(m => m.type === 'way' && m.geometry && (m.role === 'outer' || m.role === ''))
+        .map(m => m.geometry.map(pt => [pt.lat, pt.lon]));
+    if (!segs.length) return [];
+    return joinSegments(segs).filter(r => r.length >= 3);
+}
+
+// Signed area (shoelace) — normalizes ring winding so the "dim outside"
+// polygon (a world rectangle with Rosales cut out as a hole) renders
+// correctly; Google Maps treats an additional path as a hole only when
+// it winds opposite the first (outer) path.
+function signedArea(ring) {
+    let sum = 0;
+    for (let i = 0; i < ring.length - 1; i++) {
+        const [y1, x1] = ring[i];
+        const [y2, x2] = ring[i + 1];
+        sum += (x1 * y2 - x2 * y1);
+    }
+    return sum / 2;
+}
+
+function ringWithWinding(ring, wantPositive) {
+    const positive = signedArea(ring) > 0;
+    return positive === wantPositive ? ring : ring.slice().reverse();
+}
+
+function toLatLngPath(ring) {
+    return ring.map(([lat, lng]) => ({ lat, lng }));
+}
+
+function renderDashboardBoundary(map) {
+    const relations = (boundaryData.elements || []).filter(
+        el => el.type === 'relation' && el.tags && el.tags.admin_level === '8'
+    );
+
+    relations.forEach(el => {
+        const rings = ringsFromRelation(el);
+        if (!rings.length) return;
+
+        // Same sparse-geometry guard as Map View — a real municipal
+        // boundary has hundreds of vertices; anything less almost
+        // certainly means the Overpass fetch matched the wrong place
+        // or came back incomplete, so skip drawing rather than show a
+        // bogus shape.
+        const totalPts = rings.reduce((sum, r) => sum + r.length, 0);
+        if (totalPts < 100) return;
+
+        const worldRingRaw = [[-85, -180], [85, -180], [85, 180], [-85, 180]];
+        const worldRing = ringWithWinding(worldRingRaw, true);
+        const holeRings = rings.map(r => ringWithWinding(r, false));
+
+        new google.maps.Polygon({
+            paths: [toLatLngPath(worldRing), ...holeRings.map(toLatLngPath)],
+            strokeOpacity: 0,
+            fillColor: '#0b1f4d',
+            fillOpacity: 0.45,
+            clickable: false,
+            map,
+        });
+
+        rings.forEach(ring => {
+            new google.maps.Polygon({
+                paths: toLatLngPath(ring),
+                strokeColor: '#ffcc00',
+                strokeWeight: 2,
+                strokeOpacity: 1,
+                fillOpacity: 0,
+                clickable: false,
+                map,
+            });
+        });
+    });
+}
 
 function initDashboardMap() {
     const rosalesCenter = { lat: 15.8952, lng: 120.6263 };
@@ -847,6 +954,8 @@ function initDashboardMap() {
         keyboardShortcuts: false,
         clickableIcons: false,
     });
+
+    renderDashboardBoundary(map);
 
     const statusColor = { pending: '#92400e', responding: '#1e40af', acknowledged: '#1e40af' };
     const typeEmoji = {

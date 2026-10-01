@@ -62,6 +62,27 @@ class Incident extends Model
     }
 
     /**
+     * Responders who have personally declined this incident — see the
+     * incident_declines migration. A decline only ever means "not me":
+     * it never changes the incident for anyone else, so this is a
+     * separate table rather than another flag on `responders()` above,
+     * which would corrupt every place that reads that relation as
+     * "who's actually responding" (the "Responding Team" list, the
+     * "X Responding" badge, etc. on both apps).
+     *
+     * IncidentController::assignedToResponder() uses this to drop an
+     * incident from the declining responder's own Active Incidents feed
+     * — see decline()/accept() there for how rows here are written and
+     * cleared.
+     */
+    public function declinedBy()
+    {
+        return $this->belongsToMany(Responder::class, 'incident_declines')
+            ->withPivot('declined_at')
+            ->withTimestamps();
+    }
+
+    /**
      * "SOS Alert — Accident", "SOS Alert — Fire", etc. — what admins and
      * responders actually want to see instead of a bare "SOS Emergency"
      * label, once the citizen has picked a hazard type on the SOS screen

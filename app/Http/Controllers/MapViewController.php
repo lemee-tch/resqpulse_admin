@@ -4,14 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Incident;
 use App\Models\EvacuationCenter;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use App\Services\RosalesBoundaryService;
 
 class MapViewController extends Controller
 {
-    public function index()
+    public function index(RosalesBoundaryService $boundaryService)
     {
         // Resolved incidents disappear from the map 24h after their last
         // update (i.e. 24h after being marked resolved). Everything else
@@ -39,7 +36,11 @@ class MapViewController extends Controller
         $evacCenters = EvacuationCenter::select('id', 'name', 'barangay', 'latitude', 'longitude', 'capacity', 'occupancy', 'status')
             ->get();
 
-        $boundaryData = self::getBoundaryData();
+        // Fetch/cache now lives in RosalesBoundaryService — shared with
+        // AuthController::dashboard(), which draws the same boundary
+        // highlight on the Dashboard's small preview map. Either page
+        // visited first populates the one 30-day cache entry for both.
+        $boundaryData = $boundaryService->getBoundaryData();
 
         return view('mapview', [
             'incidents' => $incidents,
@@ -49,120 +50,15 @@ class MapViewController extends Controller
     }
 
     /**
-     * Shared cache entry for the Rosales municipal boundary — used by
-     * this full map page AND by the small per-incident location maps on
-     * incident-details/sos-details (see IncidentController::show()/
-     * sosShow()), so those get the same "Rosales highlighted, everything
-     * else dimmed" treatment without a second Overpass fetch. Public +
-     * static so it's callable from another controller without
-     * instantiating this one.
-     */
-    public static function getBoundaryData(): array
-    {
-        return Cache::remember('rosales_boundary_and_barangays', now()->addDays(30), function () {
-            return (new self)->fetchBoundaryData();
-        });
-    }
-
-    /**
      * Manual refresh — clears the cache so the next page load re-fetches.
      * There's no CLI/cron access, so this is the only way to force an
      * update (e.g. if OpenStreetMap adds a missing barangay boundary).
      */
-    public function refreshBoundaries()
+    public function refreshBoundaries(RosalesBoundaryService $boundaryService)
     {
-        Cache::forget('rosales_boundary_and_barangays');
+        $boundaryService->refresh();
 
         return redirect()->route('mapview')
             ->with('success', 'Boundary and barangay data refreshed from OpenStreetMap.');
-    }
-
-    /**
-     * Fetches both the Rosales municipal boundary (admin_level 8, one
-     * relation) and every barangay inside it (admin_level 10 — used only
-     * for name + centroid label; no per-barangay borders are drawn) in a
-     * single Overpass query. Tries a couple of public mirrors since the
-     * main overpass-api.de endpoint is sometimes rate-limited.
-     */
-    private function fetchBoundaryData(): array
-    {
-        // A generous bounding box around Rosales, Pangasinan. Without this,
-        // the name-only filter below can match a completely unrelated
-        // "Rosales" admin boundary anywhere in the world (there are several
-        // — e.g. in Mexico and Spain) and silently return a tiny, wrong
-        // polygon instead of failing loudly.
-        $bbox = '15.78,120.52,16.02,120.75';
-
-        $query = '[out:json][timeout:90];'
-            . 'area["name"="Rosales"]["boundary"="administrative"]["admin_level"="8"](' . $bbox . ')->.a;'
-            . '('
-            . 'relation["boundary"="administrative"]["admin_level"="8"]["name"="Rosales"](' . $bbox . ');'
-            . 'relation["admin_level"="10"](area.a);'
-            . ');'
-            . 'out geom;';
-
-        $endpoints = [
-            'https://overpass-api.de/api/interpreter',
-            'https://overpass.kumi.systems/api/interpreter',
-            'https://lz4.overpass-api.de/api/interpreter',
-        ];
-
-        foreach ($endpoints as $url) {
-            try {
-                $response = Http::timeout(90)->asForm()->post($url, ['data' => $query]);
-
-                if ($response->successful()) {
-                    $data = $response->json() ?? ['elements' => []];
-
-                    // A real municipal boundary has hundreds of vertices at
-                    // minimum. If every level-8 relation we got back is this
-                    // sparse, the name-only match almost certainly grabbed
-                    // the wrong "Rosales" (or an incomplete one) — treat it
-                    // as a failed fetch and let the next endpoint (or the
-                    // empty-elements fallback) take over rather than caching
-                    // 30 days of a broken boundary.
-                    if ($this->hasUsableMunicipalBoundary($data)) {
-                        return $data;
-                    }
-
-                    Log::warning('Overpass boundary fetch returned a suspiciously sparse Rosales geometry', ['url' => $url]);
-                    continue;
-                }
-
-                Log::warning('Overpass boundary fetch failed', ['url' => $url, 'status' => $response->status()]);
-            } catch (\Throwable $e) {
-                Log::warning('Overpass boundary fetch threw an exception', ['url' => $url, 'error' => $e->getMessage()]);
-            }
-        }
-
-        return ['elements' => []];
-    }
-
-    /**
-     * Sanity check on the level-8 (municipal) relation before we trust and
-     * cache it. Rosales is a real, moderately large municipality — its
-     * boundary should have a non-trivial number of way members and total
-     * vertices. A handful of members/points means the query almost
-     * certainly matched the wrong "Rosales" or got truncated data.
-     */
-    private function hasUsableMunicipalBoundary(array $data): bool
-    {
-        foreach (($data['elements'] ?? []) as $el) {
-            if (($el['type'] ?? null) !== 'relation' || ($el['tags']['admin_level'] ?? null) !== '8') {
-                continue;
-            }
-
-            $members = $el['members'] ?? [];
-            $pointCount = 0;
-            foreach ($members as $member) {
-                $pointCount += count($member['geometry'] ?? []);
-            }
-
-            if (count($members) >= 4 && $pointCount >= 100) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\PasswordResetOtp;
 use App\Models\User;
 use App\Services\AuditLogService;
-use App\Services\BarangayLocationService;
+use App\Services\RosalesBoundaryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -117,7 +117,7 @@ class AuthController extends Controller
         return redirect()->route('login')->with('success', 'Password reset successful. Please log in.');
     }
 
-    public function dashboard()
+    public function dashboard(RosalesBoundaryService $boundaryService)
     {
         $recentAlerts = \App\Models\Alert::where('created_at', '>=', now()->subDays(3))
             ->orderByDesc('created_at')->take(5)->get();
@@ -187,10 +187,17 @@ class AuthController extends Controller
             return [$date->format('M d') => \App\Models\Incident::whereDate('created_at', $date->toDateString())->count()];
         });
 
+        // Same Rosales municipal boundary used on the Map View page — lets
+        // this preview map draw the same "dim outside Rosales + yellow
+        // outline" highlight instead of a plain, unmarked basemap. Shares
+        // Map View's 30-day cache entry (RosalesBoundaryService), so
+        // whichever page is visited first populates it for both.
+        $boundaryData = $boundaryService->getBoundaryData();
+
         return view('dashboard', compact(
             'recentAlerts', 'totalIncidents', 'incidentsToday', 'criticalIncidents',
             'respondingIncidents', 'resolvedIncidents', 'reportsByType', 'recentIncidents',
-            'mapIncidents', 'trendWeek'
+            'mapIncidents', 'trendWeek', 'boundaryData'
         ));
     }
     public function incident()
@@ -218,16 +225,8 @@ class AuthController extends Controller
     public function reportsAnalytics(Request $request)
     {
         $validated = $request->validate([
-            'from'     => ['nullable', 'date'],
-            'to'       => ['nullable', 'date', 'after_or_equal:from'],
-            // Free string, not in:<list> — location is free-typed text (a
-            // citizen's address, or resolved via BarangayLocationService),
-            // never a clean single column, so this is matched with LIKE
-            // below rather than an exact column match. Validating against
-            // the fixed barangay list would reject that same LIKE match
-            // for no reason, since the dropdown already only ever sends a
-            // name from that list.
-            'barangay' => ['nullable', 'string', 'max:255'],
+            'from' => ['nullable', 'date'],
+            'to'   => ['nullable', 'date', 'after_or_equal:from'],
         ]);
 
         // Default: last 30 days ending today. The date range at the top
@@ -241,12 +240,6 @@ class AuthController extends Controller
             ? \Carbon\Carbon::parse($validated['from'])->startOfDay()
             : now()->subDays(29)->startOfDay();
 
-        // Empty string (the dropdown's "All barangays" option) normalizes
-        // to null so every `when($barangay, ...)` below cleanly skips the
-        // filter instead of matching location LIKE '%%' (i.e. everything,
-        // but for the wrong conceptual reason).
-        $barangay = ($validated['barangay'] ?? null) ?: null;
-
         // Previous period of equal length, immediately before $fromDate —
         // this is what makes the trend arrows real instead of the
         // hardcoded "+12%" / "+5%" that never moved no matter what the
@@ -255,31 +248,17 @@ class AuthController extends Controller
         $prevToDate = $fromDate->copy()->subSecond();
         $prevFromDate = $prevToDate->copy()->subDays($periodLengthDays - 1)->startOfDay();
 
-        // Barangay filter applies only to the stat cards and the two
-        // breakdowns below (Incidents by Type / by Location) — matching
-        // the page's own panel-sub copy, which already scopes "Incidents
-        // over Time" independently of the date range; the barangay filter
-        // follows that same boundary rather than reaching into the trend
-        // chart's own Week/Month/Year windows too.
-        $totalIncidents = \App\Models\Incident::whereBetween('created_at', [$fromDate, $toDate])
-            ->when($barangay, fn ($q) => $q->where('location', 'like', "%{$barangay}%"))
-            ->count();
+        $totalIncidents = \App\Models\Incident::whereBetween('created_at', [$fromDate, $toDate])->count();
         $resolvedIncidents = \App\Models\Incident::whereBetween('created_at', [$fromDate, $toDate])
-            ->where('status', 'resolved')
-            ->when($barangay, fn ($q) => $q->where('location', 'like', "%{$barangay}%"))
-            ->count();
+            ->where('status', 'resolved')->count();
         $resolutionRate = $totalIncidents > 0 ? round($resolvedIncidents / $totalIncidents * 100) : 0;
-        $avgResponseMinutes = $this->averageResponseMinutes($fromDate, $toDate, $barangay);
+        $avgResponseMinutes = $this->averageResponseMinutes($fromDate, $toDate);
 
-        $prevTotal = \App\Models\Incident::whereBetween('created_at', [$prevFromDate, $prevToDate])
-            ->when($barangay, fn ($q) => $q->where('location', 'like', "%{$barangay}%"))
-            ->count();
+        $prevTotal = \App\Models\Incident::whereBetween('created_at', [$prevFromDate, $prevToDate])->count();
         $prevResolved = \App\Models\Incident::whereBetween('created_at', [$prevFromDate, $prevToDate])
-            ->where('status', 'resolved')
-            ->when($barangay, fn ($q) => $q->where('location', 'like', "%{$barangay}%"))
-            ->count();
+            ->where('status', 'resolved')->count();
         $prevResolutionRate = $prevTotal > 0 ? round($prevResolved / $prevTotal * 100) : 0;
-        $prevAvgResponseMinutes = $this->averageResponseMinutes($prevFromDate, $prevToDate, $barangay);
+        $prevAvgResponseMinutes = $this->averageResponseMinutes($prevFromDate, $prevToDate);
 
         $totalTrend = $this->percentChange($prevTotal, $totalIncidents);
         $resolvedTrend = $this->percentChange($prevResolved, $resolvedIncidents);
@@ -324,7 +303,6 @@ class AuthController extends Controller
                 COUNT(*) as total
             ")
             ->whereBetween('created_at', [$fromDate, $toDate])
-            ->when($barangay, fn ($q) => $q->where('location', 'like', "%{$barangay}%"))
             ->groupBy('type')
             ->orderByDesc('total')
             ->pluck('total', 'type');
@@ -347,14 +325,12 @@ class AuthController extends Controller
             ")
             ->whereBetween('created_at', [$fromDate, $toDate])
             ->where('status', 'pending')
-            ->when($barangay, fn ($q) => $q->where('location', 'like', "%{$barangay}%"))
             ->groupBy('type')
             ->pluck('total', 'type');
 
         $reportsByLocation = \App\Models\Incident::selectRaw('location, COUNT(*) as total')
             ->whereNotNull('location')
             ->whereBetween('created_at', [$fromDate, $toDate])
-            ->when($barangay, fn ($q) => $q->where('location', 'like', "%{$barangay}%"))
             ->groupBy('location')
             ->orderByDesc('total')
             ->take(5)
@@ -382,23 +358,12 @@ class AuthController extends Controller
                 ->count()];
         });
 
-        // report-analytics.blade.php's barangay filter dropdown expects
-        // this as a view variable rather than defining it inline, which is
-        // what was missing and threw "Undefined variable $barangayList" in
-        // production. Sourced from BarangayLocationService::names() — the
-        // single source of truth for the 37-barangay list — rather than
-        // yet another hardcoded copy (evacuation.blade.php, incident.blade.php
-        // and evacuation-log.blade.php each already have their own; that
-        // kind of duplication is exactly how this view ended up with no
-        // list to work from in the first place).
-        $barangayList = BarangayLocationService::names();
-
         return view('report-analytics', compact(
             'totalIncidents', 'resolvedIncidents', 'resolutionRate', 'avgResponseMinutes',
             'totalTrend', 'resolvedTrend', 'resolutionRateTrend', 'responseTimeTrend',
             'reportsByType', 'reportsByTypePending', 'reportsByLocation',
             'trendWeek', 'trendMonth', 'trendYear',
-            'fromDate', 'toDate', 'barangayList', 'barangay'
+            'fromDate', 'toDate'
         ));
     }
 
@@ -428,9 +393,8 @@ class AuthController extends Controller
     public function exportReport(Request $request)
     {
         $validated = $request->validate([
-            'from'     => ['nullable', 'date'],
-            'to'       => ['nullable', 'date', 'after_or_equal:from'],
-            'barangay' => ['nullable', 'string', 'max:255'],
+            'from' => ['nullable', 'date'],
+            'to'   => ['nullable', 'date', 'after_or_equal:from'],
         ]);
 
         $toDate = isset($validated['to'])
@@ -439,16 +403,9 @@ class AuthController extends Controller
         $fromDate = isset($validated['from'])
             ? \Carbon\Carbon::parse($validated['from'])->startOfDay()
             : now()->subDays(29)->startOfDay();
-        // The export link on report-analytics.blade.php always carries
-        // forward whatever barangay filter is currently applied on
-        // screen — without reapplying it here, Export would silently
-        // dump every barangay's incidents regardless of what the page
-        // in front of the admin is actually showing.
-        $barangay = ($validated['barangay'] ?? null) ?: null;
 
         $incidents = \App\Models\Incident::with('citizen')
             ->whereBetween('created_at', [$fromDate, $toDate])
-            ->when($barangay, fn ($q) => $q->where('location', 'like', "%{$barangay}%"))
             ->orderBy('created_at')
             ->get();
 
@@ -521,20 +478,13 @@ class AuthController extends Controller
      * — it used to be a hardcoded "18m" with no query behind it at all.
      * Returns null (not 0) when nothing in range has been accepted yet,
      * so the view can show "—" instead of a misleading "0m".
-     *
-     * $barangay optionally scopes this to incidents.location LIKE
-     * %barangay%, matching the Reports & Analytics barangay filter —
-     * reportsAnalytics() passes it through so "Response Time (Avg)" stays
-     * in sync with the other stat cards instead of staying municipality-
-     * wide while everything else around it narrows to one barangay.
      */
-    private function averageResponseMinutes($from, $to, ?string $barangay = null): ?int
+    private function averageResponseMinutes($from, $to): ?int
     {
         $avg = \Illuminate\Support\Facades\DB::table('incident_responder')
             ->join('incidents', 'incidents.id', '=', 'incident_responder.incident_id')
             ->whereBetween('incidents.created_at', [$from, $to])
             ->whereNotNull('incident_responder.accepted_at')
-            ->when($barangay, fn ($q) => $q->where('incidents.location', 'like', "%{$barangay}%"))
             ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, incidents.created_at, incident_responder.accepted_at)) as avg_minutes')
             ->value('avg_minutes');
 
