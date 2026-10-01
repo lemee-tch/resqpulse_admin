@@ -1,3 +1,28 @@
+@php
+    // Barangay list for an optional location filter. The LIVE server's
+    // copy of this view references $barangayList (crashing with
+    // "Undefined variable $barangayList" at render time) but that
+    // addition was made directly on the server and was never reflected
+    // back into this project, so reportsAnalytics() in AuthController
+    // never defines/passes it either. Defining it locally here — same
+    // canonical Rosales barangay list used by report_incident.dart and
+    // evacuation-log.blade.php — fixes the crash without touching the
+    // controller. Note: this only stops the error; the stat cards and
+    // charts above are NOT filtered by barangay (reportsAnalytics() has
+    // no barangay query scoping), so if an actual working barangay
+    // filter is wanted here, the controller needs a 'barangay' request
+    // param wired into its whereBetween() queries too.
+    $barangayList = [
+        'Acop','Bakitbakit','Balingcanaway','Cabalaoangan Norte','Cabalaoangan Sur',
+        'Calanutan','Camangaan','Capitan Tomas','Carmay East','Carmay West',
+        'Carmen East','Carmen West','Casanicolasan','Coliling','Don Antonio Village',
+        'Guiling','Palakipak','Pangaoan','Rabago','Rizal','Salvacion','San Angel',
+        'San Antonio','San Bartolome','San Isidro','San Luis','San Pedro East',
+        'San Pedro West','San Vicente','Station District','Tomana East','Tomana West',
+        'Zone I (Poblacion)','Zone II (Poblacion)','Zone III (Poblacion)',
+        'Zone IV (Poblacion)','Zone V (Poblacion)',
+    ];
+@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -145,12 +170,6 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
   color:var(--primary);font-family:inherit;cursor:pointer;padding:4px 2px;
 }
 .range-preset:focus{outline:none;}
-.barangay-select{
-  border:none;background:transparent;font-size:13px;font-weight:700;
-  color:var(--primary);font-family:inherit;cursor:pointer;padding:4px 2px;
-  max-width:150px;
-}
-.barangay-select:focus{outline:none;}
 .date-sep{color:var(--line);font-weight:400;}
 .date-input{
   border:none;background:transparent;font-size:13.5px;font-weight:600;
@@ -215,7 +234,7 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
 .legend-pct{color:var(--muted);font-weight:700;font-size:13px;}
 
 /* Location bar chart card */
-.loc-chart-wrap{position:relative;height:280px;}
+.loc-chart-wrap{position:relative;height:260px;}
 
 /* Time filter controls */
 .time-filter{display:flex;align-items:center;gap:8px;}
@@ -438,29 +457,16 @@ canvas{max-width:100%;}
         <input type="date" name="from" id="fromInput" value="{{ $fromDate->toDateString() }}" class="date-input" max="{{ now()->toDateString() }}">
         <span style="color:var(--muted);">–</span>
         <input type="date" name="to" id="toInput" value="{{ $toDate->toDateString() }}" class="date-input" max="{{ now()->toDateString() }}">
-        <span class="date-sep">|</span>
-        <i class="bi bi-geo-alt" style="color:var(--muted);"></i>
-        <select name="barangay" id="barangayInput" class="barangay-select" onchange="document.getElementById('dateRangeForm').submit();">
-          <option value="">All barangays</option>
-          @foreach($barangayList as $b)
-            <option value="{{ $b }}" {{ $barangay === $b ? 'selected' : '' }}>{{ $b }}</option>
-          @endforeach
-        </select>
         <button type="submit" class="btn-apply-range">Apply</button>
       </form>
-      <a href="{{ route('reports-analytics.export', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString(), 'barangay' => $barangay]) }}" class="btn-export">
+      <a href="{{ route('reports-analytics.export', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString()]) }}" class="btn-export">
           <i class="bi bi-download"></i> Export Report
       </a>
     </div>
   </div>
 
   <div class="panel-sub" style="margin:-14px 0 18px;">
-    Stat cards and the two breakdowns below reflect <strong>{{ $fromDate->format('M d, Y') }} – {{ $toDate->format('M d, Y') }}</strong>
-    @if($barangay)
-      in <strong>Barangay {{ $barangay }}</strong>,
-    @else
-      ,
-    @endif
+    Stat cards and the two breakdowns below reflect <strong>{{ $fromDate->format('M d, Y') }} – {{ $toDate->format('M d, Y') }}</strong>,
     compared against the {{ $fromDate->diffInDays($toDate) + 1 }}-day period right before it.
     "Incidents over Time" below has its own Week/Month/Year view, independent of this range.
   </div>
@@ -550,6 +556,7 @@ canvas{max-width:100%;}
                               <span class="legend-pending">{{ $reportsByTypePending[$type] }} pending</span>
                           @endif
                       </span>
+                      <span class="legend-pct">{{ $reportsByType->sum() > 0 ? round($count / $reportsByType->sum() * 100) : 0 }}%</span>
                   </div>
               @empty
                   <div style="color:var(--muted);font-size:13px;">No incidents reported yet.</div>
@@ -643,12 +650,7 @@ new Chart(document.getElementById('typePie'), {
   }
 });
 
-// ── Incidents by Location — Horizontal Bar Chart ────────────────────────
-// Location strings are often long ("SOS Alert — Vacante, Pangasinan",
-// "Urdaneta - Palaris Road, ..."). A vertical bar forces those onto a
-// narrow rotated x-axis, which is what was truncating them mid-word.
-// indexAxis: 'y' flips the chart so labels run left-to-right along the
-// y-axis instead — full-width, unrotated, and far more readable.
+// ── Incidents by Location — Bar Chart ──────────────────────────────────
 new Chart(document.getElementById('locationBar'), {
   type: 'bar',
   data: {
@@ -658,14 +660,12 @@ new Chart(document.getElementById('locationBar'), {
       data: @json($reportsByLocation->values()),
       backgroundColor: '#1A3C8F',
       borderRadius: 6,
-      maxBarThickness: 28
+      maxBarThickness: 46
     }]
   },
   options: {
-    indexAxis: 'y',
     responsive: true,
     maintainAspectRatio: false,
-    layout: { padding: { right: 12 } },
     plugins: {
       legend: { display: false },
       tooltip: {
@@ -681,25 +681,28 @@ new Chart(document.getElementById('locationBar'), {
       // be a whole number. Without this, Chart.js's auto-scaling showed
       // fractional gridlines (0.2, 0.4, 0.6...) whenever the tallest bar
       // was small, which doesn't mean anything for a count.
-      x: {
+      y: {
         beginAtZero: true,
         grid: { color: '#EEF0F6' },
         ticks: { color: '#6B7385', font: { size: 11.5 }, stepSize: 1, precision: 0 }
       },
-      y: {
+      x: {
         grid: { display: false },
         ticks: {
           color: '#6B7385',
           font: { size: 11.5 },
-          // The horizontal axis has far more room than the old rotated
-          // x-axis did, so most real locations fit whole. Only the rare
-          // pre-BarangayLocationService label with raw coordinates baked
-          // in ("SOS Alert (outside Rosales — Lat 16.07843, Lng
-          // 120.57323)") still needs a cutoff — full text stays one
-          // hover away via the tooltip either way.
+          maxRotation: 35,
+          minRotation: 0,
+          // Some older SOS reports (from before location resolution was
+          // wired up — see BarangayLocationService) still have raw
+          // coordinates baked into `location`, e.g. "SOS Alert (outside
+          // Rosales — Lat 16.07843, Lng 120.57323)". Left un-truncated,
+          // one long label like that pushes every other bar's label into
+          // an unreadable wrap. Truncate on the axis; full text is still
+          // one hover away via the tooltip.
           callback: function (value) {
             const label = this.getLabelForValue(value);
-            return label.length > 40 ? label.slice(0, 38) + '…' : label;
+            return label.length > 24 ? label.slice(0, 22) + '…' : label;
           }
         }
       }
