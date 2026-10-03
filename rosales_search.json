@@ -1,0 +1,74 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-10-03T07:59:35Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "relation",
+  "id": 13621965,
+  "tags": {
+    "addr:province": "Pangasinan",
+    "addr:street": "Bonifacio Street",
+    "addr:town": "Rosales",
+    "addr:village": "Zone Ⅰ",
+    "amenity": "school",
+    "isced:level": "0-1",
+    "name": "Rosales South Central School",
+    "operator": "Rosales I District of Pangasinan II, Binalonan Schools Division, DepEd",
+    "operator:type": "public",
+    "population:pupils:2012": "983",
+    "population:pupils:2015": "1124",
+    "ref": "101883",
+    "source": "Department of Education, Philippines",
+    "source:date": "2012",
+    "start_date": "1928",
+    "type": "multipolygon"
+  }
+},
+{
+  "type": "relation",
+  "id": 14503478,
+  "tags": {
+    "landuse": "cemetery",
+    "name": "Rosales Cemetery",
+    "type": "multipolygon"
+  }
+},
+{
+  "type": "relation",
+  "id": 16054118,
+  "tags": {
+    "admin_level": "6",
+    "boundary": "administrative",
+    "is_in:state": "Pangasinan",
+    "name": "Rosales",
+    "name:ko": "로살레스",
+    "postal_code": "2441",
+    "type": "boundary",
+    "wikidata": "Q42024",
+    "wikipedia": "en:Rosales, Pangasinan"
+  }
+},
+{
+  "type": "relation",
+  "id": 18378614,
+  "tags": {
+    "addr:city": "Rosales",
+    "addr:postcode": "2441",
+    "addr:street": "MacArthur Highway",
+    "landuse": "retail",
+    "name": "SM City Rosales",
+    "operator": "SM Supermalls",
+    "operator:wikidata": "Q7391510",
+    "shop": "mall",
+    "type": "multipolygon",
+    "wikipedia": "en:SM City Rosales"
+  }
+}
+
+  ]
+}

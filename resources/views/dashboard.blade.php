@@ -900,8 +900,12 @@ function toLatLngPath(ring) {
 }
 
 function renderDashboardBoundary(map) {
+    // admin_level=6, not 8 — Philippine municipalities are tagged at
+    // level 6 in OSM. This filter matched nothing until the shared
+    // RosalesBoundaryService query (and this check) were both fixed to
+    // expect level 6 instead.
     const relations = (boundaryData.elements || []).filter(
-        el => el.type === 'relation' && el.tags && el.tags.admin_level === '8'
+        el => el.type === 'relation' && el.tags && el.tags.admin_level === '6'
     );
 
     relations.forEach(el => {
@@ -935,7 +939,13 @@ function renderDashboardBoundary(map) {
                 strokeColor: '#ffcc00',
                 strokeWeight: 2,
                 strokeOpacity: 1,
-                fillOpacity: 0,
+                // Same gold wash as the full Map View page's highlight,
+                // so this preview reads as the same place at a glance
+                // instead of using a different treatment (plain
+                // outline, no fill) for what's meant to be the same
+                // highlight.
+                fillColor: '#ffcc00',
+                fillOpacity: 0.18,
                 clickable: false,
                 map,
             });

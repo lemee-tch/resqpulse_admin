@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Incident;
 use App\Models\EvacuationCenter;
+use App\Services\BarangayLocationService;
 use App\Services\RosalesBoundaryService;
 
 class MapViewController extends Controller
@@ -42,23 +43,32 @@ class MapViewController extends Controller
         // visited first populates the one 30-day cache entry for both.
         $boundaryData = $boundaryService->getBoundaryData();
 
+        // Barangay name labels — NOT from OpenStreetMap (it has no
+        // barangay-level boundaries mapped for Rosales at all), but from
+        // this app's own verified centroid table, already relied on
+        // elsewhere for geocoding fallback. See BarangayLocationService.
+        $barangays = BarangayLocationService::allCoordinates();
+
         return view('mapview', [
             'incidents' => $incidents,
             'evacCenters' => $evacCenters,
             'boundaryData' => $boundaryData,
+            'barangays' => $barangays,
         ]);
     }
 
     /**
      * Manual refresh — clears the cache so the next page load re-fetches.
      * There's no CLI/cron access, so this is the only way to force an
-     * update (e.g. if OpenStreetMap adds a missing barangay boundary).
+     * update (e.g. if OpenStreetMap's copy of the municipal boundary
+     * itself changes). Barangay labels aren't affected by this — they
+     * come from BarangayLocationService's own static table, not Overpass.
      */
     public function refreshBoundaries(RosalesBoundaryService $boundaryService)
     {
         $boundaryService->refresh();
 
         return redirect()->route('mapview')
-            ->with('success', 'Boundary and barangay data refreshed from OpenStreetMap.');
+            ->with('success', 'Boundary data refreshed from OpenStreetMap.');
     }
 }

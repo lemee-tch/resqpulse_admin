@@ -90,6 +90,23 @@ class BarangayLocationService
     }
 
     /**
+     * Full name => [lat, lng] centroid map for every barangay — for
+     * anything that needs to actually PLACE them on a map (the Map
+     * View's barangay labels), not just list their names (see names()
+     * above). Centroids only — there's no per-barangay border geometry
+     * anywhere in this app, and none is available from OpenStreetMap
+     * either: confirmed via a direct Overpass query scoped to Rosales'
+     * real municipal relation that it has zero barangay-level
+     * administrative boundaries mapped there at all. A label pinned at
+     * this centroid is the best available placement, standing in for a
+     * sub-boundary outline that simply doesn't exist yet in OSM.
+     */
+    public static function allCoordinates(): array
+    {
+        return self::BARANGAY_COORDINATES;
+    }
+
+    /**
      * Resolves a GPS pin to a real, human-readable location string.
      * Order of precedence:
      *   1. Google Geocoding reverse lookup (actual street/area/barangay name)

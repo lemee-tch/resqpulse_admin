@@ -452,6 +452,11 @@
     const incidentsData = @json($incidents);
     const evacCentersData = @json($evacCenters);
     const boundaryData = @json($boundaryData);
+    // Barangay name + centroid for every barangay — NOT from
+    // OpenStreetMap (Rosales has zero barangay-level boundaries mapped
+    // there at all), but from this app's own verified coordinate table.
+    // See BarangayLocationService::allCoordinates().
+    const barangaysData = @json($barangays);
 
     const typeIconMap = {
         fire:     { emoji: '🔥' },
@@ -775,13 +780,13 @@
             const name = (el.tags && (el.tags.name || el.tags['name:en'])) || 'Unnamed';
             const rings = ringsFromRelation(el);
 
-            if (level === '8') {
-                debugParts.push(`level-8 "${name}": ${el.members ? el.members.length : 0} members → ${rings.length} ring(s), ${rings[0] ? rings[0].length : 0} pts`);
+            if (level === '6') {
+                debugParts.push(`level-6 "${name}": ${el.members ? el.members.length : 0} members → ${rings.length} ring(s), ${rings[0] ? rings[0].length : 0} pts`);
             }
 
             if (!rings.length) return;
 
-            if (level === '8') {
+            if (level === '6') {
                 const totalPts = rings.reduce((sum, r) => sum + r.length, 0);
 
                 // A real municipal boundary has hundreds of vertices. If what
@@ -789,7 +794,7 @@
                 // the wrong place (or got cut off) — don't draw a bogus
                 // shape, just say so.
                 if (totalPts < 100) {
-                    debugParts.push(`level-8 "${name}" REJECTED: only ${totalPts} pts total (looks wrong) — try Refresh Map`);
+                    debugParts.push(`level-6 "${name}" REJECTED: only ${totalPts} pts total (looks wrong) — try Refresh Map`);
                     return;
                 }
 
@@ -818,8 +823,7 @@
                 boundaryOverlays.push(dimPolygon);
 
                 // Crisp solid outline right on the municipal boundary — this
-                // is the "highlight" line, no fill inside so Rosales itself
-                // stays at normal map brightness.
+                // is the "highlight" line.
                 rings.forEach(ring => {
                     const outline = new google.maps.Polygon({
                         paths: toLatLngPath(ring),
@@ -848,13 +852,24 @@
                 const label = textOverlay(clat, clon, name, 'municipality');
                 if (!layerVisible.boundary) label.setMap(null);
                 boundaryOverlays.push(label);
-            } else if (level === '10') {
-                barangayCount++;
-                const [clat, clon] = centroidOf(rings[0]);
-                const label = textOverlay(clat, clon, name, 'barangay');
-                if (!layerVisible.boundary) label.setMap(null);
-                boundaryOverlays.push(label);
             }
+        });
+
+        // Barangay labels: NOT drawn from the Overpass relations above —
+        // OpenStreetMap has no barangay-level administrative boundaries
+        // mapped for Rosales at all (confirmed empty against the
+        // municipality's real relation), so this used to be dead code
+        // that could never fire. These come from the app's own verified
+        // centroid table instead (barangaysData, from
+        // BarangayLocationService::allCoordinates()) and render
+        // regardless of whether the municipal boundary fetch above
+        // succeeded — they don't depend on OSM at all.
+        Object.entries(barangaysData).forEach(([name, coords]) => {
+            const [clat, clon] = coords;
+            barangayCount++;
+            const label = textOverlay(clat, clon, name, 'barangay');
+            if (!layerVisible.boundary) label.setMap(null);
+            boundaryOverlays.push(label);
         });
 
         console.log('Boundary debug:', debugParts.join(' | '));
