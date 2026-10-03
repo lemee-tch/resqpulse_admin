@@ -6,19 +6,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Fetches (and caches) the Rosales municipal boundary + barangay
- * geometry from OpenStreetMap's Overpass API.
- *
- * This used to live entirely inside MapViewController, private and
- * only reachable from the Map View page. The Dashboard's small preview
- * map ("Incident Map" card) needed the same municipal boundary so it
- * can draw the same "dim everything outside Rosales + yellow outline"
- * highlight the full Map View already has — so the fetch/cache logic
- * moved here, where both controllers (and anything else that ever
- * needs it) can share one 30-day cache entry instead of each keeping
- * its own copy of this Overpass query.
- */
 class RosalesBoundaryService
 {
     public const CACHE_KEY = 'rosales_boundary_and_barangays';
@@ -30,32 +17,13 @@ class RosalesBoundaryService
         });
     }
 
-    /**
-     * Manual refresh — clears the cache so the next page load (Map
-     * View or Dashboard, whichever is visited first) re-fetches. There's
-     * no CLI/cron access on this deployment, so this is the only way to
-     * force an update (e.g. if OpenStreetMap adds a missing barangay
-     * boundary).
-     */
     public function refresh(): void
     {
         Cache::forget(self::CACHE_KEY);
     }
 
-    /**
-     * Fetches both the Rosales municipal boundary (admin_level 8, one
-     * relation) and every barangay inside it (admin_level 10 — used only
-     * for name + centroid label; no per-barangay borders are drawn) in a
-     * single Overpass query. Tries a couple of public mirrors since the
-     * main overpass-api.de endpoint is sometimes rate-limited.
-     */
     private function fetchBoundaryData(): array
     {
-        // A generous bounding box around Rosales, Pangasinan. Without this,
-        // the name-only filter below can match a completely unrelated
-        // "Rosales" admin boundary anywhere in the world (there are several
-        // — e.g. in Mexico and Spain) and silently return a tiny, wrong
-        // polygon instead of failing loudly.
         $bbox = '15.78,120.52,16.02,120.75';
 
         $query = '[out:json][timeout:90];'
@@ -79,13 +47,6 @@ class RosalesBoundaryService
                 if ($response->successful()) {
                     $data = $response->json() ?? ['elements' => []];
 
-                    // A real municipal boundary has hundreds of vertices at
-                    // minimum. If every level-8 relation we got back is this
-                    // sparse, the name-only match almost certainly grabbed
-                    // the wrong "Rosales" (or an incomplete one) — treat it
-                    // as a failed fetch and let the next endpoint (or the
-                    // empty-elements fallback) take over rather than caching
-                    // 30 days of a broken boundary.
                     if ($this->hasUsableMunicipalBoundary($data)) {
                         return $data;
                     }
@@ -103,13 +64,6 @@ class RosalesBoundaryService
         return ['elements' => []];
     }
 
-    /**
-     * Sanity check on the level-8 (municipal) relation before we trust and
-     * cache it. Rosales is a real, moderately large municipality — its
-     * boundary should have a non-trivial number of way members and total
-     * vertices. A handful of members/points means the query almost
-     * certainly matched the wrong "Rosales" or got truncated data.
-     */
     private function hasUsableMunicipalBoundary(array $data): bool
     {
         foreach (($data['elements'] ?? []) as $el) {
