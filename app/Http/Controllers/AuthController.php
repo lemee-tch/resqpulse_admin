@@ -431,6 +431,7 @@ class AuthController extends Controller
             'totalIncidents'    => $totalIncidents,
             'resolvedIncidents' => $resolvedIncidents,
             'resolutionRate'    => $resolutionRate,
+            "exportedBy"        => \Illuminate\Support\Facades\Auth::user()->name ?? "Admin",
         ])->setPaper('a4', 'portrait');
 
         return $pdf->download($filename);
