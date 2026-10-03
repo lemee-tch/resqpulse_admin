@@ -255,7 +255,6 @@
                 <table class="critical-table">
                     <thead>
                         <tr>
-                            <th>#</th>
                             <th>Source</th>
                             <th>Type</th>
                             <th>Location</th>
@@ -283,7 +282,6 @@
                                     : ($inc->status === 'responding' ? 'Responding' : 'Pending');
                             @endphp
                             <tr class="critical-row" onclick="window.location.href='{{ $detailUrl }}'">
-                                <td class="td-id">#{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }}</td>
                                 <td>
                                     <span class="source-badge {{ $isSos ? 'source-sos' : 'source-incident' }}">
                                         {{ $isSos ? 'SOS' : 'INCIDENT' }}
