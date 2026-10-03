@@ -826,7 +826,15 @@
                         strokeColor: '#ffcc00',
                         strokeWeight: 3,
                         strokeOpacity: 1,
-                        fillOpacity: 0,
+                        // Rosales itself now gets a warm gold wash (same
+                        // color as the boundary line, just translucent)
+                        // instead of staying unfilled — so it visibly
+                        // "lights up" against the dimmed area outside it,
+                        // the way a highlighted territory reads on a
+                        // political map, rather than only showing as a
+                        // thin outline.
+                        fillColor: '#ffcc00',
+                        fillOpacity: 0.18,
                         clickable: false,
                     });
                     outline.setMap(layerVisible.boundary ? map : null);
