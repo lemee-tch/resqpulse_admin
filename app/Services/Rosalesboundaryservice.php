@@ -61,7 +61,10 @@ class RosalesBoundaryService
      * one tier too specific here and matched nothing, which is why this
      * fetch had been silently returning empty for the full 30-day cache
      * window. Tries a couple of public mirrors since the main
-     * overpass-api.de endpoint is sometimes rate-limited.
+     * overpass-api.de endpoint is sometimes overloaded/rate-limited —
+     * each one gets a tight 20s budget rather than waiting it out, so a
+     * bad mirror doesn't eat the whole request before the next one gets
+     * a turn.
      */
     private function fetchBoundaryData(): array
     {
@@ -75,7 +78,16 @@ class RosalesBoundaryService
         // admin_level=6 — confirmed against Rosales' real OSM relation
         // (id 16054118). Not 8: that was this query's original (wrong)
         // assumption, and it matched nothing.
-        $query = '[out:json][timeout:90];'
+        //
+        // [timeout:20] here matches the Http::timeout(20) below rather
+        // than the 90s both used to say — a real response (success OR a
+        // clean "server busy" error) has consistently come back in well
+        // under 10s in testing. 90s per endpoint meant a worst case of
+        // 270s across all three mirrors, which risked running into
+        // shared hosting's PHP max_execution_time and killing the whole
+        // request before it ever reached a healthy mirror — turning a
+        // recoverable "try the next one" into a hard failure instead.
+        $query = '[out:json][timeout:20];'
             . 'relation["boundary"="administrative"]["admin_level"="6"]["name"="Rosales"](' . $bbox . ');'
             . 'out geom;';
 
@@ -93,7 +105,7 @@ class RosalesBoundaryService
                 // the three mirrors above for that reason alone, fully
                 // independent of the admin_level bug above. Guzzle (and
                 // so Laravel's Http client) doesn't send one by default.
-                $response = Http::timeout(90)->asForm()
+                $response = Http::timeout(20)->asForm()
                     ->withHeaders(['User-Agent' => 'ResQPulse-MDRRMO-Rosales/1.0'])
                     ->post($url, ['data' => $query]);
 
