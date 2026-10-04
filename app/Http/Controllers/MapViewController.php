@@ -37,10 +37,12 @@ class MapViewController extends Controller
         $evacCenters = EvacuationCenter::select('id', 'name', 'barangay', 'latitude', 'longitude', 'capacity', 'occupancy', 'status')
             ->get();
 
-        // Fetch/cache now lives in RosalesBoundaryService — shared with
-        // AuthController::dashboard(), which draws the same boundary
-        // highlight on the Dashboard's small preview map. Either page
-        // visited first populates the one 30-day cache entry for both.
+        // Instant — reads the cache or the bundled fallback, never
+        // touches the network. Fetch/cache logic lives in
+        // RosalesBoundaryService, shared with AuthController::dashboard(),
+        // which draws the same boundary highlight on the Dashboard's small
+        // preview map. See RosalesBoundaryService's docblock for why a
+        // live fetch never happens here.
         $boundaryData = $boundaryService->getBoundaryData();
 
         // Barangay name labels — NOT from OpenStreetMap (it has no
@@ -58,15 +60,16 @@ class MapViewController extends Controller
     }
 
     /**
-     * Manual refresh — clears the cache so the next page load re-fetches.
-     * There's no CLI/cron access, so this is the only way to force an
-     * update (e.g. if OpenStreetMap's copy of the municipal boundary
-     * itself changes). Barangay labels aren't affected by this — they
-     * come from BarangayLocationService's own static table, not Overpass.
+     * "Refresh Map" — the one place that attempts a live Overpass fetch
+     * (see RosalesBoundaryService::refreshAndGet()). Everything else on
+     * this page reads instantly from cache/fallback; this button alone
+     * takes the few-seconds hit of actually trying Overpass, so that
+     * risk is confined to a deliberate, infrequent user action instead
+     * of gambled on every visitor's ordinary page load.
      */
     public function refreshBoundaries(RosalesBoundaryService $boundaryService)
     {
-        $boundaryService->refresh();
+        $boundaryService->refreshAndGet();
 
         return redirect()->route('mapview')
             ->with('success', 'Boundary data refreshed from OpenStreetMap.');
