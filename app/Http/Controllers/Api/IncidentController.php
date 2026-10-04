@@ -283,6 +283,13 @@ class IncidentController extends Controller
             // responder feed — dispatchToRespondersForIncident() is also
             // withheld for them, so this is a belt-and-suspenders check.
             ->where('needs_review', false)
+            // An admin decline flips needs_review back to false too —
+            // same as an approval (see the decline-fields migration) —
+            // so without this a report MDRRMO explicitly rejected as
+            // spam/a duplicate/unverifiable would silently reappear here
+            // looking exactly like an approved one. Exclude it for good,
+            // same tier as the resolved/needs_review checks above.
+            ->whereNull('declined_at')
             // Hides an incident only from the one responder who
             // personally declined it (see decline()/accept() below and
             // Incident::declinedBy()) — everyone else, same agency or
@@ -344,6 +351,34 @@ class IncidentController extends Controller
 
         if ($incident->status === 'resolved') {
             return response()->json(['message' => 'This incident has already been resolved.'], 409);
+        }
+
+        // Declined by MDRRMO (spam, a duplicate, unverifiable, outside
+        // the service area, etc. — see Admin\IncidentController::
+        // decline()). A decline flips needs_review back to false, same
+        // as an approval does (see the decline-fields migration), so
+        // declined_at is the only signal left that this one was
+        // actually rejected rather than cleared for dispatch.
+        // assignedToResponder() above hides it from the list for the
+        // same reason — this is the enforcement that stops a stale
+        // cached list, a shared link, or a direct API call from reviving
+        // a report MDRRMO already turned down.
+        if ($incident->declined_at !== null) {
+            return response()->json([
+                'message' => 'This report was declined by MDRRMO and cannot be accepted.',
+            ], 409);
+        }
+
+        // Still waiting on admin review (a guest submission, or a pin
+        // outside Rosales) — store()/sos() withhold the responder
+        // dispatch until an admin approves it, so there's nothing
+        // actually dispatched yet to accept. assignedToResponder()
+        // already keeps these out of the normal feed; this is the same
+        // belt-and-suspenders enforcement as the declined_at check above.
+        if ($incident->needs_review) {
+            return response()->json([
+                'message' => "This report is still pending MDRRMO review and hasn't been dispatched yet.",
+            ], 409);
         }
 
         $alreadyJoined = $incident->responders()->where('responder_id', $responder->id)->exists();

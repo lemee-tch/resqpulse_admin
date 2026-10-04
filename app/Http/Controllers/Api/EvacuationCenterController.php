@@ -128,6 +128,22 @@ class EvacuationCenterController extends Controller
             ], 403);
         }
 
+        // A center that's full or closed shouldn't take new arrivals.
+        // The Flutter screen already blocks this client-side (the "Log
+        // Evacuee" button is disabled and the form itself shows a
+        // blocking message instead of the form), but that's just a
+        // convenience for a responder looking at a fresh list — this is
+        // the actual enforcement, so a stale cached screen, a center
+        // that changed status while the form was open, or a direct API
+        // call can't bypass it.
+        if (in_array($center->status, ['full', 'closed'], true)) {
+            return response()->json([
+                'message' => $center->status === 'closed'
+                    ? "{$center->name} is closed and can't accept new evacuees."
+                    : "{$center->name} is full and can't accept new evacuees.",
+            ], 422);
+        }
+
         $validator = Validator::make($request->all(), [
             'first_name'     => ['required', 'string', 'max:255'],
             'middle_name'    => ['nullable', 'string', 'max:255'],
