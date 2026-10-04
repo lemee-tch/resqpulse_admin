@@ -920,7 +920,16 @@ function renderDashboardBoundary(map) {
         const totalPts = rings.reduce((sum, r) => sum + r.length, 0);
         if (totalPts < 100) return;
 
-        const worldRingRaw = [[-85, -180], [85, -180], [85, 180], [-85, 180]];
+        // Large-but-finite box, not a literal -180..180 whole-world
+        // rectangle — Google Maps has known rendering ambiguity for
+        // polygons spanning the antimeridian, which a whole-world box
+        // touches on both edges, and that's the likely reason this
+        // rendered backwards (Rosales dimmed instead of everywhere else)
+        // despite the winding math checking out. Comfortably covers all
+        // of Southeast Asia, far beyond this preview's fixed zoom. See
+        // Map View's matching comment (mapview.blade.php) for the full
+        // explanation.
+        const worldRingRaw = [[-10, 90], [30, 90], [30, 150], [-10, 150]];
         const worldRing = ringWithWinding(worldRingRaw, true);
         const holeRings = rings.map(r => ringWithWinding(r, false));
 

@@ -804,11 +804,28 @@
                 console.log('Boundary bounds:', bounds.toString());
 
                 // Dim everything outside Rosales: one big rectangle covering
-                // the whole world with the Rosales ring(s) cut out as holes.
-                // Google Maps' Polygon treats a path as a hole when it winds
-                // opposite the first (outer) path, so both are normalized
-                // to opposite windings before drawing.
-                const worldRingRaw = [[-85, -180], [85, -180], [85, 180], [-85, 180]];
+                // the whole visible region with the Rosales ring(s) cut out
+                // as holes. Google Maps' Polygon treats a path as a hole
+                // when it winds opposite the first (outer) path, so both
+                // are normalized to opposite windings before drawing —
+                // verified by rendering this exact path data with the same
+                // fill rule and checking the actual pixels, so the winding
+                // math itself is confirmed correct.
+                //
+                // The outer rectangle is deliberately NOT a literal
+                // -180..180 whole-world box (that was the original
+                // version, and the likely cause of this rendering
+                // backwards — Rosales dimmed, everywhere else normal — in
+                // production despite the winding math checking out):
+                // Google Maps' JS API has known rendering ambiguity for
+                // polygons that touch or span the antimeridian (180°/-180°
+                // longitude), which a whole-world rectangle does on both
+                // its left and right edges. A large-but-finite box
+                // comfortably covering all of Southeast Asia — far beyond
+                // any zoom/pan a Rosales-focused MDRRMO map will
+                // realistically see — dims everything the user could
+                // actually scroll to, without going near that edge case.
+                const worldRingRaw = [[-10, 90], [30, 90], [30, 150], [-10, 150]];
                 const worldRing = ringWithWinding(worldRingRaw, true);
                 const holeRings = rings.map(r => ringWithWinding(r, false));
 
