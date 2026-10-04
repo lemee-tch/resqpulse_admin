@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -60,19 +62,21 @@ class RosalesBoundaryService
      * OSM, not the level 8 this query originally assumed; level 8 is
      * one tier too specific here and matched nothing, which is why this
      * fetch had been silently returning empty for the full 30-day cache
-     * window. Tries a couple of public mirrors since the main
-     * overpass-api.de endpoint is sometimes overloaded/rate-limited.
+     * window.
      *
-     * Every endpoint gets a hard 10s cap (5s just to establish the
-     * connection, 10s total). A 20s-per-endpoint budget (60s worst case
-     * across all three) was still enough to trip this host's own
-     * gateway timeout and kill the whole page request with a 504 before
-     * ever reaching a working mirror — worse than the graceful "boundary
-     * unavailable" fallback this is meant to degrade to. Every real
-     * response seen in testing, success or a clean error, came back in
-     * under 10s; only a fully hung connection ever used a full timeout
-     * budget, so this isn't cutting off anything that was going to
-     * answer anyway.
+     * Tries three public mirrors — CONCURRENTLY, not one after another.
+     * A sequential try-each-in-turn loop was tried first, with the
+     * per-endpoint timeout shrunk twice (90s, then 20s, then a 5s
+     * connect / 10s total cap) — and even the tightest version (30s
+     * worst case for all three in a row) still tripped this host's own
+     * nginx gateway timeout, killing the whole page with a hard 504
+     * before ever reaching a working mirror. That's worse than the
+     * graceful "boundary unavailable" fallback this is supposed to
+     * degrade to — a 504 kills the request before it can even reach
+     * that fallback. Firing all three at once via Http::pool() bounds
+     * the whole operation by the SLOWEST single mirror (~12s worst
+     * case) instead of the sum of all three (~36s), while keeping the
+     * same three-mirror resilience.
      */
     private function fetchBoundaryData(): array
     {
@@ -86,62 +90,69 @@ class RosalesBoundaryService
         // admin_level=6 — confirmed against Rosales' real OSM relation
         // (id 16054118). Not 8: that was this query's original (wrong)
         // assumption, and it matched nothing.
-        //
-        // [timeout:10] matches the Http client timeout below — no point
-        // asking Overpass for a longer budget than this request will
-        // actually wait for.
-        $query = '[out:json][timeout:10];'
+        $query = '[out:json][timeout:12];'
             . 'relation["boundary"="administrative"]["admin_level"="6"]["name"="Rosales"](' . $bbox . ');'
             . 'out geom;';
 
         $endpoints = [
-            'https://overpass-api.de/api/interpreter',
-            'https://overpass.kumi.systems/api/interpreter',
-            'https://lz4.overpass-api.de/api/interpreter',
+            'overpass-api.de' => 'https://overpass-api.de/api/interpreter',
+            'kumi'            => 'https://overpass.kumi.systems/api/interpreter',
+            'lz4'             => 'https://lz4.overpass-api.de/api/interpreter',
         ];
 
-        foreach ($endpoints as $url) {
-            try {
-                // Overpass's Apache front-end returns 406 Not Acceptable
-                // for any request with no User-Agent header at all —
-                // confirmed directly, and it was rejecting every one of
-                // the three mirrors above for that reason alone, fully
-                // independent of the admin_level bug above. Guzzle (and
-                // so Laravel's Http client) doesn't send one by default.
-                //
-                // connectTimeout(5): give up fast if the connection
-                // itself won't even establish (this is what a fully
-                // hung mirror looks like — confirmed in production logs
-                // as a cURL error 28 with 0 bytes ever received).
-                // timeout(10): hard cap on the whole request, connection
-                // included, so a slow-but-not-fully-dead mirror can't
-                // eat the rest of this request's time budget either.
-                $response = Http::connectTimeout(5)->timeout(10)->asForm()
-                    ->withHeaders(['User-Agent' => 'ResQPulse-MDRRMO-Rosales/1.0'])
-                    ->post($url, ['data' => $query]);
+        // Overpass's Apache front-end returns 406 Not Acceptable for any
+        // request with no User-Agent header at all — confirmed directly
+        // against all three mirrors. Guzzle (and so Laravel's Http
+        // client) doesn't send one by default.
+        $headers = ['User-Agent' => 'ResQPulse-MDRRMO-Rosales/1.0'];
 
-                if ($response->successful()) {
-                    $data = $response->json() ?? ['elements' => []];
+        try {
+            $responses = Http::pool(fn (Pool $pool) => array_map(
+                fn ($name, $url) => $pool->as($name)
+                    ->connectTimeout(5)
+                    ->timeout(12)
+                    ->asForm()
+                    ->withHeaders($headers)
+                    ->post($url, ['data' => $query]),
+                array_keys($endpoints),
+                $endpoints
+            ));
+        } catch (\Throwable $e) {
+            // A failure INSIDE the pool (timeout, connection refused,
+            // etc.) resolves to an exception object in $responses for
+            // that key, not a throw here — this catch is only for
+            // something going wrong with the pool mechanism itself.
+            Log::warning('Overpass boundary pool fetch threw an exception', ['error' => $e->getMessage()]);
+            return ['elements' => []];
+        }
 
-                    // A real municipal boundary has hundreds of vertices at
-                    // minimum. If every level-6 relation we got back is this
-                    // sparse, the name-only match almost certainly grabbed
-                    // the wrong "Rosales" (or an incomplete one) — treat it
-                    // as a failed fetch and let the next endpoint (or the
-                    // empty-elements fallback) take over rather than caching
-                    // 30 days of a broken boundary.
-                    if ($this->hasUsableMunicipalBoundary($data)) {
-                        return $data;
-                    }
+        foreach ($endpoints as $name => $url) {
+            $response = $responses[$name] ?? null;
 
-                    Log::warning('Overpass boundary fetch returned a suspiciously sparse Rosales geometry', ['url' => $url]);
-                    continue;
-                }
-
-                Log::warning('Overpass boundary fetch failed', ['url' => $url, 'status' => $response->status()]);
-            } catch (\Throwable $e) {
-                Log::warning('Overpass boundary fetch threw an exception', ['url' => $url, 'error' => $e->getMessage()]);
+            if (! $response instanceof Response) {
+                $error = $response instanceof \Throwable ? $response->getMessage() : 'no response';
+                Log::warning('Overpass boundary fetch failed', ['url' => $url, 'error' => $error]);
+                continue;
             }
+
+            if (! $response->successful()) {
+                Log::warning('Overpass boundary fetch failed', ['url' => $url, 'status' => $response->status()]);
+                continue;
+            }
+
+            $data = $response->json() ?? ['elements' => []];
+
+            // A real municipal boundary has hundreds of vertices at
+            // minimum. If every level-6 relation we got back is this
+            // sparse, the name-only match almost certainly grabbed the
+            // wrong "Rosales" (or an incomplete one) — treat it as a
+            // failed fetch rather than caching 30 days of a broken
+            // boundary.
+            if ($this->hasUsableMunicipalBoundary($data)) {
+                return $data;
+            }
+
+            Log::warning('Overpass boundary fetch returned a suspiciously sparse Rosales geometry', ['url' => $url]);
         }
 
         return ['elements' => []];
