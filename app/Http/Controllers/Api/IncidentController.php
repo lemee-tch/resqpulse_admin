@@ -349,6 +349,20 @@ class IncidentController extends Controller
             return response()->json(['message' => 'Not a responder account.'], 403);
         }
 
+        // MSWD manages evacuation centers, not incident response — see
+        // EvacuationCenterController::store()/storeEvacuee() for the
+        // inverse rule (those are MSWD-only). The Flutter home screen
+        // already keeps every response-workflow tile off MSWD's
+        // screen, but Incident Locations is still shown to them for
+        // situational awareness, and its map pins open this same
+        // accept flow — so the enforcement has to live here too, not
+        // just in which tiles are shown.
+        if ($responder->agency === 'MSWD') {
+            return response()->json([
+                'message' => 'MSWD accounts manage evacuation centers, not incident response.',
+            ], 403);
+        }
+
         if ($incident->status === 'resolved') {
             return response()->json(['message' => 'This incident has already been resolved.'], 409);
         }
