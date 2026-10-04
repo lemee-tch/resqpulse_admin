@@ -39,55 +39,62 @@ use Illuminate\Support\Facades\Log;
  * verified byte-for-byte correct, while the identical query succeeded
  * immediately and repeatedly from an unrelated network. The
  * independently-operated overpass.kumi.systems mirror doesn't fail the
- * same way, but isn't reliable enough on its own to depend on. So a
- * live fetch is no longer treated as required: getBoundaryData() falls
- * back to FALLBACK_BOUNDARY — a verified-correct copy of Rosales' real
+ * same way, but isn't reliable enough on its own to depend on.
+ *
+ * Because of that, a live fetch is treated as a bonus, never a
+ * requirement, and — just as importantly — it is NEVER attempted on an
+ * ordinary page load. getBoundaryData() only ever reads a cache or
+ * returns FALLBACK_BOUNDARY — a verified-correct copy of Rosales' real
  * boundary (relation 16054118), fetched once from an unblocked network
- * and bundled directly into this file — whenever a live fetch doesn't
- * come back usable. The map now always renders the Rosales highlight
- * correctly regardless of whether Overpass can be reached from this
- * host; "Refresh Map" still retries the live fetch, for whenever that
- * changes.
+ * and bundled directly into this file — so it's instant and can't ever
+ * time out. A sequential three-mirror fetch (up to 90s, then 20s, then
+ * 10s per mirror) repeatedly tripped this host's nginx gateway timeout
+ * with a hard 504; firing all three concurrently via Http::pool() got
+ * the worst case down to ~12s and still wasn't safe enough to prove
+ * out. A 504 is worse than "boundary unavailable": it kills the
+ * response before PHP ever gets a chance to fall back gracefully, and
+ * if it happens mid-fetch there's no opportunity to record that the
+ * attempt failed either — so shrinking the timeout further was treated
+ * as a dead end rather than something to keep chasing. The only
+ * amount of time it's safe for a normal page load to spend on
+ * Overpass is zero. The one place a live fetch is still attempted is
+ * refreshAndGet(), triggered only by the explicit "Refresh Map"
+ * button — an isolated, infrequent, user-initiated action, not
+ * something every visitor's page load is gambled on.
  */
 class RosalesBoundaryService
 {
     public const CACHE_KEY = 'rosales_boundary_and_barangays';
 
     /**
-     * Short-lived marker set whenever a live fetch attempt fails to
-     * produce a usable boundary. Without this, a bad patch (e.g. the
-     * IP-block described above) would mean every single page load
-     * re-runs the full ~12s three-mirror pool fetch, fails again, and
-     * only then falls back — slowing the page down for no benefit.
-     * While this is set, getBoundaryData() skips straight to
-     * FALLBACK_BOUNDARY without attempting Overpass at all. "Refresh
-     * Map" clears it (see refresh() below), so a manual retry always
-     * gets a fresh live attempt regardless of this backoff window.
-     */
-    private const RECENT_FAILURE_KEY = 'rosales_boundary_recent_failure';
-
-    /**
-     * Returns the boundary data to draw, preferring a real cached
-     * success, then a fresh live attempt, then — if neither is
-     * available — the bundled fallback. This never returns an empty/
-     * unusable result the way the old cache-the-fetch-result-no-matter-
-     * what approach could: either real data or FALLBACK_BOUNDARY, always.
+     * Instant, network-free read: a cached live fetch if one has ever
+     * succeeded, otherwise the bundled fallback. Deliberately never
+     * attempts a live Overpass fetch itself — see the class docblock
+     * above for why an ordinary page load must never risk that, and
+     * refreshAndGet() below for the one place a live fetch does happen.
      */
     public function getBoundaryData(): array
     {
-        $cached = Cache::get(self::CACHE_KEY);
-        if ($cached !== null) {
-            return $cached;
-        }
+        return Cache::get(self::CACHE_KEY) ?? self::FALLBACK_BOUNDARY;
+    }
 
-        // A live fetch failed recently — don't hammer Overpass again on
-        // every page load during a bad patch. Serve the bundled
-        // fallback immediately instead of re-waiting ~12s just to fail
-        // the same way again.
-        if (Cache::has(self::RECENT_FAILURE_KEY)) {
-            return self::FALLBACK_BOUNDARY;
-        }
-
+    /**
+     * The ONLY path that attempts a live Overpass fetch. Called from
+     * the "Refresh Map" action alone, never from an ordinary page load.
+     * Caches and returns fresh data on success. On failure, leaves any
+     * existing cache exactly as it was — a failed refresh attempt
+     * should never erase a previously-good cached boundary — and
+     * returns that still-cached data, or the bundled fallback if
+     * there's never been a successful fetch at all. There's no CLI/cron
+     * access on this deployment, so this button is the only way to
+     * force an update (e.g. if OpenStreetMap's copy of the boundary is
+     * ever corrected, or to check whether Overpass has become reachable
+     * from this host again). Barangay labels aren't affected by this —
+     * they come from BarangayLocationService's own static table, not
+     * Overpass.
+     */
+    public function refreshAndGet(): array
+    {
         $data = $this->fetchBoundaryData();
 
         if ($this->hasUsableMunicipalBoundary($data)) {
@@ -96,33 +103,7 @@ class RosalesBoundaryService
             return $data;
         }
 
-        // Deliberately NOT cached for 30 days — that was the original
-        // bug (a bad fetch used to get cached as if it were a good one,
-        // silently going "boundary unavailable" for a month). Short
-        // enough to avoid retrying on every request during an outage,
-        // short enough to pick back up quickly once Overpass is
-        // reachable again.
-        Cache::put(self::RECENT_FAILURE_KEY, true, now()->addHours(6));
-
-        return self::FALLBACK_BOUNDARY;
-    }
-
-    /**
-     * Manual refresh — clears both the success cache and the recent-
-     * failure backoff marker, so the next page load always attempts a
-     * fresh live fetch regardless of how recently a previous attempt
-     * failed. There's no CLI/cron access on this deployment, so this is
-     * the only way to force an update (e.g. if OpenStreetMap's copy of
-     * the municipal boundary itself is edited/corrected, or to check
-     * whether Overpass has become reachable from this host again).
-     * Barangay labels are no longer part of what gets refreshed here —
-     * they come from BarangayLocationService's own static table, not
-     * Overpass.
-     */
-    public function refresh(): void
-    {
-        Cache::forget(self::CACHE_KEY);
-        Cache::forget(self::RECENT_FAILURE_KEY);
+        return Cache::get(self::CACHE_KEY) ?? self::FALLBACK_BOUNDARY;
     }
 
     /**
@@ -133,19 +114,30 @@ class RosalesBoundaryService
      * fetch had been silently returning empty for the full 30-day cache
      * window.
      *
+     * Only ever called from refreshAndGet() — never from an ordinary
+     * page load (see the class docblock above). That changes the
+     * calculus on how long to wait: this used to try to give Overpass
+     * every reasonable chance to succeed, because failure meant
+     * "boundary unavailable" for the visitor. Now that a good fallback
+     * always exists, a failed/slow attempt here costs nothing visible —
+     * so the budget is kept deliberately tight (a few seconds, not
+     * dozens) to keep the one page load that does call this (clicking
+     * "Refresh Map") responsive, rather than to maximize Overpass's
+     * odds.
+     *
      * Tries three public mirrors — CONCURRENTLY, not one after another.
      * A sequential try-each-in-turn loop was tried first, with the
-     * per-endpoint timeout shrunk twice (90s, then 20s, then a 5s
-     * connect / 10s total cap) — and even the tightest version (30s
-     * worst case for all three in a row) still tripped this host's own
-     * nginx gateway timeout, killing the whole page with a hard 504
-     * before ever reaching a working mirror. That's worse than the
-     * graceful "boundary unavailable" fallback this is supposed to
-     * degrade to — a 504 kills the request before it can even reach
-     * that fallback. Firing all three at once via Http::pool() bounds
-     * the whole operation by the SLOWEST single mirror (~12s worst
-     * case) instead of the sum of all three (~36s), while keeping the
-     * same three-mirror resilience.
+     * per-endpoint timeout shrunk repeatedly (90s, then 20s, then a 5s
+     * connect / 10s total cap) — and even a pooled/concurrent ~12s
+     * worst case still wasn't reliably safe against this host's own
+     * nginx gateway timeout, which killed the whole page with a hard
+     * 504 more than once. A 504 is worse than the graceful "use the
+     * fallback" this is supposed to degrade to — it kills the request
+     * before any PHP fallback logic can run at all. Firing all three at
+     * once via Http::pool() bounds the whole operation by the SLOWEST
+     * single mirror instead of the sum of all three, and that budget is
+     * now kept short enough that even the worst case shouldn't come
+     * close to a gateway timeout.
      */
     private function fetchBoundaryData(): array
     {
@@ -159,7 +151,7 @@ class RosalesBoundaryService
         // admin_level=6 — confirmed against Rosales' real OSM relation
         // (id 16054118). Not 8: that was this query's original (wrong)
         // assumption, and it matched nothing.
-        $query = '[out:json][timeout:12];'
+        $query = '[out:json][timeout:6];'
             . 'relation["boundary"="administrative"]["admin_level"="6"]["name"="Rosales"](' . $bbox . ');'
             . 'out geom;';
 
@@ -178,8 +170,8 @@ class RosalesBoundaryService
         try {
             $responses = Http::pool(fn (Pool $pool) => array_map(
                 fn ($name, $url) => $pool->as($name)
-                    ->connectTimeout(5)
-                    ->timeout(12)
+                    ->connectTimeout(3)
+                    ->timeout(6)
                     ->asForm()
                     ->withHeaders($headers)
                     ->post($url, ['data' => $query]),
