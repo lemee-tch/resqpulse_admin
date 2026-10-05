@@ -354,7 +354,7 @@
                 <table class="evac-table">
                     <thead>
                         <tr>
-                            <th>Citizen</th>
+                            <th>Residents</th>
                             <th>Contact</th>
                             <th>Municipality / Barangay</th>
                             <th>Proof of Residency</th>
