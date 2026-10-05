@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use App\Mail\PasswordResetOtp;
 use App\Mail\EmailVerificationOtp;
 use Illuminate\Support\Facades\Mail;
@@ -24,7 +25,11 @@ class AuthController extends Controller
             'suffix'       => ['nullable', 'string', 'max:20'],
             'mobile'       => ['required', 'string', 'unique:citizens,mobile'],
             'email'        => ['required', 'email', 'unique:citizens,email'],
-            'password'     => ['required', 'string', 'min:6'],
+            // Was min:6 with no complexity requirement — now at least 8
+            // characters with a mix of upper/lower case and a number.
+            // Illuminate\Validation\Rules\Password ships with Laravel,
+            // no new package needed.
+            'password'     => ['required', 'string', Password::min(8)->mixedCase()->numbers()],
             'municipality' => ['required', 'string'],
             'barangay'     => ['required', 'string'],
             'street'       => ['nullable', 'string'],
@@ -36,8 +41,17 @@ class AuthController extends Controller
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
+        // Stored on the PRIVATE 'local' disk (storage/app/private, see
+        // config/filesystems.php) instead of 'public' — a government-ID
+        // photo has no business being reachable by anyone with the URL
+        // via the public storage symlink. It's now only served through
+        // the auth-gated route CitizenVerificationController::idPhoto()
+        // (admin panel only). Existing files already under
+        // storage/app/public/citizen_ids need to be moved by hand to
+        // storage/app/private/citizen_ids on the server — there's no
+        // CLI access to script this migration.
         $validIdPath = $request->hasFile('valid_id')
-            ? $request->file('valid_id')->store('citizen_ids', 'public')
+            ? $request->file('valid_id')->store('citizen_ids', 'local')
             : null;
 
         $fullName = collect([
@@ -311,7 +325,10 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'email'    => ['required', 'email'],
             'otp'      => ['required', 'string'],
-            'password' => ['required', 'string', 'min:6'],
+            // Same strengthened rule as register() — kept identical so a
+            // citizen can't sidestep the stronger policy just by going
+            // through the reset flow instead of signing up fresh.
+            'password' => ['required', 'string', Password::min(8)->mixedCase()->numbers()],
         ]);
 
         if ($validator->fails()) {

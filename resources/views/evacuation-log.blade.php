@@ -115,9 +115,9 @@
             .main-wrap {
                 margin-left: 0 !important;
                 padding: 20px 16px 32px !important;
-                padding-top: 66px !important;
                 padding-bottom: 88px !important;
             }
+            .content { padding: 32px 0; }
             table { display: block; overflow-x: auto; white-space: nowrap; }
             img, svg, canvas, iframe { max-width: 100%; }
         }
@@ -125,9 +125,10 @@
         @media (max-width: 560px) {
             .main-wrap {
                 padding: 16px 12px 28px !important;
-                padding-top: 62px !important;
                 padding-bottom: 88px !important;
             }
+            .filter-bar { flex-direction: column !important; align-items: stretch !important; }
+            .filter-bar > * { width: 100% !important; max-width: 100% !important; }
         }
     
         /* ── App-style nav polish ── */
@@ -313,7 +314,6 @@
                             <th>Barangay</th>
                             <th>Contact</th>
                             <th>Logged</th>
-                            <th>Logged by</th>
                         </tr>
                     </thead>
                     <tbody id="logBody">
@@ -329,7 +329,6 @@
                                 <td>{{ $e->barangay }}</td>
                                 <td>{{ $e->contact_number ?: '—' }}</td>
                                 <td>{{ $e->created_at->format('M d, g:i A') }}</td>
-                                <td>{{ $e->loggedBy?->name ?? '—' }}</td>
                             </tr>
                         @endforeach
                     </tbody>
