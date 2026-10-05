@@ -241,19 +241,44 @@
             .main-wrap {
                 margin-left: 0 !important;
                 padding: 20px 16px 32px !important;
-                padding-top: 66px !important;
                 padding-bottom: 88px !important;
             }
             table { display: block; overflow-x: auto; white-space: nowrap; }
             img, svg, canvas, iframe { max-width: 100%; }
+
+            /* .content's own 28px/32px padding is on top of .main-wrap's —
+               drop it here so the map card gets the full mobile width
+               instead of a doubled-up gutter. */
+            .content { padding: 0; }
+
+            /* A 600px-tall map made sense with a 200px desktop sidebar
+               eating none of the viewport height; on a phone it pushes the
+               status key/toggles far below the fold, so it shrinks here. */
+            #map { height: 420px; }
+            .map-legend { font-size: .68rem; padding: 8px 10px; line-height: 1.6; }
+            .btn-refresh { font-size: .72rem; padding: 6px 10px; }
+
+            /* Two side-by-side status/toggle cards can get squeezed next
+               to each other below desktop width — stack them instead. */
+            .controls-row { flex-direction: column; }
+            .control-card { width: 100%; }
         }
 
         @media (max-width: 560px) {
             .main-wrap {
                 padding: 16px 12px 28px !important;
-                padding-top: 62px !important;
                 padding-bottom: 88px !important;
             }
+
+            /* On the narrowest phones the legend and the two floating
+               buttons all compete for the same corners of the map card —
+               shrink and nudge them so none of the three overlap. */
+            #map { height: 300px; }
+            .map-legend { top: 8px; right: 8px; padding: 6px 8px; font-size: .62rem; line-height: 1.45; }
+            .leg-emoji { font-size: .78rem; width: 12px; }
+            .btn-refresh { padding: 6px 9px; font-size: .66rem; gap: 4px; bottom: 8px; }
+            #btnSatellite { left: 8px !important; }
+            #btnRefresh { right: 8px !important; }
         }
 
         /* ── App-style nav polish ── */
@@ -953,7 +978,6 @@
                 <div class="incident-popup">
                     <div class="pop-type">🏕️ ${center.name}</div>
                     <div class="pop-row">Brgy. ${center.barangay ?? ''}</div>
-                    <div class="pop-row">Occupancy: ${center.occupancy ?? 0} / ${center.capacity ?? 0}</div>
                     <span class="pop-status ${badgeClass}">${badgeLabel}</span>
                 </div>`;
 

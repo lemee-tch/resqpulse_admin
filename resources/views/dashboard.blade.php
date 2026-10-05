@@ -697,7 +697,7 @@
                         </tbody>
                     </table>
                     <div style="text-align:right; margin-top:10px;">
-                        <a href="{{ route('incident') }}" class="panel-link">View all incidents →</a>
+                        <a href="{{ route('incident') }}" class="panel-link">View all incidents</a>
                     </div>
                 </div>
             </div>

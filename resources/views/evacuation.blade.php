@@ -55,6 +55,7 @@
 
         .page-header {
             display: flex; align-items: center; justify-content: space-between;
+            flex-wrap: wrap; gap: 10px;
             margin-bottom: 24px;
         }
         .page-title {
@@ -192,9 +193,9 @@
             .main-wrap {
                 margin-left: 0 !important;
                 padding: 20px 16px 32px !important;
-                padding-top: 66px !important;
                 padding-bottom: 88px !important;
             }
+            .content { padding: 32px 0; }
             table { display: block; overflow-x: auto; white-space: nowrap; }
             img, svg, canvas, iframe { max-width: 100%; }
         }
@@ -202,9 +203,9 @@
         @media (max-width: 560px) {
             .main-wrap {
                 padding: 16px 12px 28px !important;
-                padding-top: 62px !important;
                 padding-bottom: 88px !important;
             }
+            [id^="viewMap"] { height: 180px !important; }
         }
 
         /* ── App-style nav polish ── */
@@ -378,15 +379,6 @@
                             <a href="{{ route('evacuation.log', $c) }}" class="action-btn" title="Evacuation log" style="text-decoration:none;display:inline-block;">
                                 <i class="bi bi-clipboard2-pulse"></i>
                             </a>
-                            <form action="{{ route('evacuation.update-status', $c) }}" method="POST" style="display:inline-block;">
-                                @csrf
-                                @method('PATCH')
-                                <select name="status" class="status-select" onchange="this.form.submit()" title="Change status">
-                                    <option value="open" @selected($c->status === 'open')>Open</option>
-                                    <option value="full" @selected($c->status === 'full')>Full</option>
-                                    <option value="closed" @selected($c->status === 'closed')>Closed</option>
-                                </select>
-                            </form>
                         </td>
                     </tr>
                     @empty
