@@ -9,6 +9,7 @@ use App\Models\Responder;
 use App\Services\AuditLogService;
 use App\Services\BarangayLocationService;
 use App\Services\ImageAnalysisService;
+use App\Services\IncidentReportService;
 use App\Services\PushNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -492,10 +493,22 @@ class IncidentController extends Controller
             return response()->json(['message' => 'You are not assigned to this incident.'], 403);
         }
 
-        $validator = Validator::make($request->all(), [
-            'notes' => ['nullable', 'string', 'max:2000'],
-            'photo' => ['nullable', 'file', 'image', 'max:5120'],
-        ]);
+        // The app sends the MDRRMC Incident Report as a JSON string in
+        // `report` (multipart can't carry nested fields otherwise).
+        $reportInput = $request->input('report');
+        if (is_string($reportInput)) {
+            $reportInput = json_decode($reportInput, true);
+        }
+
+        $validator = Validator::make(
+            array_merge($request->all(), ['report' => $reportInput]),
+            [
+                'notes'  => ['nullable', 'string', 'max:2000'],
+                'photo'  => ['nullable', 'file', 'image', 'max:5120'],
+                'report' => ['nullable', 'array'],
+                'report.narrative' => ['nullable', 'string', 'max:2000'],
+            ]
+        );
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
@@ -505,11 +518,33 @@ class IncidentController extends Controller
             ? $request->file('photo')->store('incident_resolution_photos', 'public')
             : null;
 
+        $reports    = app(IncidentReportService::class);
+        $reportData = is_array($reportInput)
+            ? $reports->normalize($incident, $responder, $reportInput)
+            : null;
+
+        // The narrative doubles as the short "resolution notes" shown in
+        // the admin panel and Report History, unless plain notes were sent.
+        $notes = $request->notes ?: ($reportData['narrative'] ?? null);
+
         $incident->update([
             'status'                => 'resolved',
-            'resolution_notes'      => $request->notes,
+            'resolution_notes'      => $notes,
             'resolution_photo_path' => $photoPath,
+            'report_data'           => $reportData,
         ]);
+
+        // Never let a PDF problem undo a resolution that already happened.
+        if ($reportData) {
+            try {
+                $pdfPath = $reports->generate($incident->fresh());
+                if ($pdfPath) {
+                    $incident->update(['report_pdf_path' => $pdfPath]);
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         $incident->refresh()->load(['responders', 'citizen']);
 

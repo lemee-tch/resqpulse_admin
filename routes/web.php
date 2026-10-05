@@ -50,6 +50,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/incidents-overview', [IncidentController::class, 'overviewIndex'])->name('incidents.overview');
     Route::post('/incidents-overview/recheck-locations', [IncidentController::class, 'recheckLocations'])->name('incidents.recheck-locations');
     Route::get('/incidents/{incident}', [IncidentController::class, 'show'])->name('incident.detail');
+    Route::get('/incidents/{incident}/report-pdf', [IncidentController::class, 'reportPdf'])->name('incident.report-pdf');
     Route::get('/sos-alerts', [IncidentController::class, 'sosIndex'])->name('sos-alerts');
     Route::get('/reports-analytics', [AuthController::class, 'reportsAnalytics'])->name('reports-analytics');
     Route::get('/reports-analytics/export', [AuthController::class, 'exportReport'])->name('reports-analytics.export');

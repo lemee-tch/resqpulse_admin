@@ -6,7 +6,9 @@ use App\Models\Incident;
 use App\Services\AuditLogService;
 use App\Services\BarangayLocationService;
 use App\Services\PushNotificationService;
+use App\Services\IncidentReportService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class IncidentController extends Controller
 {
@@ -229,6 +231,38 @@ class IncidentController extends Controller
         );
 
         return back()->with('success', 'Report declined.');
+    }
+
+    /**
+     * The MDRRMC Incident Report PDF the responder filed when resolving
+     * this incident. Stored on the PRIVATE disk, so it's only ever served
+     * through this auth-gated route (never via /storage). `?download=1`
+     * forces a download instead of opening it in the browser tab.
+     *
+     * If the PDF is missing but the report data exists (e.g. dompdf wasn't
+     * installed yet when it was filed), it's generated on the spot.
+     */
+    public function reportPdf(Request $request, Incident $incident, IncidentReportService $reports)
+    {
+        abort_unless($incident->report_data, 404, 'No report was filed for this incident.');
+
+        $disk = Storage::disk(IncidentReportService::DISK);
+        $path = $incident->report_pdf_path;
+
+        if (! $path || ! $disk->exists($path)) {
+            $path = $reports->generate($incident);
+            abort_unless($path, 503, 'PDF generator is not installed (composer require barryvdh/laravel-dompdf).');
+            $incident->update(['report_pdf_path' => $path]);
+        }
+
+        $filename = "MDRRMC-Incident-Report-{$incident->id}.pdf";
+
+        return $request->boolean('download')
+            ? $disk->download($path, $filename)
+            : response($disk->get($path), 200, [
+                'Content-Type'        => 'application/pdf',
+                'Content-Disposition' => "inline; filename=\"{$filename}\"",
+            ]);
     }
 
     public function show(Incident $incident)

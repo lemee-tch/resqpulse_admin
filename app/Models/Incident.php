@@ -9,7 +9,7 @@ class Incident extends Model
     protected $fillable = [
         'citizen_id', 'responder_id', 'accepted_at', 'emergency_type', 'location', 'latitude', 'longitude',
         'description', 'photo_path', 'status', 'priority', 'admin_notes',
-        'resolution_notes', 'resolution_photo_path',
+        'resolution_notes', 'resolution_photo_path', 'report_data', 'report_pdf_path',
         'ai_detected_type', 'ai_confidence', 'ai_analysis', 'needs_review', 'reviewed_at',
         'sos_emergency_type', 'decline_reason', 'declined_at',
     ];
@@ -23,6 +23,7 @@ class Incident extends Model
         'needs_review' => 'boolean',
         'reviewed_at'  => 'datetime',
         'declined_at'  => 'datetime',
+        'report_data'  => 'array',
     ];
 
     // Includes display_type (see getDisplayTypeAttribute() below) in
@@ -30,6 +31,9 @@ class Incident extends Model
     // JSON over the API, so without this they'd each have to
     // reimplement the same "SOS Alert — {type}" formatting themselves.
     protected $appends = ['display_type'];
+
+    // Keep the private PDF storage path out of API JSON.
+    protected $hidden = ['report_pdf_path'];
 
     public function citizen()
     {

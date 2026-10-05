@@ -153,14 +153,22 @@
         .tl-text { font-size: .82rem; color: #4b5563; line-height: 1.5; }
 
         /* Admin notes */
-        .admin-notes-box { background: #f9fafb; border: 1.5px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #4b5563; line-height: 1.6; min-height: 60px; }
+        .admin-notes-box { background: #f9fafb; border: 1.5px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #4b5563; line-height: 1.6; min-height: 60px; overflow-wrap: break-word; }
 
         /* Resolution (submitted by the responder from the field) */
-        .resolution-notes-box { background: #ecfdf5; border: 1.5px solid #a7f3d0; border-left: 3px solid #10b981; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #065f46; line-height: 1.6; min-height: 44px; }
+        .resolution-notes-box { background: #ecfdf5; border: 1.5px solid #a7f3d0; border-left: 3px solid #10b981; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #065f46; line-height: 1.6; min-height: 44px; overflow-wrap: break-word; }
         .resolution-empty { font-size: .8rem; color: #9ca3af; font-style: italic; }
+        /* Responder-filed MDRRMC incident report (PDF) */
+        .report-pdf-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; margin-top: 6px; flex-wrap: wrap; }
+        .report-pdf-icon { font-size: 1.6rem; color: #dc2626; line-height: 1; }
+        .report-pdf-meta { flex: 1; min-width: 140px; }
+        .report-pdf-name { font-size: .82rem; font-weight: 700; color: #111827; }
+        .report-pdf-sub { font-size: .72rem; color: #6b7280; }
+        .report-pdf-btn { display: inline-flex; align-items: center; gap: 5px; border: 1.5px solid #d1d5db; border-radius: 8px; padding: 6px 11px; font-size: .78rem; font-weight: 600; color: #374151; background: #fff; text-decoration: none; }
+        .report-pdf-btn:hover { border-color: #1a3c8f; color: #1a3c8f; }
 
         /* Decline reason (set by admin when declining a guest SOS) */
-        .decline-reason-box { background: #fef2f2; border: 1.5px solid #fecaca; border-left: 3px solid #dc2626; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #991b1b; line-height: 1.6; min-height: 44px; }
+        .decline-reason-box { background: #fef2f2; border: 1.5px solid #fecaca; border-left: 3px solid #dc2626; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #991b1b; line-height: 1.6; min-height: 44px; overflow-wrap: break-word; }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn {
@@ -212,9 +220,12 @@
             .main-wrap {
                 margin-left: 0 !important;
                 padding: 20px 16px 32px !important;
-                padding-top: 66px !important;
                 padding-bottom: 88px !important;
             }
+            /* .main-wrap already supplies the horizontal gutter above —
+               drop .content's own left/right padding so the two don't
+               stack and eat extra width on a narrow screen. */
+            .content { padding: 32px 0; }
             table { display: block; overflow-x: auto; white-space: nowrap; }
             img, svg, canvas, iframe { max-width: 100%; }
         }
@@ -222,9 +233,14 @@
         @media (max-width: 560px) {
             .main-wrap {
                 padding: 16px 12px 28px !important;
-                padding-top: 62px !important;
                 padding-bottom: 88px !important;
             }
+            .content { padding: 32px 0; }
+            /* Shrink the location preview a bit further on small phones —
+               160px is fine at tablet/desktop widths but takes more
+               vertical room than it needs once the 3-column grid has
+               collapsed to a single column here. */
+            #detail-map { height: 130px; }
         }
 
         /* ── App-style nav polish ── */
@@ -509,6 +525,23 @@
                                  data-bs-toggle="modal"
                                  data-bs-target="#resolutionPhotoModal"
                                  alt="Resolution photo">
+                        </div>
+                    @endif
+
+                    @if($incident->report_data)
+                        <div class="detail-sub" style="margin-top:12px;">Incident Report (PDF)</div>
+                        <div class="report-pdf-row">
+                            <div class="report-pdf-icon"><i class="bi bi-file-earmark-pdf-fill"></i></div>
+                            <div class="report-pdf-meta">
+                                <div class="report-pdf-name">MDRRMC Incident Report #{{ $incident->id }}</div>
+                                <div class="report-pdf-sub">Filed by the responding team</div>
+                            </div>
+                            <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="report-pdf-btn" title="View">
+                                <i class="bi bi-eye"></i> View
+                            </a>
+                            <a href="{{ route('incident.report-pdf', [$incident, 'download' => 1]) }}" class="report-pdf-btn" title="Download">
+                                <i class="bi bi-download"></i>
+                            </a>
                         </div>
                     @endif
                 @endif
