@@ -120,24 +120,23 @@ class BarangayLocationService
             return null;
         }
 
+        // Exact location: Google's full formatted address for the pin
+        // (street/barangay, town, province) — never a nearest-barangay guess.
         $geo = $this->reverseGeocode($lat, $lng);
         if ($geo) {
+            if ($geo['display_name']) {
+                return $geo['display_name'];
+            }
             if ($geo['locality']) {
                 return $geo['municipality']
                     ? "{$geo['locality']}, {$geo['municipality']}"
                     : $geo['locality'];
             }
-            if ($geo['display_name']) {
-                return $geo['display_name'];
-            }
         }
 
-        $barangay = $this->nearestBarangay($lat, $lng);
-        if ($barangay) {
-            return "Approx. {$barangay}, Rosales";
-        }
-
-        return 'Lat ' . round($lat, 7) . ', Lng ' . round($lng, 7);
+        // Google unavailable: state the exact coordinates rather than
+        // guessing a barangay that may be wrong.
+        return 'Lat ' . round($lat, 6) . ', Lng ' . round($lng, 6);
     }
 
     /**
@@ -166,6 +165,13 @@ class BarangayLocationService
             return true;
         }
 
+        // The real boundary polygon is authoritative: Google can label a
+        // pin just past the line (river, border area) as "Rosales".
+        $inside = $this->insideBoundary($lat, $lng);
+        if ($inside !== null) {
+            return $inside;
+        }
+
         $geo = $this->reverseGeocode($lat, $lng);
         if ($geo && $geo['municipality']) {
             return str_contains(strtolower($geo['municipality']), 'rosales');
@@ -175,6 +181,69 @@ class BarangayLocationService
         // back to the same offline barangay-distance table resolve()
         // uses for its own fallback.
         return $this->nearestBarangay($lat, $lng) !== null;
+    }
+
+    /**
+     * True/false from the real Rosales boundary polygon (bundled OSM
+     * relation), null if it can't be assembled.
+     */
+    private function insideBoundary(float $lat, float $lng): ?bool
+    {
+        try {
+            $data = app(RosalesBoundaryService::class)->getBoundaryData();
+            $ways = [];
+            foreach (($data['elements'] ?? []) as $el) {
+                if (($el['type'] ?? null) !== 'relation') {
+                    continue;
+                }
+                foreach (($el['members'] ?? []) as $m) {
+                    if (($m['role'] ?? '') === 'outer' && ! empty($m['geometry'])) {
+                        $ways[] = array_map(fn ($g) => [$g['lat'], $g['lon']], $m['geometry']);
+                    }
+                }
+            }
+            if (count($ways) < 2) {
+                return null;
+            }
+
+            // Chain the way segments end-to-end into one ring.
+            $ring = array_shift($ways);
+            while ($ways) {
+                $end = end($ring);
+                $found = false;
+                foreach ($ways as $i => $w) {
+                    if ($w[0] === $end) {
+                        $ring = array_merge($ring, array_slice($w, 1));
+                    } elseif (end($w) === $end) {
+                        $ring = array_merge($ring, array_slice(array_reverse($w), 1));
+                    } else {
+                        continue;
+                    }
+                    unset($ways[$i]);
+                    $found = true;
+                    break;
+                }
+                if (! $found) {
+                    return null;
+                }
+            }
+
+            // Ray casting.
+            $inside = false;
+            $n = count($ring);
+            for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+                [$yi, $xi] = $ring[$i];
+                [$yj, $xj] = $ring[$j];
+                if ((($yi > $lat) !== ($yj > $lat))
+                    && ($lng < ($xj - $xi) * ($lat - $yi) / (($yj - $yi) ?: 1e-12) + $xi)) {
+                    $inside = ! $inside;
+                }
+            }
+
+            return $inside;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**
