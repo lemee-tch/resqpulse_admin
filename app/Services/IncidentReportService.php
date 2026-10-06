@@ -31,7 +31,7 @@ class IncidentReportService
     {
         $created = $incident->created_at ?? now();
 
-        $type = in_array($input['report_type'] ?? null, ['initial', 'progress', 'final'], true)
+        $type = in_array($input['report_type'] ?? null, ['initial', 'final'], true)
             ? $input['report_type'] : 'final';
 
         $clean = fn($v, $max = 255) => mb_substr(trim((string) ($v ?? '')), 0, $max);
@@ -68,10 +68,8 @@ class IncidentReportService
 
         return [
             'report_source'   => config('services.report.source', 'MDRRMO Rosales, Pangasinan'),
-            'validated_by'    => config('services.report.validated_by', ''),
             'report_datetime' => now()->format('F j, Y') . '/' . now()->format('Hi') . 'H',
             'report_type'     => $type,
-            'progress_no'     => $type === 'progress' ? $clean($input['progress_no'] ?? '', 10) : '',
             'incident_type'   => $incident->display_type ?? $incident->emergency_type,
             'location'        => $clean($input['location'] ?? '') ?: (string) $incident->location,
             'incident_date'   => $created->format('F j, Y'),
@@ -82,7 +80,32 @@ class IncidentReportService
             'effects'         => $clean($input['effects'] ?? '', 1000),
             'actions_taken'   => $clean($input['actions_taken'] ?? '', 1500),
             'released_by'     => $releasedBy,
+            'team'            => $this->team($incident),
         ];
+    }
+
+    /**
+     * Everyone who responded: the first to accept is the lead, anyone who
+     * joined after is listed as backup (incident_responder pivot order).
+     */
+    private function team(Incident $incident): array
+    {
+        $members = $incident->responders()
+            ->orderBy('incident_responder.accepted_at')
+            ->orderBy('incident_responder.id')
+            ->get();
+
+        $team = [];
+        foreach ($members as $i => $r) {
+            $joined = $r->pivot->accepted_at ? \Carbon\Carbon::parse($r->pivot->accepted_at)->format('g:i A') : '';
+            $team[] = [
+                'name'   => (string) $r->full_name,
+                'agency' => trim(implode(' — ', array_filter([(string) $r->agency, (string) $r->unit_station]))),
+                'role'   => $i === 0 ? 'Lead' : 'Backup',
+                'joined' => $joined,
+            ];
+        }
+        return $team;
     }
 
     /**
@@ -96,9 +119,14 @@ class IncidentReportService
             return null;
         }
 
+        // The team is always read live, so reports filed before this field
+        // existed (and late backups) still print the full responding team.
+        $report = $incident->report_data;
+        $report['team'] = $this->team($incident);
+
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('incident-report-pdf', [
             'incident' => $incident,
-            'report'   => $incident->report_data,
+            'report'   => $report,
             'photoSrc' => $this->photoDataUri($incident->resolution_photo_path),
             'logoLeft' => $this->imageDataUri(public_path('images/logo_mdrrmo.png')),
             'logoRight' => $this->imageDataUri(public_path('images/logo_rosales.png')),

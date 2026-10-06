@@ -575,7 +575,7 @@
                     <a href="{{ route('incidents.overview') }}" class="notif-view-all">View all incidents</a>
                 </div>
             </div>
-            <audio id="notifSound" src="{{ asset('sounds/notification.mp3') }}" preload="auto"></audio>
+            <audio id="notifSound" src="{{ asset('sounds/alarm-sound.mp3') }}" preload="auto"></audio>
             <div class="topbar-user">
 
                 <a href="{{ route('audit-log') }}" style="text-decoration:none;color:inherit;">
