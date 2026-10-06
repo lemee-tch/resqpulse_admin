@@ -15,7 +15,7 @@
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 200px; min-height: 100vh; background: #1a3c8f;
+            width: 250px; min-height: 100vh; background: #1a3c8f;
             display: flex; flex-direction: column; position: fixed; top: 0; left: 0; z-index: 100;
         }
         .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 18px 16px 16px; border-bottom: 1px solid rgba(255,255,255,.12); }
@@ -31,7 +31,7 @@
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
+        .main-wrap { margin-left: 250px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 32px 36px; flex: 1; }
 
         .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }

@@ -61,7 +61,7 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 200px;
+            width: 250px;
             min-height: 100vh;
             background: #1a3c8f;
             display: flex;
@@ -148,7 +148,7 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
         .sidebar-logout a:hover { color: #fff; }
 
 /* ---------- Main ---------- */
-.main{margin-left:200px;padding:32px 36px 48px;}
+.main{margin-left:250px;padding:32px 36px 48px;}
 .page-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:26px;}
 .page-head h1{font-size:26px;font-weight:800;margin:0;color:var(--ink);}
 .page-head .eyebrow{font-size:12.5px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px;}

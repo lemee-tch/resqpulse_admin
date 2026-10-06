@@ -20,7 +20,7 @@
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 200px;
+            width: 250px;
             min-height: 100vh;
             background: #1a3c8f;
             display: flex;
@@ -108,7 +108,7 @@
 
         /* ── MAIN ── */
         .main-wrap {
-            margin-left: 200px  ;
+            margin-left: 250px  ;
             flex: 1;
             display: flex;
             flex-direction: column;

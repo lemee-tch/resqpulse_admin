@@ -12,7 +12,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
 
-        .sidebar { width: 200px; min-height: 100vh; background: #1a3c8f; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; z-index: 100; }
+        .sidebar { width: 250px; min-height: 100vh; background: #1a3c8f; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; z-index: 100; }
         .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 18px 16px 16px; border-bottom: 1px solid rgba(255,255,255,.12); }
         .sidebar-brand img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,.3); }
         .sidebar-brand-text .title { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: .85rem; color: #fff; letter-spacing: .5px; line-height: 1.1; }
@@ -25,7 +25,7 @@
         .sidebar-logout a { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: rgba(255,255,255,.75); text-decoration: none; font-weight: 500; transition: color .2s; }
         .sidebar-logout a:hover { color: #fff; }
 
-        .main-wrap { margin-left: 200px; flex: 1; display: flex; flex-direction: column; }
+        .main-wrap { margin-left: 250px; flex: 1; display: flex; flex-direction: column; }
         .content { padding: 28px 32px; flex: 1; }
         .page-title { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1.5rem; color: #111827; margin-bottom: 4px; }
         .page-sub { font-size: .82rem; color: #6b7280; margin-bottom: 20px; }
