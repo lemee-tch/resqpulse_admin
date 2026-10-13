@@ -114,10 +114,17 @@ class IncidentController extends Controller
         return $this->guestColumnsExist ??= Schema::hasColumns('incidents', ['guest_name', 'guest_mobile']);
     }
 
+    /**
+     * A report from the app ("Report Emergency", or a guest via the API).
+     *
+     * Nothing is sent to responders from here: every report waits in the
+     * admin's Pending Review until an admin approves it
+     * (Admin\IncidentController::approve() dispatches it then) or declines
+     * it.
+     */
     public function store(
         Request $request,
         ImageAnalysisService $imageAnalysis,
-        PushNotificationService $push,
         BarangayLocationService $locationService
     ) {
         $citizen = $this->resolveOptionalCitizen($request);
@@ -159,13 +166,9 @@ class IncidentController extends Controller
             $location = $locationService->approximateReportLabel($request->latitude, $request->longitude);
         }
 
-        // A pin outside Rosales needs admin eyes before it reaches
-        // responders too — even from a trusted logged-in citizen. MDRRMO
-        // Rosales' responders shouldn't get auto-dispatched to a wrong
-        // pin, a test submission from another town, or anything outside
-        // their actual jurisdiction. Only checked when coordinates were
-        // actually sent (see isWithinRosales() — a citizen who typed an
-        // address without dropping a pin isn't gated by this).
+        // Only changes the message below now — every report is reviewed
+        // anyway. Only checked when coordinates were actually sent (see
+        // isWithinRosales()).
         $isOutsideRosales = ! $locationService->isWithinRosales($request->latitude, $request->longitude);
 
         $incident = Incident::create([
@@ -177,13 +180,11 @@ class IncidentController extends Controller
             'description'    => $request->description ?: "Guest report from {$guestLabel} — location only. Awaiting MDRRMO review.",
             'photo_path'     => $photoPaths ? json_encode($photoPaths) : null,
             'status'         => 'pending',
-            // Guest submissions are unverified, and anything outside
-            // Rosales needs a human to confirm it's real before
-            // responders are pulled in — both sit here until an admin
-            // reviews them (see Admin IncidentController::approve).
-            // Everything else (logged-in citizen, inside Rosales) is
-            // trusted immediately, same as before this change.
-            'needs_review'   => $isGuest || $isOutsideRosales,
+            // Every report waits for an admin to review it — guest or
+            // resident, inside or outside Rosales. Responders are only
+            // notified when an admin approves it (see
+            // Admin\IncidentController::approve()).
+            'needs_review'   => true,
         ] + $this->guestColumns($guest));
 
         if ($photoPaths) {
@@ -220,19 +221,11 @@ class IncidentController extends Controller
             $incident
         );
 
-        // Reports needing review never notify responders until an admin
-        // approves — see Admin\IncidentController::approve(), which
-        // fires this same dispatch call once needs_review flips to
-        // false.
-        if (! $incident->needs_review) {
-            $push->dispatchToRespondersForIncident($incident);
-        }
-
-        $message = match(true) {
-            $isGuest => 'Report submitted. MDRRMO will review it shortly before it reaches responders.',
-            $isOutsideRosales => 'Report submitted. Since this location is outside Rosales, MDRRMO will review it before responders are notified.',
-            default => 'Report submitted.',
-        };
+        // No responders are notified here — that happens when an admin
+        // approves the report (Admin\IncidentController::approve()).
+        $message = $isOutsideRosales
+            ? 'Report submitted. This location is outside Rosales, so MDRRMO will check it before sending responders.'
+            : 'Report submitted. MDRRMO will review it and then send responders.';
 
         return response()->json([
             'message'  => $message,

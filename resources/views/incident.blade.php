@@ -361,10 +361,10 @@
         @endif
 
         @php
-            // Pending Review — guest-submitted reports awaiting admin
-            // approval before responders are notified. Excluded from
-            // Active so admins don't mistake an unreviewed guest report
-            // for something already dispatched.
+            // Pending Review — every new report waits here until an admin
+            // approves it; only then are responders notified (see
+            // Admin\IncidentController::approve()). Excluded from Active
+            // so nothing unreviewed looks like it was already dispatched.
             $pendingReviewIncidents = $incidents->where('needs_review', true)->values();
             // Active excludes anything still pending review AND anything
             // declined — a declined report was never dispatched, so it
@@ -538,11 +538,11 @@
             </div>
         </div>
 
-        <!-- ══ TAB: PENDING REVIEW (guest reports) ══ -->
+        <!-- ══ TAB: PENDING REVIEW (every new report) ══ -->
         <div id="tab-review" class="tab-panel">
             <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>These were submitted by guests (not logged in) — only their GPS location is guaranteed accurate. Responders are not notified until you approve.</span>
+                <span>Every new report waits here for your review. Responders are only notified after you approve it. Open <strong>View</strong> to check the photos, description and reporter first.</span>
             </div>
 
             <div class="table-card">
@@ -631,7 +631,7 @@
                             <td colspan="4">
                                 <div class="no-results">
                                     <i class="bi bi-check2-circle"></i>
-                                    No guest reports waiting for review.
+                                    No reports waiting for review.
                                 </div>
                             </td>
                         </tr>

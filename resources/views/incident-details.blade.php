@@ -87,6 +87,39 @@
         .call-link { color: #1a3c8f; font-weight: 700; text-decoration: none; white-space: nowrap; }
         .call-link:hover { text-decoration: underline; }
 
+        /* Review before dispatch: notice + Approve / Decline (same look as
+           the SOS details page). */
+        .review-banner {
+            display: flex; align-items: flex-start; gap: 10px;
+            background: #fef3c7; border: 1px solid #fde68a; color: #92400e;
+            border-radius: 10px; padding: 12px 16px; font-size: .82rem; line-height: 1.5;
+            margin-bottom: 14px;
+        }
+        .quick-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .btn-quick {
+            display: flex; align-items: center; gap: 8px;
+            border: none; border-radius: 10px; padding: 12px 18px;
+            font-family: 'Barlow', sans-serif; font-weight: 700; font-size: .88rem;
+            cursor: pointer; text-decoration: none; transition: opacity .2s, box-shadow .2s;
+        }
+        .btn-quick:hover { opacity: .9; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+        .btn-approve-lg { background: #1a3c8f; color: #fff; }
+        .btn-decline-lg { background: #fff; color: #dc2626; border: 1.5px solid #dc2626; }
+        .btn-decline-lg:hover { background: #dc2626; color: #fff; }
+        .form-label-m { font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 5px; display: block; }
+        .form-control-m {
+            width: 100%; border: 1.5px solid #d1d5db; border-radius: 8px;
+            padding: 9px 13px; font-size: .85rem; font-family: 'Inter', sans-serif;
+            color: #374151; background: #fafafa; transition: border-color .2s;
+        }
+        .form-control-m:focus { outline: none; border-color: #1a3c8f; background: #fff; }
+        .btn-decline-confirm {
+            background: #dc2626; color: #fff; border: none; border-radius: 8px;
+            padding: 9px 22px; font-family: 'Barlow', sans-serif; font-weight: 700;
+            font-size: .88rem; cursor: pointer; transition: background .2s;
+        }
+        .btn-decline-confirm:hover { background: #b91c1c; }
+
         /* Photos */
         .photos-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
         .photo-thumb { width: 68px; height: 52px; border-radius: 6px; object-fit: cover; cursor: pointer; border: 2px solid transparent; transition: border-color .2s; }
@@ -380,11 +413,39 @@
                 <span class="badge-priority">{{ $priorityLabel }}</span>
             </div>
             <div class="banner-meta">
-                <span><strong>Status</strong> {{ ucfirst($incident->status) }}</span>
+                <span><strong>Status</strong> {{ $incident->needs_review ? 'Pending Review' : ($incident->declined_at ? 'Declined' : ucfirst($incident->status)) }}</span>
                 <span><strong>Reported</strong> {{ $incident->created_at->format('M d, Y g:i A') }}</span>
                 <span><strong>Reporter</strong> {{ $reporter }}</span>
             </div>
         </div>
+
+        {{-- Every new report waits for an admin before responders are
+             notified (Api\IncidentController::store sets needs_review). --}}
+        @if($incident->needs_review)
+            <div class="review-banner">
+                <i class="bi bi-info-circle" style="margin-top:1px;"></i>
+                <span>
+                    This report is waiting for your review. Check the photos, description and reporter below.
+                    @if($mobile)
+                        You can call {{ $reporter }} at <a href="tel:{{ $mobile }}" class="call-link">{{ $mobile }}</a> to confirm.
+                    @endif
+                    Responders are <strong>not</strong> notified until you approve it.
+                </span>
+            </div>
+
+            <div class="quick-actions">
+                <form action="{{ route('incident.approve', $incident->id) }}" method="POST" style="margin:0;"
+                      onsubmit="return confirm('Approve this report and send it to the responders?');">
+                    @csrf
+                    <button type="submit" class="btn-quick btn-approve-lg">
+                        <i class="bi bi-check-circle-fill"></i> Approve &amp; Send to Responders
+                    </button>
+                </form>
+                <button type="button" class="btn-quick btn-decline-lg" data-bs-toggle="modal" data-bs-target="#declineModal">
+                    <i class="bi bi-x-circle-fill"></i> Decline
+                </button>
+            </div>
+        @endif
 
         <!-- THREE COLUMN GRID -->
         <div class="detail-grid">
@@ -541,15 +602,23 @@
                         <span style="font-size:.85rem; font-weight:700; color:{{ $statusMeta['text'] }};">{{ $statusMeta['label'] }}</span>
                     </div>
 
-                    @if($incident->status !== 'resolved')
-                        {{-- Responders were already notified automatically the
-                             moment this incident was created (see
-                             PushNotificationService::dispatchToRespondersForIncident).
-                             Status here is informational only — it's updated by
-                             responders themselves, not set manually from admin. --}}
+                    {{-- Responders are notified only when an admin approves the
+                         report (Admin\IncidentController::approve()). Status is
+                         informational — responders update it as they act. --}}
+                    @if($incident->needs_review)
+                        <div class="dispatch-note">
+                            <i class="bi bi-hourglass-split"></i>
+                            <span>Waiting for your review. Responders haven't been notified yet.</span>
+                        </div>
+                    @elseif($incident->declined_at)
+                        <div class="dispatch-note">
+                            <i class="bi bi-x-circle"></i>
+                            <span>Declined{{ $incident->decline_reason ? ': ' . $incident->decline_reason : '' }}. Responders were not notified.</span>
+                        </div>
+                    @elseif($incident->status !== 'resolved')
                         <div class="dispatch-note">
                             <i class="bi bi-broadcast"></i>
-                            <span>Responders for this emergency type were automatically notified when it was reported. Status updates as they act on it.</span>
+                            <span>Approved and sent to the responders for this emergency type. Status updates as they act on it.</span>
                         </div>
                     @endif
 
@@ -657,6 +726,43 @@
                      style="width:100%;max-height:480px;object-fit:contain;border-radius:10px;border:1px solid #e5e7eb;"
                      alt="Resolution photo">
             </div>
+        </div>
+    </div>
+</div>
+@endif
+
+@if($incident->needs_review)
+{{-- Decline Modal — opened by the Decline button under the banner. --}}
+<div class="modal fade" id="declineModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius:14px;border:none;">
+            <form action="{{ route('incident.decline', $incident->id) }}" method="POST">
+                @csrf
+                <div class="modal-header border-0 pb-0">
+                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1.1rem;">Decline this report?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body pt-3">
+                    <p style="font-size:.82rem;color:#6b7280;margin-bottom:12px;">
+                        Responders will NOT be dispatched.
+                        {{ $incident->citizen_id ? 'The reporter will get a notification with this reason.' : 'This report was sent by a guest, so there is no account to notify.' }}
+                    </p>
+                    <label class="form-label-m">Reason for declining</label>
+                    <select name="decline_reason" class="form-control-m" required>
+                        <option value="" disabled selected>Select a reason...</option>
+                        <option value="Duplicate of another report already received">Duplicate of another report already received</option>
+                        <option value="Spam, prank, or test submission">Spam, prank, or test submission</option>
+                        <option value="Insufficient details to dispatch responders">Insufficient details to dispatch responders</option>
+                        <option value="Location is outside Rosales / MDRRMO service area">Location is outside Rosales / MDRRMO service area</option>
+                        <option value="Unable to verify — no credible evidence of an emergency">Unable to verify — no credible evidence of an emergency</option>
+                        <option value="Reported by mistake (accidental submission)">Reported by mistake (accidental submission)</option>
+                    </select>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="submit" class="btn-decline-confirm">Decline Report</button>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
