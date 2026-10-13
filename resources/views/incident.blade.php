@@ -343,47 +343,7 @@
     <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i><span>Map</span></a>
     <a href="javascript:void(0)" id="mobileMenuBtn"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
 </nav>
-<aside class="sidebar" id="sidebar">
-    <div class="sidebar-brand">
-        <img src="{{ asset('images/logo.png') }}" alt="Logo">
-        <div class="sidebar-brand-text">
-            <div class="title">MDRRMO</div>
-            <div class="sub">ADMIN PANEL</div>
-        </div>
-    </div>
-    <nav class="sidebar-nav">
-        <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
-        <a href="{{ route('incident') }}" class="active">
-            <i class="bi bi-clipboard2-pulse"></i> Incidents
-            @if(($pendingIncidentsCount ?? 0) > 0)
-                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingIncidentsCount }}</span>
-            @endif
-        </a>
-        <a href="{{ route('sos-alerts') }}">
-            <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
-            @if(($pendingSosCount ?? 0) > 0)
-                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
-            @endif
-        </a>
-        <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
-        <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
-        <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Residents Verification</a>
-        <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
-        <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
-        <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
-        <a href="{{ route('users') }}"><i class="bi bi-people-fill"></i> User</a>
-    </nav>
-    <div class="sidebar-logout">
-        <a href="{{ route('logout') }}"
-           onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
-            <i class="bi bi-box-arrow-right"></i> Log out
-        </a>
-        <form id="logout-form" action="{{ route('logout') }}" method="POST" class="d-none">
-            @csrf
-        </form>
-    </div>
-</aside>
+@include('partials.sidebar')
 
 <!-- ════ MAIN ════ -->
 <div class="main-wrap">

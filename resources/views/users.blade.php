@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RESQPULSE – User</title>
+    <title>RESQPULSE – LGU Staff</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -257,53 +257,13 @@
     <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i><span>Map</span></a>
     <a href="javascript:void(0)" id="mobileMenuBtn" class="active"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
 </nav>
-<aside class="sidebar" id="sidebar">
-    <div class="sidebar-brand">
-        <img src="{{ asset('images/logo.png') }}" alt="Logo">
-        <div class="sidebar-brand-text">
-            <div class="title">MDRRMO</div>
-            <div class="sub">ADMIN PANEL</div>
-        </div>
-    </div>
-    <nav class="sidebar-nav">
-        <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
-        <a href="{{ route('incident') }}">
-            <i class="bi bi-clipboard2-pulse"></i> Incidents
-            @if(($pendingIncidentsCount ?? 0) > 0)
-                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingIncidentsCount }}</span>
-            @endif
-        </a>
-        <a href="{{ route('sos-alerts') }}">
-            <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
-            @if(($pendingSosCount ?? 0) > 0)
-                <span style="background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;">{{ $pendingSosCount }}</span>
-            @endif
-        </a>
-        <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
-        <a href="{{ route('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
-        <a href="{{ route('evacuation') }}"><i class="bi bi-house-heart-fill"></i> Evacuation Centers</a>
-        <a href="{{ route('citizen-verification') }}"><i class="bi bi-person-check-fill"></i> Residents Verification</a>
-        <a href="{{ route('responder-accounts') }}"><i class="bi bi-person-badge-fill"></i> Responder Accounts</a>
-        <a href="{{ route('reports-analytics') }}"><i class="bi bi-bar-chart-fill"></i> Reports &amp; Analytics</a>
-        <a href="{{ route('audit-log') }}"><i class="bi bi-journal-text"></i> Audit Log</a>
-        <a href="{{ route('users') }}" class="active"><i class="bi bi-people-fill"></i> User</a>
-    </nav>
-    <div class="sidebar-logout">
-        <a href="{{ route('logout') }}"
-           onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
-            <i class="bi bi-box-arrow-right"></i> Log out
-        </a>
-        <form id="logout-form" action="{{ route('logout') }}" method="POST" class="d-none">
-            @csrf
-        </form>
-    </div>
-</aside>
+@include('partials.sidebar')
 
 <div class="main-wrap">
     <div class="content">
 
         <div class="page-header">
-            <div class="page-title">User</div>
+            <div class="page-title">LGU Staff</div>
             <button class="btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
                 <i class="bi bi-plus-lg"></i> Add User
             </button>

@@ -336,13 +336,17 @@ class AuthController extends Controller
             ->groupBy('type')
             ->pluck('total', 'type');
 
-        $reportsByLocation = \App\Models\Incident::selectRaw('location, COUNT(*) as total')
-            ->whereNotNull('location')
-            ->whereBetween('created_at', [$fromDate, $toDate])
-            ->groupBy('location')
-            ->orderByDesc('total')
-            ->take(5)
-            ->pluck('total', 'location');
+        // Incidents by Location — counted per barangay (see barangayLabel()).
+        // Grouping by the raw location text gave one bar per street address
+        // (every bar stuck at 1) and showed old "Lat …, Lng …" SOS labels.
+        // Most first; ties in alphabetical order.
+        $places = app(\App\Services\BarangayLocationService::class);
+        $reportsByLocation = \App\Models\Incident::whereBetween('created_at', [$fromDate, $toDate])
+            ->get(['location', 'latitude', 'longitude'])
+            ->countBy(fn ($inc) => $this->barangayLabel($inc->location, $inc->latitude, $inc->longitude, $places))
+            ->sortKeys()
+            ->sortDesc()
+            ->take(8);
 
         // Last 7 days, one bucket per day
         $trendWeek = collect(range(6, 0))->mapWithKeys(function ($daysAgo) {
@@ -401,9 +405,8 @@ class AuthController extends Controller
     public function exportReport(Request $request)
     {
         $validated = $request->validate([
-            'from'   => ['nullable', 'date'],
-            'to'     => ['nullable', 'date', 'after_or_equal:from'],
-            'format' => ['nullable', 'in:pdf,csv'],
+            'from' => ['nullable', 'date'],
+            'to'   => ['nullable', 'date', 'after_or_equal:from'],
         ]);
 
         $toDate = isset($validated['to'])
@@ -422,12 +425,11 @@ class AuthController extends Controller
         $resolvedIncidents = $incidents->where('status', 'resolved')->count();
         $resolutionRate = $totalIncidents > 0 ? round($resolvedIncidents / $totalIncidents * 100) : 0;
 
-        $wantsCsv = ($validated['format'] ?? 'pdf') === 'csv';
-
-        if (! $wantsCsv && class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
+        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
             return $this->exportReportAsPdf($incidents, $fromDate, $toDate, $totalIncidents, $resolvedIncidents, $resolutionRate);
         }
 
+        // Only when the PDF package isn't installed at all.
         return $this->exportReportAsCsv($incidents, $fromDate, $toDate);
     }
 
@@ -436,7 +438,7 @@ class AuthController extends Controller
         $filename = 'resqpulse-report_' . $fromDate->format('Y-m-d') . '_to_' . $toDate->format('Y-m-d') . '.pdf';
 
         // When the PDF can't be made, go back to Reports & Analytics and
-        // say why (with a CSV link there) instead of a bare 500 page.
+        // say why instead of a bare 500 page.
         $failed = function (string $why) use ($fromDate, $toDate) {
             return redirect()
                 ->route('reports-analytics', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString()])
@@ -462,10 +464,17 @@ class AuthController extends Controller
             ? $incidents->sortByDesc('created_at')->take(self::PDF_LIST_LIMIT)->sortBy('created_at')->values()
             : $incidents;
 
+        // Same barangay grouping as the "Incidents by Location" chart.
+        $places = app(\App\Services\BarangayLocationService::class);
+        $barangayLabels = $incidents
+            ->mapWithKeys(fn ($inc) => [$inc->id => $this->barangayLabel($inc->location, $inc->latitude, $inc->longitude, $places)])
+            ->all();
+
         try {
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('report-pdf', [
                 'incidents'         => $incidents,
                 'listedIncidents'   => $listedIncidents,
+                'barangayLabels'    => $barangayLabels,
                 'fromDate'          => $fromDate,
                 'toDate'            => $toDate,
                 'totalIncidents'    => $totalIncidents,
@@ -483,6 +492,55 @@ class AuthController extends Controller
 
             return $failed('The PDF could not be made: ' . \Illuminate\Support\Str::limit($e->getMessage(), 200));
         }
+    }
+
+    /**
+     * The barangay an incident is counted under on Reports & Analytics
+     * ("Incidents by Location") and in the exported PDF:
+     *   1. the Rosales barangay named in its location text;
+     *   2. "Outside Rosales" when the text says so;
+     *   3. otherwise — e.g. older SOS rows whose location is still
+     *      "Lat …, Lng …" — the barangay whose centre is nearest the GPS
+     *      pin, within 5 km (the same offline fallback
+     *      BarangayLocationService uses), else "Outside Rosales";
+     *   4. "Not identified" when there's nothing to go on.
+     * Offline only: no map service is called while the page loads.
+     */
+    private function barangayLabel(?string $location, $lat, $lng, \App\Services\BarangayLocationService $places): string
+    {
+        if ($name = $places->barangayFromText($location)) {
+            return $name;
+        }
+        if (stripos((string) $location, 'outside rosales') !== false) {
+            return 'Outside Rosales';
+        }
+
+        if (is_numeric($lat) && is_numeric($lng)) {
+            $nearest = null;
+            $nearestKm = null;
+            foreach (\App\Services\BarangayLocationService::allCoordinates() as $name => [$bLat, $bLng]) {
+                $km = $this->distanceKm((float) $lat, (float) $lng, (float) $bLat, (float) $bLng);
+                if ($nearestKm === null || $km < $nearestKm) {
+                    $nearestKm = $km;
+                    $nearest = $name;
+                }
+            }
+            if ($nearest !== null) {
+                return $nearestKm <= 5 ? $nearest : 'Outside Rosales';
+            }
+        }
+
+        return 'Not identified';
+    }
+
+    /** Straight-line distance between two GPS points, in km. */
+    private function distanceKm(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+
+        return 6371 * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 
     /** Raises PHP's memory limit for this request only, never lowers it. */
