@@ -282,6 +282,69 @@ class IncidentController extends Controller
     }
 
     /**
+     * Permanently deletes a DECLINED report or SOS alert (spam, a prank,
+     * a duplicate…). Anything that wasn't declined — waiting for review,
+     * active or resolved — can't be deleted. Its photos are removed from
+     * storage and its responder links go with it (cascade). The Audit Log
+     * keeps a line with what was deleted, who sent it and why it was
+     * declined, since the record itself is gone.
+     *
+     * Goes back to the list it belongs to: SOS Alerts' Declined tab, or
+     * Incidents' Resolved History (where declined reports are listed).
+     */
+    public function destroy(Incident $incident)
+    {
+        $isSos = $incident->emergency_type === 'SOS Emergency';
+        $list = $isSos ? route('sos-alerts', ['tab' => 'declined']) : route('incident', ['tab' => 'history']);
+
+        if (! $incident->declined_at) {
+            return redirect($list)->withErrors(['delete' => 'Only declined reports and SOS alerts can be deleted.']);
+        }
+
+        $what = $this->describeIncident($incident);
+
+        AuditLogService::log(
+            'deleted',
+            "Deleted the declined {$what}" . ($incident->decline_reason ? " — declined as: {$incident->decline_reason}" : '') . '.',
+            $incident,
+            [
+                'type'           => $incident->display_type,
+                'location'       => $incident->location,
+                'reporter'       => $incident->reporter_name,
+                'mobile'         => $incident->reporter_mobile,
+                'reported_at'    => $incident->created_at?->toDateTimeString(),
+                'declined_at'    => $incident->declined_at?->toDateTimeString(),
+                'decline_reason' => $incident->decline_reason,
+            ],
+            null
+        );
+
+        // Photos on the public disk: photo_path is a JSON list (very old
+        // rows hold one plain path), plus a resolution photo if any.
+        $photos = [];
+        if ($incident->photo_path) {
+            $decoded = json_decode($incident->photo_path, true);
+            $photos = is_array($decoded) ? $decoded : [$incident->photo_path];
+        }
+        if ($incident->resolution_photo_path) {
+            $photos[] = $incident->resolution_photo_path;
+        }
+        $photos = array_values(array_filter($photos, fn ($p) => is_string($p) && $p !== ''));
+
+        $incident->delete();
+
+        try {
+            if ($photos) {
+                Storage::disk('public')->delete($photos);
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Deleted incident photos could not be removed.', ['error' => $e->getMessage()]);
+        }
+
+        return redirect($list)->with('success', $isSos ? 'Declined SOS alert deleted.' : 'Declined report deleted.');
+    }
+
+    /**
      * The MDRRMC Incident Report PDF the responder filed when resolving
      * this incident. Stored on the PRIVATE disk, so it's only ever served
      * through this auth-gated route (never via /storage). `?download=1`

@@ -156,6 +156,16 @@
             transition: background .2s, color .2s, border-color .2s;
         }
         .btn-view:hover { background: #1a3c8f; border-color: #1a3c8f; color: #fff; }
+        /* Resolved History: Delete (declined reports only) next to View. */
+        .row-actions { display: inline-flex; align-items: center; gap: 8px; }
+        .row-actions form { margin: 0; }
+        .btn-delete {
+            display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+            background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; border-radius: 6px;
+            padding: 5px 11px; font-size: .78rem; font-weight: 700; cursor: pointer;
+            transition: background .2s, color .2s, border-color .2s;
+        }
+        .btn-delete:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
         .map-link { margin-left: 6px; font-size: .74rem; font-weight: 600; color: #1a3c8f; text-decoration: none; white-space: nowrap; }
         .map-link:hover { text-decoration: underline; }
         .guest-note { font-size: .74rem; color: #92400e; font-style: italic; }
@@ -753,7 +763,22 @@
                             <td class="td-location">{{ $inc->location ?: '—' }}</td>
                             <td><span class="{{ $statusBadge }}">{{ $statusLabel }}</span></td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
-                            <td class="td-action"><a href="{{ route('incident.detail', $inc->id) }}" class="btn-view" onclick="event.stopPropagation()">View <i class="bi bi-chevron-right"></i></a></td>
+                            <td class="td-action" onclick="event.stopPropagation()">
+                                <div class="row-actions">
+                                    @if($isDeclined)
+                                        {{-- Declined reports only (IncidentController::destroy()). --}}
+                                        <form method="POST" action="{{ route('incident.destroy', $inc->id) }}" class="delete-form"
+                                              data-what="{{ $inc->emergency_type }} report from {{ $reporterName }}">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="btn-delete" title="Delete this declined report">
+                                                <i class="bi bi-trash3"></i> Delete
+                                            </button>
+                                        </form>
+                                    @endif
+                                    <a href="{{ route('incident.detail', $inc->id) }}" class="btn-view">View <i class="bi bi-chevron-right"></i></a>
+                                </div>
+                            </td>
                         </tr>
                         @empty
                         <tr>
@@ -879,7 +904,7 @@
             if (!panel) return;
             try { sessionStorage.setItem(KEY, panel.id.replace('tab-', '')); } catch (e) {}
         };
-        document.querySelectorAll('.tab-panel form').forEach(form => {
+        document.querySelectorAll('.tab-panel form:not(.delete-form)').forEach(form => {
             form.addEventListener('submit', () => remember(form));
             form.querySelectorAll('select').forEach(s => s.addEventListener('change', () => remember(form)));
         });
@@ -1069,6 +1094,32 @@
             }
         });
     });
+
+    // Delete (declined reports only) — asks first, since it can't be undone.
+    document.querySelectorAll('.delete-form').forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'warning',
+                title: 'Delete this declined report?',
+                html: `<div style="font-size:.9em;color:#4b5563;">${escapeHtml(form.dataset.what || 'Declined report')}<br>It's removed for good, with its photos. This can't be undone.</div>`,
+                showCancelButton: true,
+                confirmButtonText: 'Yes, delete',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc2626',
+                focusCancel: true,
+            }).then(result => {
+                if (result.isConfirmed) form.submit();
+            });
+        });
+    });
+
+    // ?tab=history (e.g. after deleting a declined report) opens that tab.
+    (function () {
+        const tab = new URLSearchParams(window.location.search).get('tab');
+        const btn = tab && document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+        if (btn) switchTab(tab, btn);
+    })();
 </script>
 @include('partials.sos-alert-overlay')
 <script>

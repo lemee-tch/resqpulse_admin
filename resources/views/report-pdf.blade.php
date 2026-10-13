@@ -9,10 +9,11 @@
         file didn't exist, so every export ended in a server error.
 
         Gets: $incidents (with citizen), $fromDate, $toDate, $totalIncidents,
-        $resolvedIncidents, $resolutionRate, $exportedBy, and $listedIncidents
+        $resolvedIncidents, $resolutionRate, $exportedBy, $listedIncidents
         (the rows for the incident list — at most
         AuthController::PDF_LIST_LIMIT of them; the totals and breakdowns
-        always count every incident in $incidents).
+        always count every incident in $incidents) and $barangayLabels
+        (incident id => barangay, for "By barangay").
 
         dompdf only understands CSS 2.1 — no flexbox/grid — so the layout is
         plain tables, same as incident-report-pdf.blade.php. dompdf keeps the
@@ -96,9 +97,14 @@
     // Barangay from the location text, e.g. "SOS Alert — Rizal St, Brgy.
     // Carmay East, Rosales, Pangasinan". Longest names first so
     // "Zone II (Poblacion)" isn't read as "Zone I (Poblacion)".
+    // The controller passes $barangayLabels (incident id => barangay), the
+    // same grouping as the "Incidents by Location" chart. The text match
+    // below is only a fallback for when it isn't passed.
+    $barangayLabels = $barangayLabels ?? [];
     $barangayNames = \App\Services\BarangayLocationService::names();
     usort($barangayNames, fn ($a, $b) => mb_strlen($b) <=> mb_strlen($a));
-    $barangayOf = function ($inc) use ($barangayNames) {
+    $barangayOf = function ($inc) use ($barangayNames, $barangayLabels) {
+        if (isset($barangayLabels[$inc->id])) return $barangayLabels[$inc->id];
         $text = (string) $inc->location;
         if (stripos($text, 'Outside Rosales') !== false) return 'Outside Rosales';
         foreach ($barangayNames as $name) {
@@ -210,7 +216,7 @@
     @if($listIsCut)
         <div class="note">
             Showing the latest {{ number_format($listed->count()) }} of {{ number_format($incidents->count()) }} incidents.
-            The totals and breakdowns above count all of them. For the full list, use CSV on Reports &amp; Analytics.
+            The totals and breakdowns above count all of them. To list every incident, export a shorter date range.
         </div>
     @endif
     <table class="list">

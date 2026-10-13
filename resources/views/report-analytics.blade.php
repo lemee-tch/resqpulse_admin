@@ -192,20 +192,12 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
   box-shadow:0 6px 14px rgba(26,60,143,.28);
 }
 .btn-export:hover{background:var(--primary-dark);color:#fff;}
-/* Same period as a spreadsheet — every incident, no PDF size limit. */
-.btn-export-csv{
-  background:#fff;color:var(--primary);border:1.5px solid #c7d2fe;border-radius:10px;
-  padding:8px 14px;font-weight:700;font-size:13.5px;
-  display:flex;align-items:center;gap:6px;text-decoration:none;
-}
-.btn-export-csv:hover{background:var(--primary-soft);color:var(--primary);}
 /* Shown when the PDF couldn't be made (see AuthController::exportReportAsPdf). */
 .export-error{
-  display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;
+  display:flex;align-items:flex-start;gap:10px;
   background:#fef2f2;border:1px solid #fecaca;color:#991b1b;
   border-radius:12px;padding:12px 16px;font-size:13.5px;line-height:1.5;margin-bottom:18px;
 }
-.export-error a{color:#991b1b;font-weight:700;}
 
 /* ---------- Stat cards ---------- */
 .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:24px;}
@@ -247,8 +239,9 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
 }
 .legend-pct{color:var(--muted);font-weight:700;font-size:13px;}
 
-/* Location bar chart card */
+/* Location bar chart card (horizontal bars, one per barangay) */
 .loc-chart-wrap{position:relative;height:260px;}
+.loc-empty{color:var(--muted);font-size:13px;text-align:center;padding:48px 0;}
 
 /* Time filter controls */
 .time-filter{display:flex;align-items:center;gap:8px;}
@@ -314,7 +307,9 @@ canvas{max-width:100%;}
             }
             .sidebar.open { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,.3); }
             .sidebar-nav a { white-space: normal !important; }
-            .main-wrap {
+            /* This page's content box is .main (other pages use .main-wrap),
+               so without it the 250px sidebar gap stayed on phones. */
+            .main-wrap, .main {
                 margin-left: 0 !important;
                 padding: 20px 16px 32px !important;
                 padding-top: 66px !important;
@@ -325,7 +320,7 @@ canvas{max-width:100%;}
         }
 
         @media (max-width: 560px) {
-            .main-wrap {
+            .main-wrap, .main {
                 padding: 16px 12px 28px !important;
                 padding-top: 62px !important;
                 padding-bottom: 88px !important;
@@ -476,20 +471,13 @@ canvas{max-width:100%;}
       <a href="{{ route('reports-analytics.export', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString()]) }}" class="btn-export">
           <i class="bi bi-download"></i> Export Report
       </a>
-      <a href="{{ route('reports-analytics.export', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString(), 'format' => 'csv']) }}"
-         class="btn-export-csv" title="Download every incident in this period as a spreadsheet (CSV)">
-          <i class="bi bi-filetype-csv"></i> CSV
-      </a>
     </div>
   </div>
 
   @if(session('export_error'))
     <div class="export-error" role="alert">
       <i class="bi bi-exclamation-triangle-fill" style="margin-top:2px;"></i>
-      <span>
-        {{ session('export_error') }}
-        <a href="{{ route('reports-analytics.export', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString(), 'format' => 'csv']) }}">Download as CSV instead</a>
-      </span>
+      <span>{{ session('export_error') }}</span>
     </div>
   @endif
 
@@ -597,12 +585,20 @@ canvas{max-width:100%;}
       <div class="panel-head">
         <div>
           <div class="panel-title">Incidents by Location</div>
-          <div class="panel-sub">Top {{ $reportsByLocation->count() }} locations this period</div>
+          <div class="panel-sub">
+            Top {{ $reportsByLocation->count() }} {{ \Illuminate\Support\Str::plural('barangay', $reportsByLocation->count()) }} this period
+          </div>
         </div>
       </div>
-      <div class="loc-chart-wrap">
-        <canvas id="locationBar"></canvas>
-      </div>
+      @if($reportsByLocation->isEmpty())
+        <div class="loc-empty">No incidents in this period.</div>
+      @else
+        {{-- One row per barangay, so the box grows with the number of bars. --}}
+        <div class="loc-chart-wrap" style="height:{{ min(340, max(140, $reportsByLocation->count() * 38 + 24)) }}px;">
+          <canvas id="locationBar" role="img"
+                  aria-label="Incidents by barangay: {{ $reportsByLocation->map(fn ($n, $b) => "$b $n")->implode(', ') }}"></canvas>
+        </div>
+      @endif
     </div>
   </div>
 
@@ -678,65 +674,79 @@ new Chart(document.getElementById('typePie'), {
   }
 });
 
-// ── Incidents by Location — Bar Chart ──────────────────────────────────
-new Chart(document.getElementById('locationBar'), {
-  type: 'bar',
-  data: {
-    labels: @json($reportsByLocation->keys()),
-    datasets: [{
-      label: 'Incidents',
-      data: @json($reportsByLocation->values()),
-      backgroundColor: '#1A3C8F',
-      borderRadius: 6,
-      maxBarThickness: 46
-    }]
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        // Tooltip title always shows the FULL original location (Chart.js
-        // pulls this from data.labels, not from the tick callback below),
-        // so truncating the on-axis label loses no information — anyone
-        // who needs the full text just hovers.
-        callbacks: { label: c => c.raw + (c.raw === 1 ? ' incident' : ' incidents') }
-      }
+// ── Incidents by Location — horizontal bars, one per barangay ─────────
+// Horizontal so the barangay names read in full on the left, and each
+// count is written at the end of its bar (no hovering needed). The data
+// is already grouped per barangay by AuthController::barangayLabel(), so
+// no raw street text or old "Lat …, Lng …" labels end up here.
+(function () {
+  const el = document.getElementById('locationBar');
+  if (!el) return;
+
+  const labels = @json($reportsByLocation->keys());
+  const counts = @json($reportsByLocation->values());
+  // Not a barangay — shown grey so they don't read as one.
+  const colors = labels.map(l => (l === 'Outside Rosales' || l === 'Not identified') ? '#B8BECB' : '#1A3C8F');
+
+  const countAtBarEnd = {
+    id: 'countAtBarEnd',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      ctx.save();
+      ctx.font = '700 12.5px Inter, sans-serif';
+      ctx.fillStyle = '#1C2433';
+      ctx.textBaseline = 'middle';
+      chart.getDatasetMeta(0).data.forEach((bar, i) => ctx.fillText(counts[i], bar.x + 8, bar.y));
+      ctx.restore();
+    }
+  };
+
+  new Chart(el, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Incidents',
+        data: counts,
+        backgroundColor: colors,
+        borderRadius: 6,
+        borderSkipped: 'start',
+        maxBarThickness: 24,
+        barPercentage: 0.82,
+        categoryPercentage: 0.9
+      }]
     },
-    scales: {
-      // stepSize: 1 — this is a count of incidents, which can only ever
-      // be a whole number. Without this, Chart.js's auto-scaling showed
-      // fractional gridlines (0.2, 0.4, 0.6...) whenever the tallest bar
-      // was small, which doesn't mean anything for a count.
-      y: {
-        beginAtZero: true,
-        grid: { color: '#EEF0F6' },
-        ticks: { color: '#6B7385', font: { size: 11.5 }, stepSize: 1, precision: 0 }
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 34 } }, // room for the count after the longest bar
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => c.raw + (c.raw === 1 ? ' incident' : ' incidents') } }
       },
-      x: {
-        grid: { display: false },
-        ticks: {
-          color: '#6B7385',
-          font: { size: 11.5 },
-          maxRotation: 35,
-          minRotation: 0,
-          // Some older SOS reports (from before location resolution was
-          // wired up — see BarangayLocationService) still have raw
-          // coordinates baked into `location`, e.g. "SOS Alert (outside
-          // Rosales — Lat 16.07843, Lng 120.57323)". Left un-truncated,
-          // one long label like that pushes every other bar's label into
-          // an unreadable wrap. Truncate on the axis; full text is still
-          // one hover away via the tooltip.
-          callback: function (value) {
-            const label = this.getLabelForValue(value);
-            return label.length > 24 ? label.slice(0, 22) + '…' : label;
+      scales: {
+        // The counts are on the bars, so the number axis stays hidden.
+        x: { display: false, beginAtZero: true, ticks: { precision: 0 } },
+        y: {
+          grid: { display: false },
+          border: { display: false },
+          ticks: {
+            color: '#1C2433',
+            font: { size: 12.5, weight: '600' },
+            autoSkip: false,
+            padding: 8,
+            callback: function (value) {
+              const label = this.getLabelForValue(value);
+              return label.length > 28 ? label.slice(0, 26) + '…' : label;
+            }
           }
         }
       }
-    }
-  }
-});
+    },
+    plugins: [countAtBarEnd]
+  });
+})();
 
 // ── Incidents over Time — Line Chart with Week / Month / Year filter ────
 const trendDatasets = {

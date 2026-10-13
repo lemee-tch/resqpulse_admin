@@ -73,6 +73,8 @@ Route::middleware('auth')->group(function () {
     Route::patch('/incidents/{incident}/note', [IncidentController::class, 'updateNote'])->name('incident.note');
     Route::post('/incidents/{incident}/approve', [IncidentController::class, 'approve'])->name('incident.approve');
     Route::post('/incidents/{incident}/decline', [IncidentController::class, 'decline'])->name('incident.decline');
+    // Declined reports / SOS alerts only — see IncidentController::destroy().
+    Route::delete('/incidents/{incident}', [IncidentController::class, 'destroy'])->name('incident.destroy');
 
     Route::get('/sos-alerts/latest', [IncidentController::class, 'latestSos'])->name('sos-alerts.latest');
     Route::get('/notifications/incidents', [IncidentController::class, 'latestIncidentNotifications'])->name('notifications.incidents');

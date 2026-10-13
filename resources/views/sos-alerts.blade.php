@@ -279,6 +279,16 @@
             margin-top: 8px; font-size: .8rem; color: #991b1b; font-style: italic;
             background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px;
         }
+        /* Declined card: the reason, with Delete beside it. */
+        .declined-foot { display: flex; align-items: stretch; gap: 10px; margin-top: 8px; }
+        .declined-foot .declined-reason-note { flex: 1; margin-top: 0; display: flex; align-items: center; }
+        .declined-foot form { margin: 0; display: flex; }
+        .btn-delete {
+            background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; border-radius: 8px;
+            padding: 6px 14px; font-size: .8rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+            display: inline-flex; align-items: center; gap: 6px; transition: background .2s, color .2s, border-color .2s;
+        }
+        .btn-delete:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn {
@@ -479,6 +489,11 @@
         @if(session('success'))
             <div class="alert alert-success" style="border-radius:10px;font-size:.85rem;margin-bottom:16px;">
                 {{ session('success') }}
+            </div>
+        @endif
+        @if($errors->any())
+            <div class="alert alert-danger" style="border-radius:10px;font-size:.85rem;margin-bottom:16px;">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i> {{ $errors->first() }}
             </div>
         @endif
 
@@ -871,8 +886,19 @@
                             </div>
                         </div>
 
-                        <div class="declined-reason-note">
-                            Declined: "{{ \Illuminate\Support\Str::limit($sos->decline_reason ?: 'No reason given', 120) }}"
+                        <div class="declined-foot">
+                            <div class="declined-reason-note">
+                                Declined: "{{ \Illuminate\Support\Str::limit($sos->decline_reason ?: 'No reason given', 120) }}"
+                            </div>
+                            {{-- Permanently removes this declined alert (IncidentController::destroy()). --}}
+                            <form method="POST" action="{{ route('incident.destroy', $sos->id) }}" class="delete-form"
+                                  data-what="SOS alert from {{ $reporter }}" onclick="event.stopPropagation()">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="btn-delete" title="Delete this declined SOS alert">
+                                    <i class="bi bi-trash3"></i> Delete
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -903,6 +929,34 @@
         document.getElementById('tab-' + id).classList.add('active');
         btn.classList.add('active');
     }
+
+    // ?tab=declined (e.g. after deleting a declined alert) opens that tab.
+    (function () {
+        const tab = new URLSearchParams(window.location.search).get('tab');
+        const btn = tab && document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+        if (btn) switchTab(tab, btn);
+    })();
+
+    // Delete (declined alerts only) — asks first, since it can't be undone.
+    document.querySelectorAll('.delete-form').forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const what = document.createElement('div');
+            what.textContent = form.dataset.what || 'declined SOS alert';
+            Swal.fire({
+                icon: 'warning',
+                title: 'Delete this declined SOS alert?',
+                html: `<div style="font-size:.9em;color:#4b5563;">${what.innerHTML}<br>It's removed for good, with its photo. This can't be undone.</div>`,
+                showCancelButton: true,
+                confirmButtonText: 'Yes, delete',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc2626',
+                focusCancel: true,
+            }).then(result => {
+                if (result.isConfirmed) form.submit();
+            });
+        });
+    });
 
     (function () {
         const params = new URLSearchParams(window.location.search);
