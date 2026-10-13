@@ -107,36 +107,152 @@ class BarangayLocationService
     }
 
     /**
-     * Resolves a GPS pin to a real, human-readable location string.
-     * Order of precedence:
-     *   1. Google Geocoding reverse lookup (actual street/area/barangay name)
-     *   2. Nearest-barangay centroid table, if Google fails and the
-     *      pin is close enough to a known barangay to approximate
-     *   3. Raw coordinates, if both of the above come up empty
+     * Turns a GPS pin into a readable place name — never raw coordinates.
+     *
+     *   inside Rosales:  "[building,] [street,] Brgy. <barangay>, Rosales, Pangasinan"
+     *   outside Rosales: "Outside Rosales: <place, town, province>"
+     *
+     * Where the details come from, best first:
+     *   1. Google Geocoding — street-level address. Needs GOOGLE_MAPS_API_KEY
+     *      with the Geocoding API enabled and no HTTP-referrer restriction
+     *      (a browser-only Maps key is refused for server calls).
+     *   2. OpenStreetMap Nominatim (free) — used when Google fails, for
+     *      single new reports only ($allowOsm), never for bulk rechecks.
+     *   3. Offline — the bundled Rosales boundary decides inside/outside,
+     *      and the barangay is the one whose centre is nearest the pin.
+     *      Always works, so a pin inside Rosales always gets a barangay.
+     *
+     * The barangay is taken from the map service when it names a real
+     * Rosales barangay, otherwise from the nearest barangay centre (there
+     * are no barangay border maps for Rosales — see allCoordinates()).
      */
-    public function resolve(?float $lat, ?float $lng): ?string
+    public function describe(?float $lat, ?float $lng, bool $allowOsm = true): ?array
     {
         if ($lat === null || $lng === null) {
             return null;
         }
 
-        // Exact location: Google's full formatted address for the pin
-        // (street/barangay, town, province) — never a nearest-barangay guess.
         $geo = $this->reverseGeocode($lat, $lng);
-        if ($geo) {
-            if ($geo['display_name']) {
-                return $geo['display_name'];
+        if (! $geo && $allowOsm) {
+            $geo = $this->reverseGeocodeOsm($lat, $lng);
+        }
+
+        // Inside or outside Rosales: the real boundary polygon first, then
+        // what the map service says, then distance to the barangay centres.
+        $inside = $this->insideBoundary($lat, $lng);
+        if ($inside === null) {
+            $inside = ($geo && $geo['municipality'])
+                ? str_contains(strtolower($geo['municipality']), 'rosales')
+                : $this->nearestBarangay($lat, $lng) !== null;
+        }
+
+        $barangay = null;
+        foreach (($geo['areas'] ?? []) as $area) {
+            $barangay = $this->barangayFromText($area);
+            if ($barangay) {
+                break;
             }
-            if ($geo['locality']) {
-                return $geo['municipality']
-                    ? "{$geo['locality']}, {$geo['municipality']}"
-                    : $geo['locality'];
+        }
+        if (! $barangay && $inside) {
+            $barangay = $this->nearestBarangay($lat, $lng, 15.0);
+        }
+
+        $parts = [];
+        if (! empty($geo['place'])) {
+            $parts[] = $geo['place'];
+        }
+        if (! empty($geo['street'])) {
+            $parts[] = $geo['street'];
+        }
+
+        if ($inside) {
+            if ($barangay) {
+                $parts[] = 'Brgy. ' . $barangay;
+            }
+            $parts[] = 'Rosales, Pangasinan';
+            $label = $this->joinParts($parts);
+        } else {
+            foreach (['locality', 'municipality', 'province'] as $key) {
+                if (! empty($geo[$key])) {
+                    $parts[] = $geo[$key];
+                }
+            }
+            if ($parts) {
+                $label = 'Outside Rosales: ' . $this->joinParts($parts);
+            } else {
+                $near = $this->nearestBarangay($lat, $lng, 15.0);
+                $label = $near ? "Outside Rosales: near Brgy. {$near}, Rosales" : 'Outside Rosales';
             }
         }
 
-        // Google unavailable: state the exact coordinates rather than
-        // guessing a barangay that may be wrong.
-        return 'Lat ' . round($lat, 6) . ', Lng ' . round($lng, 6);
+        return [
+            'label'    => $label,
+            'barangay' => $inside ? $barangay : null,
+            'inside'   => $inside,
+            'source'   => $geo['source'] ?? 'offline',
+        ];
+    }
+
+    /**
+     * Readable place name for a GPS pin (see describe()). Kept for the
+     * existing callers.
+     */
+    public function resolve(?float $lat, ?float $lng, bool $allowOsm = true): ?string
+    {
+        return $this->describe($lat, $lng, $allowOsm)['label'] ?? null;
+    }
+
+    /**
+     * The Rosales barangay named in a piece of text ("Carmay East",
+     * "Poblacion Zone 3", "Zone Ⅲ", "Brgy. San Pedro West"...), or null.
+     * Longest names are tried first so "San Pedro East" wins over shorter
+     * look-alikes; "Zone 1" / "Zone I" / "Zone Ⅰ" all mean Zone I (Poblacion).
+     */
+    public function barangayFromText(?string $text): ?string
+    {
+        $text = mb_strtolower(trim((string) $text));
+        if ($text === '') {
+            return null;
+        }
+
+        // Unicode roman numerals (OpenStreetMap uses "Zone Ⅰ") and digits.
+        $text = strtr($text, ['ⅰ' => 'i', 'ⅱ' => 'ii', 'ⅲ' => 'iii', 'ⅳ' => 'iv', 'ⅴ' => 'v',
+                              'Ⅰ' => 'i', 'Ⅱ' => 'ii', 'Ⅲ' => 'iii', 'Ⅳ' => 'iv', 'Ⅴ' => 'v']);
+        $roman = ['1' => 'i', '2' => 'ii', '3' => 'iii', '4' => 'iv', '5' => 'v'];
+        $text = preg_replace_callback('/\bzone\s*([1-5])\b/u', fn ($m) => 'zone ' . $roman[$m[1]], $text);
+
+        $names = array_keys(self::BARANGAY_COORDINATES);
+        usort($names, fn ($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+
+        foreach ($names as $name) {
+            $needle = mb_strtolower($name);
+            if (str_contains($needle, '(poblacion)')) {
+                $needle = trim(str_replace('(poblacion)', '', $needle));
+            }
+            if (preg_match('/\b' . preg_quote($needle, '/') . '\b/u', $text)) {
+                return $name;
+            }
+        }
+
+        return null;
+    }
+
+    /** "A, B, C" without empty or repeated pieces. */
+    private function joinParts(array $parts): string
+    {
+        $seen = [];
+        $out = [];
+        foreach ($parts as $part) {
+            $part = trim((string) $part);
+            $key = mb_strtolower($part);
+            if ($part === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $part;
+        }
+
+        return implode(', ', $out);
     }
 
     /**
@@ -250,9 +366,9 @@ class BarangayLocationService
      * "SOS Alert" prefixed variant for SOS reports, which never carry
      * typed location text — only ever a GPS pin.
      */
-    public function approximateSosLabel(?float $lat, ?float $lng): string
+    public function approximateSosLabel(?float $lat, ?float $lng, bool $allowOsm = true): string
     {
-        $resolved = $this->resolve($lat, $lng);
+        $resolved = $this->resolve($lat, $lng, $allowOsm);
 
         return $resolved ? "SOS Alert — {$resolved}" : 'SOS Alert, Rosales';
     }
@@ -261,9 +377,9 @@ class BarangayLocationService
      * "Guest Report" prefixed variant for guest regular reports — same
      * GPS-pin-only situation as SOS (see Api\IncidentController::store()).
      */
-    public function approximateReportLabel(?float $lat, ?float $lng): string
+    public function approximateReportLabel(?float $lat, ?float $lng, bool $allowOsm = true): string
     {
-        $resolved = $this->resolve($lat, $lng);
+        $resolved = $this->resolve($lat, $lng, $allowOsm);
 
         return $resolved ? "Guest Report — {$resolved}" : 'Guest Report, Rosales';
     }
@@ -285,7 +401,7 @@ class BarangayLocationService
         // Round to ~11m precision for the cache key — enough to dedupe
         // GPS jitter from the same physical spot without merging
         // genuinely different locations.
-        $cacheKey = 'google_reverse_geocode:' . round($lat, 4) . ',' . round($lng, 4);
+        $cacheKey = 'google_reverse_geocode_v2:' . round($lat, 4) . ',' . round($lng, 4);
 
         return Cache::remember($cacheKey, now()->addHours(self::CACHE_TTL_HOURS), function () use ($lat, $lng) {
             $apiKey = config('services.google.maps_key');
@@ -332,59 +448,81 @@ class BarangayLocationService
                     return null;
                 }
 
-                $result = $data['results'][0] ?? null;
-                if (! $result) {
-                    return null;
-                }
+                // Google returns several results for one pin, most specific
+                // first (street address, route, barangay/neighbourhood, town,
+                // province). Walk them all: the building and street come from
+                // the most specific ones, the area names from the rest.
+                // Plus-code-only results ("7JFX+2C") are skipped.
+                $place = null;
+                $street = null;
+                $locality = null;
+                $municipality = null;
+                $province = null;
+                $areas = [];
 
-                // Flatten address_components into type => long_name so the
-                // fields below can be picked out by Google's component type
-                // rather than by parsing the formatted address string.
-                $byType = [];
-                foreach (($result['address_components'] ?? []) as $component) {
-                    foreach (($component['types'] ?? []) as $type) {
-                        $byType[$type] = $component['long_name'] ?? null;
+                foreach (array_slice($data['results'] ?? [], 0, 8) as $result) {
+                    if (in_array('plus_code', $result['types'] ?? [], true)) {
+                        continue;
+                    }
+
+                    $byType = [];
+                    foreach (($result['address_components'] ?? []) as $component) {
+                        foreach (($component['types'] ?? []) as $type) {
+                            $byType[$type] ??= $component['long_name'] ?? null;
+                        }
+                    }
+
+                    $place ??= $byType['premise'] ?? $byType['establishment'] ?? $byType['point_of_interest'] ?? null;
+
+                    if ($street === null && ! empty($byType['route']) && ! $this->isUnnamedRoad($byType['route'])) {
+                        $street = trim(($byType['street_number'] ?? '') . ' ' . $byType['route']);
+                    }
+
+                    // In Philippine addresses Google puts the barangay in
+                    // sublocality / neighborhood (when it knows it) and the
+                    // municipality in locality.
+                    $locality ??= $byType['sublocality_level_1']
+                        ?? $byType['sublocality']
+                        ?? $byType['neighborhood']
+                        ?? $byType['administrative_area_level_5']
+                        ?? null;
+
+                    // Deliberately NOT defaulting to 'Rosales' — a pin in a
+                    // neighbouring town must not be relabeled as Rosales.
+                    $municipality ??= $byType['locality'] ?? $byType['administrative_area_level_3'] ?? null;
+                    $province ??= $byType['administrative_area_level_2'] ?? $byType['administrative_area_level_1'] ?? null;
+
+                    // Area names only — never streets or buildings, so "Rizal
+                    // St" can't be mistaken for Barangay Rizal.
+                    foreach (['sublocality_level_1', 'sublocality_level_2', 'sublocality', 'neighborhood',
+                              'administrative_area_level_5', 'administrative_area_level_4', 'colloquial_area'] as $type) {
+                        if (! empty($byType[$type])) {
+                            $areas[] = $byType[$type];
+                        }
                     }
                 }
 
-                // Prefer the most specific locality field Google gives us —
-                // barangay-equivalent tags first, falling back to broader
-                // ones. In Philippine addresses Google typically returns
-                // the barangay as sublocality_level_1/sublocality, and the
-                // city/municipality as locality.
-                $locality = $byType['sublocality_level_1']
-                    ?? $byType['sublocality']
-                    ?? $byType['neighborhood']
-                    ?? $byType['locality']
-                    ?? null;
-
-                // Deliberately NOT defaulting this to 'Rosales' when Google
-                // doesn't return a locality/administrative_area_level_2 —
-                // the same bug this guarded against with Nominatim (a pin
-                // in a barangay of a NEIGHBOURING town getting silently
-                // relabeled as "in Rosales") applies here too. Falling back
-                // to the province/region is honest about what Google
-                // actually told us; null (unknown) is used downstream to
-                // fall through to the barangay-distance check instead of
-                // assuming.
-                $municipality = $byType['locality']
-                    ?? $byType['administrative_area_level_2']
-                    ?? $byType['administrative_area_level_1']
-                    ?? null;
-
-                // If locality and municipality resolved to the same value
-                // (Google put the city/town in 'locality' and we have no
-                // more specific barangay tag), don't show it twice as
-                // "Rosales, Rosales" — resolve() already falls back to
-                // display_name in that case.
+                // Don't show the town twice ("Rosales, Rosales").
                 if ($locality !== null && $locality === $municipality) {
                     $locality = null;
                 }
+                if ($place !== null && $street !== null && str_contains($street, $place)) {
+                    $place = null;
+                }
+
+                if ($place === null && $street === null && $locality === null && $municipality === null) {
+                    return null;
+                }
 
                 return [
+                    'source'       => 'google',
+                    'place'        => $place,
+                    'street'       => $street,
                     'locality'     => $locality,
                     'municipality' => $municipality,
-                    'display_name' => $result['formatted_address'] ?? null,
+                    'province'     => $province,
+                    'areas'        => array_values(array_unique($areas)),
+                    'display_name' => $data['results'][0]['formatted_address'] ?? null,
                 ];
             } catch (\Throwable $e) {
                 Log::warning('Google Geocoding reverse lookup threw an exception', [
@@ -398,13 +536,100 @@ class BarangayLocationService
     }
 
     /**
+     * Free fallback when Google can't be used: OpenStreetMap's Nominatim
+     * reverse geocoder. Same return shape as reverseGeocode(). Nominatim's
+     * usage policy asks for an identifying User-Agent, at most one request
+     * per second and caching — this is only called for single new reports
+     * (never in bulk) and every answer is cached for 24 hours.
+     */
+    private function reverseGeocodeOsm(float $lat, float $lng): ?array
+    {
+        $cacheKey = 'osm_reverse_geocode:' . round($lat, 4) . ',' . round($lng, 4);
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        try {
+            $contact = config('mail.from.address') ?: 'admin@resqpulse.com';
+            // Short timeout: a new SOS waits for this before it's saved.
+            $response = Http::timeout(4)
+                ->withHeaders([
+                    'User-Agent'      => "ResQPulse/1.0 (MDRRMO Rosales emergency reporting; {$contact})",
+                    'Accept-Language' => 'en',
+                ])
+                ->get('https://nominatim.openstreetmap.org/reverse', [
+                    'lat'            => $lat,
+                    'lon'            => $lng,
+                    'format'         => 'jsonv2',
+                    'addressdetails' => 1,
+                    'zoom'           => 18,
+                ]);
+
+            if (! $response->successful()) {
+                Log::warning('OpenStreetMap reverse lookup failed', ['status' => $response->status(), 'lat' => $lat, 'lng' => $lng]);
+                return null;
+            }
+
+            $data = $response->json();
+            $address = $data['address'] ?? null;
+            if (! is_array($address)) {
+                return null;
+            }
+
+            $street = ! empty($address['road'])
+                ? trim(($address['house_number'] ?? '') . ' ' . $address['road'])
+                : null;
+
+            // For a building/shop the top-level "name" is its name; for a
+            // road it's just the road again.
+            $place = $data['name'] ?? null;
+            if ($place === '' || ($place !== null && $street !== null && str_contains($street, $place))) {
+                $place = null;
+            }
+
+            $areas = array_values(array_filter([
+                $address['village'] ?? null,
+                $address['suburb'] ?? null,
+                $address['quarter'] ?? null,
+                $address['neighbourhood'] ?? null,
+                $address['hamlet'] ?? null,
+                $address['city_district'] ?? null,
+            ]));
+
+            $geo = [
+                'source'       => 'osm',
+                'place'        => $place,
+                'street'       => $street,
+                'locality'     => $areas[0] ?? null,
+                'municipality' => $address['town'] ?? $address['city'] ?? $address['municipality'] ?? null,
+                'province'     => $address['province'] ?? $address['state'] ?? $address['county'] ?? null,
+                'areas'        => $areas,
+                'display_name' => $data['display_name'] ?? null,
+            ];
+
+            Cache::put($cacheKey, $geo, now()->addHours(self::CACHE_TTL_HOURS));
+
+            return $geo;
+        } catch (\Throwable $e) {
+            Log::warning('OpenStreetMap reverse lookup threw an exception', ['error' => $e->getMessage(), 'lat' => $lat, 'lng' => $lng]);
+            return null;
+        }
+    }
+
+    private function isUnnamedRoad(string $route): bool
+    {
+        return in_array(mb_strtolower(trim($route)), ['unnamed road', 'unnamed'], true);
+    }
+
+    /**
      * Nearest barangay name by straight-line (Haversine) distance from
      * the offline centroid table — only used when Google Geocoding itself
      * is unreachable. Returns null if the closest one is still farther
      * than MAX_BARANGAY_DISTANCE_KM away, since at that point the pin
      * almost certainly isn't in Rosales at all.
      */
-    private function nearestBarangay(float $lat, float $lng): ?string
+    private function nearestBarangay(float $lat, float $lng, ?float $maxKm = null): ?string
     {
         $closest = null;
         $closestDistance = null;
@@ -418,7 +643,7 @@ class BarangayLocationService
             }
         }
 
-        if ($closestDistance === null || $closestDistance > self::MAX_BARANGAY_DISTANCE_KM) {
+        if ($closestDistance === null || $closestDistance > ($maxKm ?? self::MAX_BARANGAY_DISTANCE_KM)) {
             return null;
         }
 

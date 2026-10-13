@@ -328,13 +328,37 @@ class AuthController extends Controller
             ->groupBy('type')
             ->pluck('total', 'type');
 
-        $reportsByLocation = \App\Models\Incident::selectRaw('location, COUNT(*) as total')
+        // Group by BARANGAY instead of by raw location text. `location`
+        // holds whatever string the report carried ("SOS Alert — Approx.
+        // Carmen West, Rosales", "Guest Report — Lat 15.97, Lng 120.6",
+        // "Rosales, Acop", a typed street...), so the same barangay used
+        // to show up as several different bars, with long unreadable
+        // labels. Fold every row onto a known barangay name when its text
+        // mentions one; anything else (outside Rosales, bare coordinates,
+        // an unrecognised address) is lumped into one honest bucket.
+        $barangayNames = \App\Services\BarangayLocationService::names();
+        usort($barangayNames, fn ($a, $b) => strlen($b) <=> strlen($a));
+
+        $byBarangay = [];
+        $locationRows = \App\Models\Incident::selectRaw('location, COUNT(*) as total')
             ->whereNotNull('location')
             ->whereBetween('created_at', [$fromDate, $toDate])
             ->groupBy('location')
-            ->orderByDesc('total')
-            ->take(5)
-            ->pluck('total', 'location');
+            ->get();
+
+        foreach ($locationRows as $row) {
+            $label = 'Outside Rosales / unknown';
+            foreach ($barangayNames as $name) {
+                if (stripos($row->location, $name) !== false) {
+                    $label = $name;
+                    break;
+                }
+            }
+            $byBarangay[$label] = ($byBarangay[$label] ?? 0) + (int) $row->total;
+        }
+
+        arsort($byBarangay);
+        $reportsByLocation = collect($byBarangay)->take(8);
 
         // Last 7 days, one bucket per day
         $trendWeek = collect(range(6, 0))->mapWithKeys(function ($daysAgo) {
@@ -431,7 +455,6 @@ class AuthController extends Controller
             'totalIncidents'    => $totalIncidents,
             'resolvedIncidents' => $resolvedIncidents,
             'resolutionRate'    => $resolutionRate,
-            "exportedBy"        => \Illuminate\Support\Facades\Auth::user()->name ?? "Admin",
         ])->setPaper('a4', 'portrait');
 
         return $pdf->download($filename);

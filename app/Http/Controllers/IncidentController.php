@@ -368,9 +368,18 @@ class IncidentController extends Controller
      */
     public function recheckLocations(BarangayLocationService $locationService)
     {
-        $candidates = Incident::where('status', 'pending')
-            ->whereNotNull('latitude')
+        // Every pinned incident is looked at, whatever its status:
+        //   - still-pending ones get their auto-made label refreshed and the
+        //     "outside Rosales" check re-run (as before);
+        //   - older/closed ones only get fixed when their label is still
+        //     raw GPS coordinates ("SOS Alert — Lat 15.89…, Lng 120.63…")
+        //     or the generic "SOS Alert, Rosales" — they now show the
+        //     street and barangay instead.
+        // A citizen's own typed address is never touched.
+        $candidates = Incident::whereNotNull('latitude')
             ->whereNotNull('longitude')
+            ->orderByDesc('created_at')
+            ->limit(500)
             ->get();
 
         $relabeled = 0;
@@ -378,19 +387,26 @@ class IncidentController extends Controller
 
         foreach ($candidates as $incident) {
             $updates = [];
+            $location = (string) $incident->location;
+            $isPending = $incident->status === 'pending';
 
-            // Only re-resolve location text for reports that went
-            // through the auto-resolution path in the first place (SOS
-            // always does; a guest regular report only when they didn't
-            // type one) — never touch a citizen's own typed address.
             $wasAutoResolved = $incident->emergency_type === 'SOS Emergency'
-                || str_starts_with((string) $incident->location, 'Guest Report — ')
-                || str_starts_with((string) $incident->location, 'SOS Alert — ');
+                || str_starts_with($location, 'Guest Report — ')
+                || str_starts_with($location, 'SOS Alert — ')
+                || $location === 'Guest Report, Rosales'
+                || $location === 'SOS Alert, Rosales'
+                || $location === '';
 
-            if ($wasAutoResolved) {
+            $showsCoordinates = (bool) preg_match('/\bLat\s*-?\d+(\.\d+)?\s*,\s*Lng\s*-?\d+/i', $location)
+                || in_array($location, ['', 'Guest Report, Rosales', 'SOS Alert, Rosales'], true);
+
+            if ($wasAutoResolved && ($isPending || $showsCoordinates)) {
+                // No OpenStreetMap here: its free service allows about one
+                // lookup per second, too slow for a whole batch. Google
+                // (cached) and the offline barangay lookup are used instead.
                 $newLocation = $incident->emergency_type === 'SOS Emergency'
-                    ? $locationService->approximateSosLabel($incident->latitude, $incident->longitude)
-                    : $locationService->approximateReportLabel($incident->latitude, $incident->longitude);
+                    ? $locationService->approximateSosLabel($incident->latitude, $incident->longitude, false)
+                    : $locationService->approximateReportLabel($incident->latitude, $incident->longitude, false);
 
                 if ($newLocation !== $incident->location) {
                     $updates['location'] = $newLocation;
@@ -398,7 +414,9 @@ class IncidentController extends Controller
                 }
             }
 
-            if (! $incident->needs_review) {
+            // Only still-pending reports can be held back for review —
+            // responders were already dispatched for the rest.
+            if ($isPending && ! $incident->needs_review) {
                 $stillWithinRosales = $locationService->isWithinRosales($incident->latitude, $incident->longitude);
                 if (! $stillWithinRosales) {
                     $updates['needs_review'] = true;
@@ -413,12 +431,12 @@ class IncidentController extends Controller
 
         AuditLogService::log(
             'updated',
-            "Rechecked locations for {$candidates->count()} pending incidents — relabeled {$relabeled}, flagged {$flaggedForReview} for review.",
+            "Rechecked locations for {$candidates->count()} incidents — relabeled {$relabeled}, flagged {$flaggedForReview} for review.",
         );
 
         return back()->with(
             'success',
-            "Rechecked {$candidates->count()} pending incidents: {$relabeled} location(s) corrected, {$flaggedForReview} newly flagged as outside Rosales and now pending review."
+            "Rechecked {$candidates->count()} incidents: {$relabeled} location(s) now show the street/barangay instead of coordinates, {$flaggedForReview} newly flagged as outside Rosales and now pending review."
         );
     }
 }
