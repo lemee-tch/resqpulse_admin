@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Responder;
+use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -46,6 +47,9 @@ class ResponderAuthController extends Controller
 
         $token = $responder->createToken('responder-app')->plainTextToken;
 
+        // Shows on the admin Audit Log under Responders.
+        AuditLogService::responder($responder, 'login', 'Logged in to the responder app.');
+
         return response()->json([
             'message'   => 'Logged in.',
             'token'     => $token,
@@ -60,7 +64,12 @@ class ResponderAuthController extends Controller
 
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        $responder = $request->user();
+        $responder->currentAccessToken()->delete();
+
+        if ($responder instanceof Responder) {
+            AuditLogService::responder($responder, 'logout', 'Logged out of the responder app.');
+        }
 
         return response()->json(['message' => 'Logged out.']);
     }

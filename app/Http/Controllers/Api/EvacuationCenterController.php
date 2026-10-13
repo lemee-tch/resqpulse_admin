@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\EvacuationCenter;
 use App\Models\Responder;
+use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -71,6 +72,8 @@ class EvacuationCenterController extends Controller
 
         $center = EvacuationCenter::create($validator->validated() + ['occupancy' => 0, 'capacity' => $request->capacity ?? 0]);
 
+        AuditLogService::responder($user, 'created', "Added evacuation center {$center->name} (Brgy. {$center->barangay}).");
+
         return response()->json([
             'message' => 'Evacuation center added.',
             'center'  => $center,
@@ -103,7 +106,17 @@ class EvacuationCenterController extends Controller
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
+        $oldStatus = $center->status;
         $center->update(['status' => $request->status]);
+
+        if ($oldStatus !== $center->status) {
+            AuditLogService::responder(
+                $user,
+                'updated',
+                "Set evacuation center {$center->name} to " . ucfirst($center->status) . '.',
+                ['status' => $center->status, 'was' => $oldStatus]
+            );
+        }
 
         return response()->json([
             'message' => 'Status updated.',
@@ -160,6 +173,9 @@ class EvacuationCenterController extends Controller
         }
 
         $evacuee = $center->evacuees()->create($validator->validated() + ['logged_by' => $user->id]);
+
+        $evacueeName = trim("{$evacuee->first_name} {$evacuee->last_name}");
+        AuditLogService::responder($user, 'created', "Logged evacuee {$evacueeName} at {$center->name}.");
 
         return response()->json([
             'message' => 'Evacuee logged.',

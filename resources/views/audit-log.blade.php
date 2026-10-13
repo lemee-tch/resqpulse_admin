@@ -61,13 +61,30 @@
         .badge-deleted  { background: #fee2e2; color: #991b1b; }
         .badge-approved { background: #d1fae5; color: #065f46; }
         .badge-rejected { background: #fee2e2; color: #991b1b; }
+        .badge-accepted { background: #dcfce7; color: #166534; }
+        .badge-declined { background: #ffedd5; color: #9a3412; }
+        .badge-resolved { background: #ccfbf1; color: #115e59; }
 
-        /* Actor column — small tag next to the name distinguishing a
-           resident/guest (mobile app) row from an admin (web panel) row.
-           Admin rows show no tag at all, since that's the default/expected
-           case and a tag on every row would just be noise. */
+        /* Who did it — one tag per group, same colours as the tabs. */
         .actor-name { font-weight: 600; color: #111827; }
-        .badge-resident { background: #e0e7ff; color: #3730a3; font-size: .65rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; margin-left: 6px; white-space: nowrap; }
+        .who-tag { display: inline-block; margin-top: 3px; font-size: .65rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; white-space: nowrap; letter-spacing: .2px; }
+        .who-admin     { background: #dbeafe; color: #1e40af; }
+        .who-resident  { background: #e0e7ff; color: #3730a3; }
+        .who-guest     { background: #ffedd5; color: #c2410c; }
+        .who-responder { background: #ccfbf1; color: #115e59; }
+        .who-system    { background: #f3f4f6; color: #6b7280; }
+
+        /* Everyone / Admin / Residents & Guests / Responders */
+        .tab-bar { display: flex; flex-wrap: wrap; border-bottom: 2px solid #e5e7eb; margin-bottom: 16px; }
+        .tab-link {
+            padding: 10px 18px; font-size: .85rem; font-weight: 600; color: #6b7280;
+            text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -2px;
+            display: inline-flex; align-items: center; gap: 8px; transition: color .2s, border-color .2s;
+        }
+        .tab-link:hover { color: #1a3c8f; }
+        .tab-link.active { color: #1a3c8f; border-bottom-color: #1a3c8f; }
+        .tab-count { font-size: .7rem; font-weight: 700; background: #f3f4f6; color: #4b5563; padding: 1px 8px; border-radius: 20px; }
+        .tab-link.active .tab-count { background: #e0e7ff; color: #1a3c8f; }
 
         .empty-state { text-align: center; padding: 48px 20px; color: #9ca3af; font-size: .9rem; }
         .ip-cell { font-size: .74rem; color: #9ca3af; }
@@ -243,32 +260,64 @@
 <div class="main-wrap">
     <div class="content">
         <div class="page-title">Audit Log</div>
-        <div class="page-sub">Every admin action — status changes, approvals, account and record edits — most recent first. Resident &amp; guest activity (logins, reports, profile edits, registration) has its own log on the <a href="{{ route('citizen-verification') }}">Residents Verification</a> page.</div>
+        <div class="page-sub">Everything done in ResQPulse, newest first: admin actions in this panel, residents and guests in the residents app, and responders in the responder app.</div>
+
+        @php
+            // Tab links keep the other filters; switching tabs starts at page 1.
+            // (The admin filter only makes sense for Everyone / Admin.)
+            $tabUrl = fn ($whoValue) => route('audit-log', array_filter(
+                array_merge(
+                    request()->except(in_array($whoValue, ['resident', 'responder'], true) ? ['page', 'who', 'user_id'] : ['page', 'who']),
+                    ['who' => $whoValue]
+                ),
+                fn ($v) => $v !== null && $v !== ''
+            ));
+            $tabs = [
+                null        => ['Everyone', $counts['all']],
+                'admin'     => ['Admin', $counts['admin']],
+                'resident'  => ['Residents & Guests', $counts['resident']],
+                'responder' => ['Responders', $counts['responder']],
+            ];
+        @endphp
+
+        <nav class="tab-bar" aria-label="Whose activity">
+            @foreach($tabs as $tabWho => [$tabLabel, $tabCount])
+                <a href="{{ $tabUrl($tabWho ?: null) }}" class="tab-link {{ ($who ?? null) === ($tabWho ?: null) ? 'active' : '' }}">
+                    {{ $tabLabel }} <span class="tab-count">{{ number_format($tabCount) }}</span>
+                </a>
+            @endforeach
+        </nav>
 
         <form method="GET" action="{{ route('audit-log') }}" class="filter-bar">
+            @if($who)
+                <input type="hidden" name="who" value="{{ $who }}">
+            @endif
+
             <select name="action" class="filter-select" onchange="this.form.submit()">
                 <option value="">All Actions</option>
-                @foreach(['login','logout','created','updated','deleted','approved','rejected'] as $a)
+                @foreach($actions as $a)
                     <option value="{{ $a }}" {{ request('action') === $a ? 'selected' : '' }}>{{ ucfirst($a) }}</option>
                 @endforeach
             </select>
 
-            <select name="user_id" class="filter-select" onchange="this.form.submit()">
-                <option value="">All Admins</option>
-                @foreach($adminUsers as $admin)
-                    <option value="{{ $admin->id }}" {{ (string) request('user_id') === (string) $admin->id ? 'selected' : '' }}>{{ $admin->name }}</option>
-                @endforeach
-            </select>
+            @if($who === null || $who === 'admin')
+                <select name="user_id" class="filter-select" onchange="this.form.submit()">
+                    <option value="">Any Admin</option>
+                    @foreach($adminUsers as $admin)
+                        <option value="{{ $admin->id }}" {{ (string) request('user_id') === (string) $admin->id ? 'selected' : '' }}>{{ $admin->name }}</option>
+                    @endforeach
+                </select>
+            @endif
 
             <input type="date" name="date" class="filter-date" value="{{ request('date') }}" onchange="this.form.submit()">
 
             <div class="search-wrap">
                 <i class="bi bi-search"></i>
-                <input type="text" name="search" class="search-input" placeholder="Search description..." value="{{ request('search') }}">
+                <input type="text" name="search" class="search-input" placeholder="Search name or description..." value="{{ request('search') }}">
             </div>
 
             <button type="submit" class="btn-filter">Filter</button>
-            <a href="{{ route('audit-log') }}" class="btn-clear" style="text-decoration:none;display:inline-block;">Clear</a>
+            <a href="{{ route('audit-log', array_filter(['who' => $who])) }}" class="btn-clear" style="text-decoration:none;display:inline-block;">Clear</a>
         </form>
 
         <div class="table-card">
@@ -276,7 +325,7 @@
                 <thead>
                     <tr>
                         <th>When</th>
-                        <th>Admin</th>
+                        <th>Who</th>
                         <th>Action</th>
                         <th>Description</th>
                         <th>IP</th>
@@ -290,7 +339,12 @@
                             <div style="font-size:.7rem;color:#9ca3af;">{{ $log->created_at->diffForHumans() }}</div>
                         </td>
                         <td>
-                            <span class="actor-name">{{ $log->actor_name }}</span>
+                            @php
+                                $whoType = $log->actor_type;
+                                $whoLabel = ['admin' => 'Admin', 'resident' => 'Resident', 'guest' => 'Guest', 'responder' => 'Responder', 'system' => 'System'][$whoType] ?? 'System';
+                            @endphp
+                            <span class="actor-name">{{ $log->actor_name }}</span><br>
+                            <span class="who-tag who-{{ $whoType }}">{{ $whoLabel }}</span>
                         </td>
                         <td><span class="badge-action badge-{{ $log->action }}">{{ ucfirst($log->action) }}</span></td>
                         <td>{{ $log->description }}</td>
@@ -299,7 +353,9 @@
                     @empty
                     <tr>
                         <td colspan="5">
-                            <div class="empty-state">No audit log entries yet.</div>
+                            <div class="empty-state">
+                                {{ request()->hasAny(['action', 'user_id', 'date', 'search']) ? 'No entries match these filters.' : 'Nothing logged here yet.' }}
+                            </div>
                         </td>
                     </tr>
                     @endforelse

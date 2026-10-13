@@ -350,7 +350,10 @@
         <div class="tab-bar">
             <button class="tab-btn active" onclick="switchTab('pending', this)">Pending Review ({{ $pendingCitizens->count() }})</button>
             <button class="tab-btn" onclick="switchTab('verified', this)">Verified ({{ $verifiedCitizens->count() }})</button>
-            <button class="tab-btn" onclick="switchTab('all', this)">Audit Log ({{ $residentLogs->total() }})</button>
+            {{-- Resident & guest activity is now on the combined Audit Log page. --}}
+            <a class="tab-btn" href="{{ route('audit-log', ['who' => 'resident']) }}" style="text-decoration:none;">
+                Activity log <i class="bi bi-box-arrow-up-right" style="font-size:.75em;"></i>
+            </a>
         </div>
 
         <!-- ══ TAB: PENDING REVIEW ══ -->
@@ -499,67 +502,6 @@
             </div>
         </div>
 
-        <!-- ══ TAB: AUDIT LOG (resident/guest activity — logins, incident
-             /SOS reports, profile edits, registration itself. Same rows
-             the shared Audit Log page shows under actor=resident
-             (AuditLogController::index()), scoped here to where
-             residents are actually managed, instead of a separate
-             sidebar page. ══ -->
-        <div id="tab-all" class="tab-panel">
-            <div class="table-card">
-                <table class="evac-table">
-                    <thead>
-                        <tr>
-                            <th>When</th>
-                            <th>Resident</th>
-                            <th>Action</th>
-                            <th>Description</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($residentLogs as $log)
-                        <tr>
-                            <td style="white-space:nowrap;">
-                                {{ $log->created_at->format('M d, Y g:i A') }}
-                                <div class="td-sub">{{ $log->created_at->diffForHumans() }}</div>
-                            </td>
-                            <td class="td-name">{{ $log->actor_name }}</td>
-                            <td>
-                                @php
-                                    $actionColors = [
-                                        'login'    => ['#d1fae5', '#065f46'],
-                                        'logout'   => ['#f3f4f6', '#6b7280'],
-                                        'created'  => ['#dbeafe', '#1e40af'],
-                                        'updated'  => ['#fef3c7', '#92400e'],
-                                        'deleted'  => ['#fee2e2', '#991b1b'],
-                                        'approved' => ['#d1fae5', '#065f46'],
-                                        'rejected' => ['#fee2e2', '#991b1b'],
-                                    ];
-                                    [$bg, $fg] = $actionColors[$log->action] ?? ['#f3f4f6', '#6b7280'];
-                                @endphp
-                                <span style="background:{{ $bg }};color:{{ $fg }};font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;display:inline-block;">
-                                    {{ ucfirst($log->action) }}
-                                </span>
-                            </td>
-                            <td>{{ $log->description }}</td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="4" class="empty-state">
-                                No resident activity logged yet.
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            @if($residentLogs->hasPages())
-                <div style="margin-top:16px;">
-                    {{ $residentLogs->links() }}
-                </div>
-            @endif
-        </div>
-
         {{-- Modals live OUTSIDE the tables on purpose — see the original
              note: a <form> placed directly inside <tbody> is invalid HTML
              and browsers "foster parent" it, breaking the form's internal
@@ -634,15 +576,6 @@
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.getElementById('tab-' + id).classList.add('active');
         btn.classList.add('active');
-    }
-
-    // Re-select the Audit Log tab after a pagination click on it
-    // (?log_page=2 reloads the page, which would otherwise reset back
-    // to the Pending Review tab and hide the very page the admin just
-    // navigated to).
-    if (new URLSearchParams(window.location.search).has('log_page')) {
-        var allBtn = document.querySelector(".tab-btn[onclick*=\"'all'\"]");
-        if (allBtn) switchTab('all', allBtn);
     }
 
     const swalTheme = {

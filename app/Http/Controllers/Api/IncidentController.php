@@ -478,6 +478,15 @@ class IncidentController extends Controller
             $incident->update(['status' => 'responding']);
         }
 
+        if (! $alreadyJoined) {
+            AuditLogService::responder(
+                $responder,
+                'accepted',
+                'Accepted the ' . AuditLogService::describeIncident($incident) . ' — now responding.',
+                ['incident' => AuditLogService::describeIncident($incident)]
+            );
+        }
+
         $incident->refresh()->load(['responders', 'citizen']);
 
         return response()->json([
@@ -525,6 +534,13 @@ class IncidentController extends Controller
         $incident->declinedBy()->syncWithoutDetaching([
             $responder->id => ['declined_at' => now()],
         ]);
+
+        AuditLogService::responder(
+            $responder,
+            'declined',
+            'Declined to take the ' . AuditLogService::describeIncident($incident) . '.',
+            ['incident' => AuditLogService::describeIncident($incident)]
+        );
 
         return response()->json(['message' => 'Mission declined.']);
     }
@@ -607,6 +623,14 @@ class IncidentController extends Controller
                 report($e);
             }
         }
+
+        AuditLogService::responder(
+            $responder,
+            'resolved',
+            'Resolved the ' . AuditLogService::describeIncident($incident)
+                . ($reportData ? ' and filed the MDRRMC Incident Report.' : '.'),
+            ['incident' => AuditLogService::describeIncident($incident)]
+        );
 
         $incident->refresh()->load(['responders', 'citizen']);
 
