@@ -71,9 +71,46 @@ class CitizenVerificationController extends Controller
         // model left to pull the name/email from.
         Mail::to($email)->send(new CitizenRejected($name, $reason));
 
+        $idPhoto = $citizen->valid_id_path;
         $citizen->delete();
 
+        // The account is gone, so its ID photo has nothing left to belong to.
+        $this->deleteIdPhoto($idPhoto);
+
         return back()->with('success', "{$name}'s account was rejected and removed. A notification was sent to {$email}.");
+    }
+
+    /**
+     * Sends a resident's ID photo to a logged-in admin. Used by the
+     * Proof of Residency thumbnails and the ID preview on this page
+     * (route citizen-verification.id-photo, behind the auth middleware).
+     *
+     * Sign-up saves ID photos on the private 'local' disk
+     * (storage/app/private), which has no public link — so the page's old
+     * Storage::url() links never loaded. Older sign-ups may still be on the
+     * 'public' disk, so both are checked.
+     */
+    public function idPhoto(Citizen $citizen)
+    {
+        $path = $citizen->valid_id_path;
+
+        if ($path) {
+            foreach (['local', 'public'] as $disk) {
+                try {
+                    if (Storage::disk($disk)->exists($path)) {
+                        return Storage::disk($disk)->response($path, null, [
+                            'Cache-Control'          => 'private, max-age=300',
+                            'X-Content-Type-Options' => 'nosniff',
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
+        }
+
+        // The page shows "Image unavailable" instead of a broken image.
+        abort(404);
     }
 
     /**
@@ -94,10 +131,28 @@ class CitizenVerificationController extends Controller
             ->get();
 
         foreach ($stale as $citizen) {
-            if ($citizen->valid_id_path) {
-                Storage::disk('public')->delete($citizen->valid_id_path);
-            }
+            $this->deleteIdPhoto($citizen->valid_id_path);
             $citizen->delete();
+        }
+    }
+
+    /**
+     * Deletes an ID photo from wherever it is. This used to look only on
+     * the 'public' disk, but sign-up saves on 'local', so photos of removed
+     * sign-ups stayed on the server.
+     */
+    private function deleteIdPhoto(?string $path): void
+    {
+        if (! $path) {
+            return;
+        }
+
+        foreach (['local', 'public'] as $disk) {
+            try {
+                Storage::disk($disk)->delete($path);
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
     }
 }

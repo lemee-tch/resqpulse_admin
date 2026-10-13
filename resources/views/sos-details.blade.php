@@ -121,6 +121,13 @@
         .detail-desc { font-size: .83rem; color: #4b5563; line-height: 1.6; margin-bottom: 14px; overflow-wrap: break-word; }
         .detail-sub { font-size: .75rem; font-weight: 700; color: #111827; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .3px; }
         .detail-val { font-size: .82rem; color: #6b7280; margin-bottom: 12px; overflow-wrap: break-word; }
+        .tag-guest {
+            display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 20px;
+            background: #fff7ed; color: #c2410c; font-size: .68rem; font-weight: 700;
+            letter-spacing: .3px; vertical-align: middle;
+        }
+        .call-link { color: #1a3c8f; font-weight: 700; text-decoration: none; white-space: nowrap; }
+        .call-link:hover { text-decoration: underline; }
 
         /* Photos */
         .photos-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
@@ -369,8 +376,10 @@
             // has priority unset.
             $priority = $incident->priority ?? 'critical';
             $priorityLabel = ucfirst($priority);
-            $reporter = $incident->citizen?->full_name ?? ($incident->citizen_id ? 'Unknown' : 'Guest');
-            $mobile = $incident->citizen?->mobile;
+            // A guest's typed name and number — see Incident::getReporterNameAttribute().
+            $reporter = $incident->reporter_name;
+            $mobile = $incident->reporter_mobile;
+            $isGuestReport = ! $incident->citizen_id;
             $lat = $incident->latitude  ?? 15.8952;
             $lng = $incident->longitude ?? 120.6263;
             $icon = '🆘';
@@ -410,14 +419,22 @@
             <div class="banner-meta">
                 <span><strong>Status</strong> {{ $incident->needs_review ? 'Pending Review' : ($isDeclined ? 'Declined' : ucfirst($incident->status)) }}</span>
                 <span><strong>Reported</strong> {{ $incident->created_at->format('M d, Y g:i A') }}</span>
-                <span><strong>Reporter</strong> {{ $reporter }}</span>
+                <span><strong>Reporter</strong> {{ $reporter }}@if($isGuestReport) (guest)@endif</span>
             </div>
         </div>
 
         @if($incident->needs_review)
             <div class="review-banner">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>This SOS came from a guest (not logged in) — only GPS location is guaranteed. Responders are NOT notified until you approve it below.</span>
+                @if($isGuestReport)
+                    <span>This SOS came from a guest (not logged in).
+                        @if($mobile)
+                            Call {{ $reporter }} at <a href="tel:{{ $mobile }}" class="call-link">{{ $mobile }}</a> to confirm the emergency before approving.
+                        @endif
+                        Responders are NOT notified until you approve it below.</span>
+                @else
+                    <span>This SOS is outside Rosales, so it needs review. Responders are NOT notified until you approve it below.</span>
+                @endif
             </div>
         @endif
 
@@ -459,7 +476,11 @@
 
                 <div class="detail-sub">Reported by</div>
                 <div class="detail-val">
-                    {{ $reporter }}<br>
+                    {{ $reporter }}
+                    @if($isGuestReport) <span class="tag-guest">Guest</span> @endif<br>
+                    @if($mobile)
+                        <a href="tel:{{ $mobile }}" class="call-link"><i class="bi bi-telephone-fill"></i> {{ $mobile }}</a><br>
+                    @endif
                     {{ $incident->created_at->format('m/d/y, g:i A') }}
                 </div>
 

@@ -12,6 +12,7 @@ use App\Services\ImageAnalysisService;
 use App\Services\IncidentReportService;
 use App\Services\PushNotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -36,6 +37,83 @@ class IncidentController extends Controller
         return $accessToken?->tokenable instanceof Citizen ? $accessToken->tokenable : null;
     }
 
+    /**
+     * Guests (no account) must give their full name and mobile number
+     * before an SOS or a report goes through, so MDRRMO can call them back
+     * to confirm it and pranks can be traced to someone. Logged-in
+     * residents skip this — their account already has both.
+     *
+     * Tidies the two fields first (extra spaces, "+63" numbers), then
+     * returns [rules, messages] to add to the request's validation.
+     */
+    private function prepareGuestDetails(Request $request, bool $isGuest): array
+    {
+        if (! $isGuest) {
+            return [[], []];
+        }
+
+        $name   = $request->input('guest_name');
+        $mobile = $request->input('guest_mobile');
+        $request->merge([
+            'guest_name'   => is_string($name) ? preg_replace('/\s+/u', ' ', trim($name)) : $name,
+            'guest_mobile' => is_string($mobile) ? $this->normalizeMobile($mobile) : $mobile,
+        ]);
+
+        return [
+            [
+                // At least two words (first and last name), letters only.
+                'guest_name'   => ['required', 'string', 'min:5', 'max:120', 'regex:/^[\pL\pM][\pL\pM.\'-]*(\s[\pL\pM][\pL\pM.\'-]*)+$/u'],
+                'guest_mobile' => ['required', 'string', 'regex:/^09\d{9}$/'],
+            ],
+            [
+                'guest_name.required'   => 'Enter your full name before sending.',
+                'guest_name.min'        => 'Enter your full name (first and last name).',
+                'guest_name.max'        => 'Your name is too long.',
+                'guest_name.regex'      => 'Enter your full name (first and last name), using letters only.',
+                'guest_mobile.required' => 'Enter your mobile number before sending.',
+                'guest_mobile.regex'    => 'Enter a valid mobile number, e.g. 09171234567.',
+            ],
+        ];
+    }
+
+    /** "0917 123 4567", "+639171234567" and "639171234567" all become "09171234567". */
+    private function normalizeMobile(string $mobile): string
+    {
+        $digits = preg_replace('/\D+/', '', $mobile);
+
+        if (strlen($digits) === 12 && str_starts_with($digits, '63')) {
+            return '0' . substr($digits, 2);
+        }
+        if (strlen($digits) === 10 && str_starts_with($digits, '9')) {
+            return '0' . $digits;
+        }
+
+        return $digits;
+    }
+
+    /**
+     * The guest's details for Incident::create(). Left out if the
+     * guest_name / guest_mobile columns haven't been added to the database
+     * yet (see the add_guest_details migration), so an SOS never fails over
+     * it. The name and number also go in the description and the audit
+     * log, so MDRRMO sees them either way.
+     */
+    private function guestColumns(?array $guest): array
+    {
+        if (! $guest || ! $this->hasGuestColumns()) {
+            return [];
+        }
+
+        return ['guest_name' => $guest['name'], 'guest_mobile' => $guest['mobile']];
+    }
+
+    private ?bool $guestColumnsExist = null;
+
+    private function hasGuestColumns(): bool
+    {
+        return $this->guestColumnsExist ??= Schema::hasColumns('incidents', ['guest_name', 'guest_mobile']);
+    }
+
     public function store(
         Request $request,
         ImageAnalysisService $imageAnalysis,
@@ -44,6 +122,7 @@ class IncidentController extends Controller
     ) {
         $citizen = $this->resolveOptionalCitizen($request);
         $isGuest = ! $citizen;
+        [$guestRules, $guestMessages] = $this->prepareGuestDetails($request, $isGuest);
 
         $validator = Validator::make($request->all(), [
             'emergency_type' => ['required', 'string', 'max:255'],
@@ -55,11 +134,14 @@ class IncidentController extends Controller
             'longitude'      => [$isGuest ? 'required' : 'nullable', 'numeric', 'between:-180,180'],
             'photos'         => [$isGuest ? 'nullable' : 'required', 'array', $isGuest ? '' : 'min:1'],
             'photos.*'       => ['file', 'image', 'max:5120'],
-        ]);
+        ] + $guestRules, $guestMessages);
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
+
+        $guest = $isGuest ? ['name' => $request->guest_name, 'mobile' => $request->guest_mobile] : null;
+        $guestLabel = $guest ? "{$guest['name']} ({$guest['mobile']})" : null;
 
         $photoPaths = [];
         foreach ($request->file('photos', []) as $photo) {
@@ -92,7 +174,7 @@ class IncidentController extends Controller
             'location'       => $location,
             'latitude'       => $request->latitude,
             'longitude'      => $request->longitude,
-            'description'    => $request->description ?: 'Guest report — location only. Awaiting MDRRMO review.',
+            'description'    => $request->description ?: "Guest report from {$guestLabel} — location only. Awaiting MDRRMO review.",
             'photo_path'     => $photoPaths ? json_encode($photoPaths) : null,
             'status'         => 'pending',
             // Guest submissions are unverified, and anything outside
@@ -102,7 +184,7 @@ class IncidentController extends Controller
             // Everything else (logged-in citizen, inside Rosales) is
             // trusted immediately, same as before this change.
             'needs_review'   => $isGuest || $isOutsideRosales,
-        ]);
+        ] + $this->guestColumns($guest));
 
         if ($photoPaths) {
             // Manual/regular reports: the citizen already told us the
@@ -133,7 +215,7 @@ class IncidentController extends Controller
         AuditLogService::log(
             'created',
             $isGuest
-                ? "A guest reported a {$incident->emergency_type} incident."
+                ? "Guest {$guestLabel} reported a {$incident->emergency_type} incident."
                 : "Citizen {$citizen->full_name} reported a {$incident->emergency_type} incident.",
             $incident
         );
@@ -166,6 +248,7 @@ class IncidentController extends Controller
     ) {
         $citizen = $this->resolveOptionalCitizen($request);
         $isGuest = ! $citizen;
+        [$guestRules, $guestMessages] = $this->prepareGuestDetails($request, $isGuest);
 
         $validator = Validator::make($request->all(), [
             'latitude'       => ['required', 'numeric', 'between:-90,90'],
@@ -177,11 +260,14 @@ class IncidentController extends Controller
             // build). Free text is allowed via "Other" on the app side,
             // so this isn't restricted to a fixed list server-side.
             'emergency_type' => ['nullable', 'string', 'max:255'],
-        ]);
+        ] + $guestRules, $guestMessages);
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
+
+        $guest = $isGuest ? ['name' => $request->guest_name, 'mobile' => $request->guest_mobile] : null;
+        $guestLabel = $guest ? "{$guest['name']} ({$guest['mobile']})" : null;
 
         $photoPath = $request->hasFile('photo')
             ? $request->file('photo')->store('incident_photos', 'public')
@@ -202,7 +288,7 @@ class IncidentController extends Controller
             'location'           => $locationService->approximateSosLabel($request->latitude, $request->longitude),
             'latitude'           => $request->latitude,
             'longitude'          => $request->longitude,
-            'description'        => $isGuest ? 'Guest SOS — location only. Awaiting MDRRMO review.' : 'SOS panic-button alert.',
+            'description'        => $isGuest ? "Guest SOS from {$guestLabel}. Awaiting MDRRMO review." : 'SOS panic-button alert.',
             'photo_path'         => $photoPath ? json_encode([$photoPath]) : null,
             'status'             => 'pending',
             'priority'           => 'critical',
@@ -219,7 +305,7 @@ class IncidentController extends Controller
             // needs an admin to confirm it before responders get
             // dispatched, even from a trusted logged-in citizen.
             'needs_review'       => $isGuest || $isOutsideRosales,
-        ]);
+        ] + $this->guestColumns($guest));
 
         if ($photoPath) {
             $analysis = $imageAnalysis->classify($photoPath, $request->emergency_type);
@@ -239,7 +325,7 @@ class IncidentController extends Controller
         AuditLogService::log(
             'created',
             $isGuest
-                ? 'A guest sent an SOS alert.'
+                ? "Guest {$guestLabel} sent an SOS alert."
                 : "Citizen {$citizen->full_name} sent an SOS alert.",
             $incident
         );

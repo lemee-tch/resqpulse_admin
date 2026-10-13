@@ -151,6 +151,11 @@
         }
         .btn-reject-confirm:hover { background: #dc2626; }
         .id-preview-img { width: 100%; border-radius: 10px; border: 1px solid #e5e7eb; }
+        .id-unavailable {
+            padding: 28px 16px; text-align: center; font-size: .85rem; color: #6b7280;
+            background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 10px;
+        }
+        .id-unavailable i { display: block; font-size: 1.6rem; color: #9ca3af; margin-bottom: 6px; }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn {
@@ -381,11 +386,15 @@
                             </td>
                             <td>
                                 @if($citizen->valid_id_path)
-                                    <img src="{{ Storage::url($citizen->valid_id_path) }}"
+                                    {{-- Served by CitizenVerificationController::idPhoto() — ID photos are on the private disk, which has no public link. --}}
+                                    <img src="{{ route('citizen-verification.id-photo', $citizen) }}"
                                          class="id-thumb"
+                                         loading="lazy"
                                          data-bs-toggle="modal"
                                          data-bs-target="#idModal{{ $citizen->id }}"
-                                         alt="ID">
+                                         alt="ID"
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                                    <span class="id-none" style="display:none;">Image unavailable</span>
                                 @else
                                     <span class="id-none">No ID uploaded</span>
                                 @endif
@@ -456,11 +465,15 @@
                             </td>
                             <td>
                                 @if($citizen->valid_id_path)
-                                    <img src="{{ Storage::url($citizen->valid_id_path) }}"
+                                    {{-- Served by CitizenVerificationController::idPhoto() — ID photos are on the private disk, which has no public link. --}}
+                                    <img src="{{ route('citizen-verification.id-photo', $citizen) }}"
                                          class="id-thumb"
+                                         loading="lazy"
                                          data-bs-toggle="modal"
                                          data-bs-target="#idModal{{ $citizen->id }}"
-                                         alt="ID">
+                                         alt="ID"
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                                    <span class="id-none" style="display:none;">Image unavailable</span>
                                 @else
                                     <span class="id-none">No ID uploaded</span>
                                 @endif
@@ -562,7 +575,13 @@
                         </div>
                         <div class="modal-body pt-2">
                             @if($citizen->valid_id_path)
-                                <img src="{{ Storage::url($citizen->valid_id_path) }}" class="id-preview-img" alt="Valid ID">
+                                <img src="{{ route('citizen-verification.id-photo', $citizen) }}" class="id-preview-img" alt="Valid ID"
+                                     loading="lazy"
+                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                <div class="id-unavailable" style="display:none;">
+                                    <i class="bi bi-image"></i>
+                                    This ID photo couldn't be loaded. The file may be missing from the server.
+                                </div>
                             @endif
                             <p style="font-size:.8rem;color:#6b7280;margin-top:12px;">
                                 Confirm the ID is genuine and shows an address within

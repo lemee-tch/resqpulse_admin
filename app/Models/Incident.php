@@ -12,6 +12,9 @@ class Incident extends Model
         'resolution_notes', 'resolution_photo_path', 'report_data', 'report_pdf_path',
         'ai_detected_type', 'ai_confidence', 'ai_analysis', 'needs_review', 'reviewed_at',
         'sos_emergency_type', 'decline_reason', 'declined_at',
+        // What a guest (no account) typed before sending — see
+        // Api\IncidentController and the add_guest_details migration.
+        'guest_name', 'guest_mobile',
     ];
 
     protected function casts(): array
@@ -104,5 +107,30 @@ class Incident extends Model
         }
 
         return (string) $this->emergency_type;
+    }
+
+    /**
+     * Who sent it, for the admin pages: the resident's name, or the full
+     * name a guest had to enter before sending (guest_name). Guest reports
+     * from before that was required just say "Guest".
+     */
+    public function getReporterNameAttribute(): string
+    {
+        if ($this->citizen) {
+            return (string) $this->citizen->full_name;
+        }
+        if ($this->citizen_id) {
+            return 'Unknown';
+        }
+
+        return filled($this->guest_name) ? (string) $this->guest_name : 'Guest';
+    }
+
+    /** A number MDRRMO can call back: the resident's, or the guest's. */
+    public function getReporterMobileAttribute(): ?string
+    {
+        $mobile = $this->citizen?->mobile ?: $this->guest_mobile;
+
+        return filled($mobile) ? (string) $mobile : null;
     }
 }

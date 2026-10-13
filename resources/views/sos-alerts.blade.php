@@ -232,6 +232,13 @@
         .sos-meta-item i { color: #9ca3af; }
 
         .sos-reporter { font-weight: 700; color: #111827; }
+        .tag-guest {
+            display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 20px;
+            background: #fff7ed; color: #c2410c; font-size: .68rem; font-weight: 700;
+            letter-spacing: .3px; vertical-align: middle;
+        }
+        .call-link { color: #1a3c8f; font-weight: 700; text-decoration: none; white-space: nowrap; }
+        .call-link:hover { text-decoration: underline; }
 
         .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
         .empty-state i { font-size: 2.4rem; display: block; margin-bottom: 12px; color: #d1d5db; }
@@ -491,8 +498,8 @@
                 @php
                     $statusClass = 'badge-' . $sos->status;
                     $statusLabel = ucfirst($sos->status);
-                    $reporter = $sos->citizen?->full_name ?? ($sos->citizen_id ? 'Unknown' : 'Guest');
-                    $mobile = $sos->citizen?->mobile;
+                    $reporter = $sos->reporter_name; // a guest's typed name, see Incident::getReporterNameAttribute()
+                    $mobile = $sos->reporter_mobile;
                     $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
 
                     $sosPhoto = null;
@@ -527,6 +534,7 @@
                             <div class="sos-meta-item">
                                 <i class="bi bi-person-fill"></i>
                                 <span class="sos-reporter">{{ $reporter }}</span>
+                                @if(! $sos->citizen_id) <span class="tag-guest">Guest</span> @endif
                                 @if($mobile) <span>· {{ $mobile }}</span> @endif
                             </div>
                             <div class="sos-meta-item">
@@ -556,12 +564,13 @@
         <div id="tab-review" class="tab-panel">
             <div class="review-banner">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>These SOS alerts came from guests (not logged in) — only their GPS location is guaranteed. Responders are not notified until you approve.</span>
+                <span>These SOS alerts need review: they came from guests (not logged in) or from outside Rosales. Call the number shown to confirm the emergency before approving. Responders are not notified until you approve.</span>
             </div>
 
             @forelse($pendingReviewSos as $sos)
                 @php
-                    $reporter = $sos->citizen?->full_name ?? ($sos->citizen_id ? 'Unknown' : 'Guest');
+                    $reporter = $sos->reporter_name; // a guest's typed name, see Incident::getReporterNameAttribute()
+                    $mobile = $sos->reporter_mobile;
                     $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
 
                     $sosPhoto = null;
@@ -590,6 +599,11 @@
                             <div class="sos-meta-item">
                                 <i class="bi bi-person-fill"></i>
                                 <span class="sos-reporter">{{ $reporter }}</span>
+                                @if(! $sos->citizen_id) <span class="tag-guest">Guest</span> @endif
+                                @if($mobile)
+                                    <span>·</span>
+                                    <a href="tel:{{ $mobile }}" class="call-link"><i class="bi bi-telephone-fill"></i> Call {{ $mobile }}</a>
+                                @endif
                             </div>
                             <div class="sos-meta-item">
                                 <i class="bi bi-geo-alt-fill"></i>
@@ -688,8 +702,8 @@
 
             @forelse($resolvedSos as $sos)
                 @php
-                    $reporter = $sos->citizen?->full_name ?? ($sos->citizen_id ? 'Unknown' : 'Guest');
-                    $mobile = $sos->citizen?->mobile;
+                    $reporter = $sos->reporter_name; // a guest's typed name, see Incident::getReporterNameAttribute()
+                    $mobile = $sos->reporter_mobile;
                     $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
                     $isDeclined = (bool) $sos->declined_at;
 
@@ -731,6 +745,7 @@
                             <div class="sos-meta-item">
                                 <i class="bi bi-person-fill"></i>
                                 <span class="sos-reporter">{{ $reporter }}</span>
+                                @if(! $sos->citizen_id) <span class="tag-guest">Guest</span> @endif
                                 @if($mobile) <span>· {{ $mobile }}</span> @endif
                             </div>
                             <div class="sos-meta-item">
