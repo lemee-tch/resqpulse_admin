@@ -14,6 +14,14 @@ use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
+    /**
+     * Most rows the exported PDF lists. dompdf holds the whole document
+     * in memory (roughly 0.2 MB per listed incident), so a long period
+     * with thousands of incidents can't all fit; the totals and
+     * breakdowns still count every incident, and CSV lists them all.
+     */
+    public const PDF_LIST_LIMIT = 500;
+
     public function showLogin()
     {
         return view('auth.login');
@@ -393,8 +401,9 @@ class AuthController extends Controller
     public function exportReport(Request $request)
     {
         $validated = $request->validate([
-            'from' => ['nullable', 'date'],
-            'to'   => ['nullable', 'date', 'after_or_equal:from'],
+            'from'   => ['nullable', 'date'],
+            'to'     => ['nullable', 'date', 'after_or_equal:from'],
+            'format' => ['nullable', 'in:pdf,csv'],
         ]);
 
         $toDate = isset($validated['to'])
@@ -413,7 +422,9 @@ class AuthController extends Controller
         $resolvedIncidents = $incidents->where('status', 'resolved')->count();
         $resolutionRate = $totalIncidents > 0 ? round($resolvedIncidents / $totalIncidents * 100) : 0;
 
-        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
+        $wantsCsv = ($validated['format'] ?? 'pdf') === 'csv';
+
+        if (! $wantsCsv && class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
             return $this->exportReportAsPdf($incidents, $fromDate, $toDate, $totalIncidents, $resolvedIncidents, $resolutionRate);
         }
 
@@ -424,17 +435,71 @@ class AuthController extends Controller
     {
         $filename = 'resqpulse-report_' . $fromDate->format('Y-m-d') . '_to_' . $toDate->format('Y-m-d') . '.pdf';
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('report-pdf', [
-            'incidents'         => $incidents,
-            'fromDate'          => $fromDate,
-            'toDate'            => $toDate,
-            'totalIncidents'    => $totalIncidents,
-            'resolvedIncidents' => $resolvedIncidents,
-            'resolutionRate'    => $resolutionRate,
-            "exportedBy"        => \Illuminate\Support\Facades\Auth::user()->name ?? "Admin",
-        ])->setPaper('a4', 'portrait');
+        // When the PDF can't be made, go back to Reports & Analytics and
+        // say why (with a CSV link there) instead of a bare 500 page.
+        $failed = function (string $why) use ($fromDate, $toDate) {
+            return redirect()
+                ->route('reports-analytics', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString()])
+                ->with('export_error', $why);
+        };
 
-        return $pdf->download($filename);
+        if (! view()->exists('report-pdf')) {
+            \Illuminate\Support\Facades\Log::error('Export Report: resources/views/report-pdf.blade.php is missing on the server.');
+            return $failed('The PDF template is missing on the server (resources/views/report-pdf.blade.php).');
+        }
+
+        // dompdf builds the whole document in memory. PHP's usual 128 MB
+        // ran out at a few hundred incidents — a fatal error that showed
+        // as "500 Server Error" and can't be caught. Give this request
+        // more room and time, and list at most PDF_LIST_LIMIT incidents
+        // (the latest ones; the totals still count everything).
+        $this->raiseMemoryLimit('512M');
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(180);
+        }
+
+        $listedIncidents = $incidents->count() > self::PDF_LIST_LIMIT
+            ? $incidents->sortByDesc('created_at')->take(self::PDF_LIST_LIMIT)->sortBy('created_at')->values()
+            : $incidents;
+
+        try {
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('report-pdf', [
+                'incidents'         => $incidents,
+                'listedIncidents'   => $listedIncidents,
+                'fromDate'          => $fromDate,
+                'toDate'            => $toDate,
+                'totalIncidents'    => $totalIncidents,
+                'resolvedIncidents' => $resolvedIncidents,
+                'resolutionRate'    => $resolutionRate,
+                'exportedBy'        => \Illuminate\Support\Facades\Auth::user()->name ?? 'Admin',
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->download($filename);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Export Report: the PDF could not be made.', [
+                'error' => $e->getMessage(),
+                'at'    => $e->getFile() . ':' . $e->getLine(),
+            ]);
+
+            return $failed('The PDF could not be made: ' . \Illuminate\Support\Str::limit($e->getMessage(), 200));
+        }
+    }
+
+    /** Raises PHP's memory limit for this request only, never lowers it. */
+    private function raiseMemoryLimit(string $to): void
+    {
+        $current = (string) ini_get('memory_limit');
+        if ($current === '' || $current === '-1') {
+            return; // already unlimited
+        }
+
+        try {
+            if (ini_parse_quantity($current) < ini_parse_quantity($to)) {
+                @ini_set('memory_limit', $to);
+            }
+        } catch (\Throwable $e) {
+            @ini_set('memory_limit', $to);
+        }
     }
 
     private function exportReportAsCsv($incidents, $fromDate, $toDate)
@@ -451,17 +516,26 @@ class AuthController extends Controller
             // UTF-8 BOM so Excel renders barangay names with ñ/special
             // characters correctly instead of mangling them.
             fwrite($handle, "\xEF\xBB\xBF");
-            fputcsv($handle, ['Type', 'Priority', 'Status', 'Location', 'Reporter', 'Mobile', 'Reported At']);
+            // Same columns and wording as the PDF's incident list, plus the
+            // reporter's number. Every incident in the period is listed.
+            fputcsv($handle, ['Date & time', 'Type', 'Location', 'Reporter', 'Mobile', 'Priority', 'Status']);
 
             foreach ($incidents as $inc) {
+                $status = match (true) {
+                    (bool) $inc->declined_at => 'Declined',
+                    (bool) $inc->needs_review => 'Pending Review',
+                    default => ucfirst((string) ($inc->status ?: 'pending')),
+                };
+
                 fputcsv($handle, [
-                    $inc->emergency_type,
-                    $inc->priority ? ucfirst($inc->priority) : '—',
-                    $inc->needs_review ? 'Pending Review' : ucfirst($inc->status),
+                    $inc->created_at->format('Y-m-d H:i'),
+                    $inc->display_type ?: $inc->emergency_type,
                     $inc->location ?: '—',
-                    $inc->citizen?->full_name ?? ($inc->citizen_id ? 'Unknown' : 'Guest'),
-                    $inc->citizen?->mobile ?? '—',
-                    $inc->created_at->format('Y-m-d H:i:s'),
+                    // A guest's typed name/number when there's no account.
+                    $inc->reporter_name ?: ($inc->citizen?->full_name ?? ($inc->citizen_id ? 'Unknown' : 'Guest')),
+                    $inc->reporter_mobile ?: ($inc->citizen?->mobile ?? '—'),
+                    $inc->priority ? ucfirst($inc->priority) : '—',
+                    $status,
                 ]);
             }
 

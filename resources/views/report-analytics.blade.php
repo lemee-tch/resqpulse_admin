@@ -153,7 +153,7 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
 .page-head h1{font-size:26px;font-weight:800;margin:0;color:var(--ink);}
 .page-head .eyebrow{font-size:12.5px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px;}
 
-.head-actions{display:flex;align-items:center;gap:10px;}
+.head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .date-pill{
   background:#fff;border:1px solid var(--line);border-radius:10px;
   padding:9px 14px;font-size:13.5px;font-weight:600;color:var(--ink);
@@ -183,25 +183,7 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
 }
 .btn-apply-range:hover{background:var(--primary-dark);}
 @media (max-width: 560px){
-  .head-actions{flex-wrap:wrap;}
-  .date-range-form{
-    width:100%;
-    flex-direction:column;
-    align-items:stretch;
-  }
-  /* The "|" / "–" separators and calendar icon are decorative filler
-     between controls in the single-row desktop layout; stacked into a
-     column they'd just be orphaned glyphs on their own line, so hide
-     them here rather than let the real inputs "wrap" unevenly. */
-  .date-range-form .date-sep,
-  .date-range-form > i{
-    display:none;
-  }
-  .date-range-form .range-preset,
-  .date-range-form .date-input,
-  .date-range-form .btn-apply-range{
-    width:100%;
-  }
+  .date-range-form{width:100%;}
 }
 .btn-export{
   background:var(--primary);color:#fff;border:none;border-radius:10px;
@@ -210,6 +192,20 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
   box-shadow:0 6px 14px rgba(26,60,143,.28);
 }
 .btn-export:hover{background:var(--primary-dark);color:#fff;}
+/* Same period as a spreadsheet — every incident, no PDF size limit. */
+.btn-export-csv{
+  background:#fff;color:var(--primary);border:1.5px solid #c7d2fe;border-radius:10px;
+  padding:8px 14px;font-weight:700;font-size:13.5px;
+  display:flex;align-items:center;gap:6px;text-decoration:none;
+}
+.btn-export-csv:hover{background:var(--primary-soft);color:var(--primary);}
+/* Shown when the PDF couldn't be made (see AuthController::exportReportAsPdf). */
+.export-error{
+  display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;
+  background:#fef2f2;border:1px solid #fecaca;color:#991b1b;
+  border-radius:12px;padding:12px 16px;font-size:13.5px;line-height:1.5;margin-bottom:18px;
+}
+.export-error a{color:#991b1b;font-weight:700;}
 
 /* ---------- Stat cards ---------- */
 .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:24px;}
@@ -252,7 +248,7 @@ h1,h2,h3,.brand-title,.metric-value{font-family:'Barlow',sans-serif;}
 .legend-pct{color:var(--muted);font-weight:700;font-size:13px;}
 
 /* Location bar chart card */
-.loc-chart-wrap{position:relative;height:{{ max(260, $reportsByLocation->count() * 38 + 40) }}px;}
+.loc-chart-wrap{position:relative;height:260px;}
 
 /* Time filter controls */
 .time-filter{display:flex;align-items:center;gap:8px;}
@@ -318,16 +314,10 @@ canvas{max-width:100%;}
             }
             .sidebar.open { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,.3); }
             .sidebar-nav a { white-space: normal !important; }
-            /* This page's layout wrapper is <main class="main"> (see
-               below), not .main-wrap like the other admin pages — that
-               selector was copy-pasted and never matched anything here,
-               so .main kept its 200px sidebar margin at every width and
-               never picked up any mobile padding either. Targeting the
-               real class is the actual fix; everything else in this
-               block was already correct. */
-            .main {
+            .main-wrap {
                 margin-left: 0 !important;
                 padding: 20px 16px 32px !important;
+                padding-top: 66px !important;
                 padding-bottom: 88px !important;
             }
             table { display: block; overflow-x: auto; white-space: nowrap; }
@@ -335,8 +325,9 @@ canvas{max-width:100%;}
         }
 
         @media (max-width: 560px) {
-            .main {
+            .main-wrap {
                 padding: 16px 12px 28px !important;
+                padding-top: 62px !important;
                 padding-bottom: 88px !important;
             }
         }
@@ -485,12 +476,26 @@ canvas{max-width:100%;}
       <a href="{{ route('reports-analytics.export', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString()]) }}" class="btn-export">
           <i class="bi bi-download"></i> Export Report
       </a>
+      <a href="{{ route('reports-analytics.export', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString(), 'format' => 'csv']) }}"
+         class="btn-export-csv" title="Download every incident in this period as a spreadsheet (CSV)">
+          <i class="bi bi-filetype-csv"></i> CSV
+      </a>
     </div>
   </div>
 
+  @if(session('export_error'))
+    <div class="export-error" role="alert">
+      <i class="bi bi-exclamation-triangle-fill" style="margin-top:2px;"></i>
+      <span>
+        {{ session('export_error') }}
+        <a href="{{ route('reports-analytics.export', ['from' => $fromDate->toDateString(), 'to' => $toDate->toDateString(), 'format' => 'csv']) }}">Download as CSV instead</a>
+      </span>
+    </div>
+  @endif
+
   <div class="panel-sub" style="margin:-14px 0 18px;">
     Stat cards and the two breakdowns below reflect <strong>{{ $fromDate->format('M d, Y') }} – {{ $toDate->format('M d, Y') }}</strong>,
-    compared against the {{ $fromDate->diffInDays($toDate) + 1 }}-day period right before it.
+    compared against the {{ (int) $fromDate->diffInDays($toDate) + 1 }}-day period right before it.
     "Incidents over Time" below has its own Week/Month/Year view, independent of this range.
   </div>
 
@@ -592,7 +597,7 @@ canvas{max-width:100%;}
       <div class="panel-head">
         <div>
           <div class="panel-title">Incidents by Location</div>
-          <div class="panel-sub">Grouped by barangay · top {{ $reportsByLocation->count() }} this period</div>
+          <div class="panel-sub">Top {{ $reportsByLocation->count() }} locations this period</div>
         </div>
       </div>
       <div class="loc-chart-wrap">
@@ -673,71 +678,65 @@ new Chart(document.getElementById('typePie'), {
   }
 });
 
-// ── Incidents by Location — horizontal bar chart (one bar per barangay) ─
-(function () {
-  const locLabels = @json($reportsByLocation->keys());
-  const locData   = @json($reportsByLocation->values());
-  const total     = locData.reduce((a, b) => a + b, 0);
-  const OTHER     = 'Outside Rosales / unknown';
-
-  // Print each bar's count at its end so you don't have to read the axis.
-  const valueLabels = {
-    id: 'valueLabels',
-    afterDatasetsDraw(chart) {
-      const { ctx } = chart;
-      ctx.save();
-      ctx.font = '600 12px Inter, sans-serif';
-      ctx.fillStyle = '#1C2433';
-      ctx.textBaseline = 'middle';
-      chart.getDatasetMeta(0).data.forEach((bar, i) => {
-        ctx.fillText(locData[i], bar.x + 8, bar.y);
-      });
-      ctx.restore();
-    }
-  };
-
-  new Chart(document.getElementById('locationBar'), {
-    type: 'bar',
-    data: {
-      labels: locLabels,
-      datasets: [{
-        label: 'Incidents',
-        data: locData,
-        backgroundColor: locLabels.map(l => l === OTHER ? '#C9CDD6' : '#1A3C8F'),
-        hoverBackgroundColor: locLabels.map(l => l === OTHER ? '#AEB3BF' : '#2F6FED'),
-        borderRadius: 6,
-        barThickness: 22
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      layout: { padding: { right: 28 } },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: c => c.raw + (c.raw === 1 ? ' incident' : ' incidents')
-                        + ' (' + (total ? Math.round(c.raw / total * 100) : 0) + '%)'
-          }
-        }
-      },
-      scales: {
-        x: {
-          beginAtZero: true,
-          grid: { color: '#EEF0F6' },
-          ticks: { color: '#6B7385', font: { size: 11.5 }, stepSize: 1, precision: 0 }
-        },
-        y: {
-          grid: { display: false },
-          ticks: { color: '#1C2433', font: { size: 12.5, weight: '500' } }
-        }
+// ── Incidents by Location — Bar Chart ──────────────────────────────────
+new Chart(document.getElementById('locationBar'), {
+  type: 'bar',
+  data: {
+    labels: @json($reportsByLocation->keys()),
+    datasets: [{
+      label: 'Incidents',
+      data: @json($reportsByLocation->values()),
+      backgroundColor: '#1A3C8F',
+      borderRadius: 6,
+      maxBarThickness: 46
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        // Tooltip title always shows the FULL original location (Chart.js
+        // pulls this from data.labels, not from the tick callback below),
+        // so truncating the on-axis label loses no information — anyone
+        // who needs the full text just hovers.
+        callbacks: { label: c => c.raw + (c.raw === 1 ? ' incident' : ' incidents') }
       }
     },
-    plugins: [valueLabels]
-  });
-})();
+    scales: {
+      // stepSize: 1 — this is a count of incidents, which can only ever
+      // be a whole number. Without this, Chart.js's auto-scaling showed
+      // fractional gridlines (0.2, 0.4, 0.6...) whenever the tallest bar
+      // was small, which doesn't mean anything for a count.
+      y: {
+        beginAtZero: true,
+        grid: { color: '#EEF0F6' },
+        ticks: { color: '#6B7385', font: { size: 11.5 }, stepSize: 1, precision: 0 }
+      },
+      x: {
+        grid: { display: false },
+        ticks: {
+          color: '#6B7385',
+          font: { size: 11.5 },
+          maxRotation: 35,
+          minRotation: 0,
+          // Some older SOS reports (from before location resolution was
+          // wired up — see BarangayLocationService) still have raw
+          // coordinates baked into `location`, e.g. "SOS Alert (outside
+          // Rosales — Lat 16.07843, Lng 120.57323)". Left un-truncated,
+          // one long label like that pushes every other bar's label into
+          // an unreadable wrap. Truncate on the axis; full text is still
+          // one hover away via the tooltip.
+          callback: function (value) {
+            const label = this.getLabelForValue(value);
+            return label.length > 24 ? label.slice(0, 22) + '…' : label;
+          }
+        }
+      }
+    }
+  }
+});
 
 // ── Incidents over Time — Line Chart with Week / Month / Year filter ────
 const trendDatasets = {

@@ -9,15 +9,20 @@
         file didn't exist, so every export ended in a server error.
 
         Gets: $incidents (with citizen), $fromDate, $toDate, $totalIncidents,
-        $resolvedIncidents, $resolutionRate, $exportedBy.
+        $resolvedIncidents, $resolutionRate, $exportedBy, and $listedIncidents
+        (the rows for the incident list — at most
+        AuthController::PDF_LIST_LIMIT of them; the totals and breakdowns
+        always count every incident in $incidents).
 
         dompdf only understands CSS 2.1 — no flexbox/grid — so the layout is
-        plain tables, same as incident-report-pdf.blade.php. DejaVu Sans
-        (bundled with dompdf) is used so ñ, — and · print correctly.
+        plain tables, same as incident-report-pdf.blade.php. dompdf keeps the
+        whole document in memory, so each list row is kept simple, and the
+        built-in Helvetica font is used (nothing to embed, so the file stays
+        small; ñ, — and · still print).
     --}}
     <style>
         @page { margin: 26px 30px 40px; }
-        body { font-family: DejaVu Sans, sans-serif; font-size: 9px; color: #111; }
+        body { font-family: Helvetica, Arial, sans-serif; font-size: 9px; color: #111; }
         table { border-collapse: collapse; width: 100%; }
         td, th { vertical-align: top; }
 
@@ -50,6 +55,7 @@
         .list tr.alt td { background: #f7f8fb; }
         .muted { color: #777; }
         .empty { text-align: center; padding: 14px; color: #777; border: 1px solid #bbb; }
+        .note { font-size: 8px; color: #555; background: #f3f4f6; border: 1px solid #ddd; padding: 4px 6px; margin-bottom: 5px; }
 
         .footer { position: fixed; bottom: -26px; left: 0; right: 0; font-size: 7.5px; color: #777; }
         .footer .page:after { content: counter(page); }
@@ -115,6 +121,10 @@
     $sosCount      = $incidents->where('emergency_type', 'SOS Emergency')->count();
     $declinedCount = $incidents->filter(fn ($i) => (bool) $i->declined_at)->count();
     $pct = fn ($n) => $totalIncidents > 0 ? round($n / $totalIncidents * 100) . '%' : '0%';
+
+    // The incident list — capped by the controller for very long periods.
+    $listed = $listedIncidents ?? $incidents;
+    $listIsCut = $listed->count() < $incidents->count();
 @endphp
 
 <div class="footer">
@@ -197,10 +207,16 @@
 @if($incidents->isEmpty())
     <div class="empty">No incidents were reported in this period.</div>
 @else
+    @if($listIsCut)
+        <div class="note">
+            Showing the latest {{ number_format($listed->count()) }} of {{ number_format($incidents->count()) }} incidents.
+            The totals and breakdowns above count all of them. For the full list, use CSV on Reports &amp; Analytics.
+        </div>
+    @endif
     <table class="list">
         <thead>
             <tr>
-                <th style="width:14%;">Date &amp; time</th>
+                <th style="width:15%;">Date &amp; time</th>
                 <th style="width:17%;">Type</th>
                 <th>Location</th>
                 <th style="width:17%;">Reporter</th>
@@ -209,9 +225,9 @@
             </tr>
         </thead>
         <tbody>
-            @foreach($incidents as $i => $inc)
+            @foreach($listed as $i => $inc)
                 <tr class="{{ $i % 2 ? 'alt' : '' }}">
-                    <td>{{ $inc->created_at->format('M d, Y') }}<br><span class="muted">{{ $inc->created_at->format('g:i A') }}</span></td>
+                    <td>{{ $inc->created_at->format('M d, Y g:i A') }}</td>
                     <td>{{ $inc->display_type }}</td>
                     <td>{{ $inc->location ?: '—' }}</td>
                     <td>{{ $reporterOf($inc) }}</td>
