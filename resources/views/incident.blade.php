@@ -146,6 +146,18 @@
         }
         .btn-decline:hover { background: #dc2626; color: #fff; }
         .review-actions { display: flex; gap: 8px; }
+        .review-actions { align-items: center; white-space: nowrap; }
+        .td-location { max-width: 360px; }
+        .td-action { width: 1%; text-align: right; white-space: nowrap; }
+        .btn-view {
+            display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+            background: #fff; color: #1a3c8f; border: 1.5px solid #c7d2fe; border-radius: 6px;
+            padding: 5px 12px; font-size: .78rem; font-weight: 700; text-decoration: none;
+            transition: background .2s, color .2s, border-color .2s;
+        }
+        .btn-view:hover { background: #1a3c8f; border-color: #1a3c8f; color: #fff; }
+        .map-link { margin-left: 6px; font-size: .74rem; font-weight: 600; color: #1a3c8f; text-decoration: none; white-space: nowrap; }
+        .map-link:hover { text-decoration: underline; }
         .guest-note { font-size: .74rem; color: #92400e; font-style: italic; }
         .badge-declined { background: #fee2e2; color: #991b1b; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 
@@ -386,19 +398,11 @@
                     $inc->status === 'resolved'   => 'Resolved',
                     default                        => 'Pending',
                 };
+                // Not shown in the tables (it's on the Incident Details page),
+                // but still searchable from the search box.
                 $reporterName = $inc->citizen?->full_name ?? ($inc->citizen_id ? 'Unknown' : 'Guest');
 
-                $responderLabel = $inc->responders->isNotEmpty()
-                    ? $inc->responders->map(fn ($r) => $r->full_name . ' (' . $r->agency . ')')->implode(', ')
-                    : null;
-
-                $incPhotos = collect();
-                if ($inc->photo_path) {
-                    $decoded = json_decode($inc->photo_path, true);
-                    $incPhotos = is_array($decoded) ? collect($decoded) : collect([$inc->photo_path]);
-                }
-
-                return compact('priorityVal', 'priorityClass', 'priorityLabel', 'isResolved', 'isDeclined', 'statusBadge', 'statusLabel', 'reporterName','responderLabel', 'incPhotos');
+                return compact('priorityVal', 'priorityClass', 'priorityLabel', 'isResolved', 'isDeclined', 'statusBadge', 'statusLabel', 'reporterName');
             };
         @endphp
 
@@ -480,17 +484,16 @@
                             <th>Priority</th>
                             <th>Type</th>
                             <th>Location</th>
-                            <th>Reporter</th>
-                            <th>Description</th>
-                            <th>Photo</th>
                             <th>Status</th>
-                            <th>Responder</th>
                             <th>Date</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody id="incidentsBody">
                         @forelse($activeIncidents as $inc)
                         @php extract($rowData($inc)); @endphp
+                        {{-- Photos, reporter, description and responders are on the
+                             Incident Details page (the row and View open it). --}}
                         <tr
                             class="incident-row"
                             data-priority="{{ $priorityVal }}"
@@ -514,72 +517,15 @@
                                     </select>
                                 </form>
                             </td>
-
                             <td>{{ $inc->emergency_type }}</td>
-                            <td>{{ $inc->location ?: '—' }}</td>
-                            <td>{{ $reporterName }}</td>
-                            <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ $inc->description }}">
-                                {{ $inc->description }}
-                            </td>
-
-                            <td onclick="event.stopPropagation()">
-                                @if($incPhotos->count())
-                                    <img src="{{ Storage::url($incPhotos->first()) }}"
-                                         class="photo-thumb"
-                                         data-bs-toggle="modal"
-                                         data-bs-target="#photoModal{{ $inc->id }}"
-                                         alt="Photo"
-                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
-                                    <i class="bi bi-image thumb-broken-icon" style="display:none;"></i>
-                                @else
-                                    <span style="color:#d1d5db;font-size:.75rem;">None</span>
-                                @endif
-                            </td>
-
-                            <td>
-                                <span class="{{ $statusBadge }}">{{ $statusLabel }}</span>
-                            </td>
-
-                            <td>
-                                @if($responderLabel)
-                                    <span style="font-size:.78rem;font-weight:600;color:#065f46;">{{ $responderLabel }}</span>
-                                @else
-                                    <span style="color:#d1d5db;font-size:.78rem;">Unassigned</span>
-                                @endif
-                            </td>
-
+                            <td class="td-location">{{ $inc->location ?: '—' }}</td>
+                            <td><span class="{{ $statusBadge }}">{{ $statusLabel }}</span></td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
+                            <td class="td-action"><a href="{{ route('incident.detail', $inc->id) }}" class="btn-view" onclick="event.stopPropagation()">View <i class="bi bi-chevron-right"></i></a></td>
                         </tr>
-
-                        @if($incPhotos->count())
-                        <div class="modal fade" id="photoModal{{ $inc->id }}" tabindex="-1">
-                            <div class="modal-dialog modal-dialog-centered">
-                                <div class="modal-content" style="border-radius:14px;border:none;">
-                                    <div class="modal-header border-0 pb-0">
-                                        <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
-                                            Incident #{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }} — Photo
-                                        </h5>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                    </div>
-                                    <div class="modal-body pt-2">
-                                        <img src="{{ Storage::url($incPhotos->first()) }}"
-                                             style="width:100%;border-radius:10px;border:1px solid #e5e7eb;"
-                                             alt="Incident photo">
-                                        @if($incPhotos->count() > 1)
-                                            <p style="text-align:center;font-size:.78rem;color:#6b7280;margin-top:10px;">
-                                                This incident has {{ $incPhotos->count() }} photos —
-                                                <a href="{{ route('incident.detail', $inc->id) }}" style="color:#1a3c8f;font-weight:600;">view all on the incident details page</a>.
-                                            </p>
-                                        @endif
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        @endif
-
                         @empty
                         <tr>
-                            <td colspan="9">
+                            <td colspan="6">
                                 <div class="no-results">
                                     <i class="bi bi-inbox"></i>
                                     No active incidents right now.
@@ -605,9 +551,6 @@
                         <tr>
                             <th>Type</th>
                             <th>Location</th>
-                            <th>Description</th>
-                            <th>Photo</th>
-                            <th>Coordinates</th>
                             <th>Submitted</th>
                             <th>Action</th>
                         </tr>
@@ -617,30 +560,13 @@
                         @php extract($rowData($inc)); @endphp
                         <tr class="incident-row" data-href="{{ route('incident.detail', $inc->id) }}">
                             <td>{{ $inc->emergency_type }}</td>
-                            <td>{{ $inc->location ?: '—' }}</td>
-                            <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ $inc->description }}">
-                                <span class="guest-note">{{ $inc->description }}</span>
-                            </td>
-                            <td onclick="event.stopPropagation()">
-                                @if($incPhotos->count())
-                                    <img src="{{ Storage::url($incPhotos->first()) }}"
-                                         class="photo-thumb"
-                                         data-bs-toggle="modal"
-                                         data-bs-target="#reviewPhotoModal{{ $inc->id }}"
-                                         alt="Photo">
-                                @else
-                                    <span style="color:#d1d5db;font-size:.75rem;">None</span>
-                                @endif
-                            </td>
-                            <td>
+                            <td class="td-location">
+                                {{ $inc->location ?: '—' }}
                                 @if($inc->latitude && $inc->longitude)
-                                    <a href="https://www.google.com/maps?q={{ $inc->latitude }},{{ $inc->longitude }}" target="_blank" onclick="event.stopPropagation()" style="color:#1a3c8f;text-decoration:none;font-weight:600;font-size:.78rem;">
-                                        {{ $inc->location ?: number_format($inc->latitude, 5) . ', ' . number_format($inc->longitude, 5) }}
+                                    <a href="https://www.google.com/maps?q={{ $inc->latitude }},{{ $inc->longitude }}" target="_blank"
+                                       class="map-link" title="Open the pin in Google Maps" onclick="event.stopPropagation()">
+                                        <i class="bi bi-geo-alt-fill"></i> Map
                                     </a>
-                                @elseif($inc->location)
-                                    <span style="font-size:.78rem;">{{ $inc->location }}</span>
-                                @else
-                                    <span style="color:#d1d5db;font-size:.75rem;">No location</span>
                                 @endif
                             </td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
@@ -659,29 +585,10 @@
                                             data-bs-toggle="modal" data-bs-target="#declineModal{{ $inc->id }}">
                                         <i class="bi bi-x-lg"></i> Decline
                                     </button>
+                                    <a href="{{ route('incident.detail', $inc->id) }}" class="btn-view" onclick="event.stopPropagation()">View <i class="bi bi-chevron-right"></i></a>
                                 </div>
                             </td>
                         </tr>
-
-                        @if($incPhotos->count())
-                        <div class="modal fade" id="reviewPhotoModal{{ $inc->id }}" tabindex="-1">
-                            <div class="modal-dialog modal-dialog-centered">
-                                <div class="modal-content" style="border-radius:14px;border:none;">
-                                    <div class="modal-header border-0 pb-0">
-                                        <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
-                                            Guest Report #{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }} — Photo
-                                        </h5>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                    </div>
-                                    <div class="modal-body pt-2">
-                                        <img src="{{ Storage::url($incPhotos->first()) }}"
-                                             style="width:100%;border-radius:10px;border:1px solid #e5e7eb;"
-                                             alt="Guest report photo">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        @endif
 
                         <div class="modal fade" id="declineModal{{ $inc->id }}" tabindex="-1">
                             <div class="modal-dialog modal-dialog-centered">
@@ -721,7 +628,7 @@
 
                         @empty
                         <tr>
-                            <td colspan="7">
+                            <td colspan="4">
                                 <div class="no-results">
                                     <i class="bi bi-check2-circle"></i>
                                     No guest reports waiting for review.
@@ -793,11 +700,9 @@
                             <th>Priority</th>
                             <th>Type</th>
                             <th>Location</th>
-                            <th>Reporter</th>
-                            <th>Description</th>
-                            <th>Photo</th>
                             <th>Status</th>
                             <th>Date</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody id="historyBody">
@@ -808,57 +713,17 @@
                             data-type="{{ $inc->emergency_type }}"
                             data-date="{{ $inc->created_at->format('Y-m-d') }}"
                             data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
-                            data-href="{{ route('incident.detail', $inc->id) }}"
-                            onclick="window.location.href='{{ route('incident.detail', $inc->id) }}'">
+                            data-href="{{ route('incident.detail', $inc->id) }}">
                             <td><span class="{{ $priorityClass }}">{{ $priorityLabel }}</span></td>
                             <td>{{ $inc->emergency_type }}</td>
-                            <td>{{ $inc->location }}</td>
-                            <td>{{ $reporterName }}</td>
-                            <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ $inc->description }}">
-                                {{ $inc->description }}
-                            </td>
-
-                            <td onclick="event.stopPropagation()">
-                                @if($incPhotos->count())
-                                    <img src="{{ Storage::url($incPhotos->first()) }}"
-                                         class="photo-thumb"
-                                         data-bs-toggle="modal"
-                                         data-bs-target="#photoModalH{{ $inc->id }}"
-                                         alt="Photo"
-                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
-                                    <i class="bi bi-image thumb-broken-icon" style="display:none;"></i>
-                                @else
-                                    <span style="color:#d1d5db;font-size:.75rem;">None</span>
-                                @endif
-                            </td>
-
+                            <td class="td-location">{{ $inc->location ?: '—' }}</td>
                             <td><span class="{{ $statusBadge }}">{{ $statusLabel }}</span></td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
+                            <td class="td-action"><a href="{{ route('incident.detail', $inc->id) }}" class="btn-view" onclick="event.stopPropagation()">View <i class="bi bi-chevron-right"></i></a></td>
                         </tr>
-
-                        @if($incPhotos->count())
-                        <div class="modal fade" id="photoModalH{{ $inc->id }}" tabindex="-1">
-                            <div class="modal-dialog modal-dialog-centered">
-                                <div class="modal-content" style="border-radius:14px;border:none;">
-                                    <div class="modal-header border-0 pb-0">
-                                        <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
-                                            Incident #{{ str_pad($inc->id, 4, '0', STR_PAD_LEFT) }} — Photo
-                                        </h5>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                    </div>
-                                    <div class="modal-body pt-2">
-                                        <img src="{{ Storage::url($incPhotos->first()) }}"
-                                             style="width:100%;border-radius:10px;border:1px solid #e5e7eb;"
-                                             alt="Incident photo">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        @endif
-
                         @empty
                         <tr>
-                            <td colspan="9">
+                            <td colspan="6">
                                 <div class="no-results">
                                     <i class="bi bi-check2-circle"></i>
                                     No resolved incidents yet.

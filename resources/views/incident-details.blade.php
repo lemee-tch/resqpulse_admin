@@ -477,7 +477,7 @@
                         <div class="report-pdf-row">
                             <div class="report-pdf-icon"><i class="bi bi-file-earmark-pdf-fill"></i></div>
                             <div class="report-pdf-meta">
-                                <div class="report-pdf-name">MDRRMC Incident Report #{{ $incident->id }}</div>
+                                <div class="report-pdf-name">MDRRMC Incident Report</div>
                                 <div class="report-pdf-sub">Filed by the responding team</div>
                             </div>
                             <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="report-pdf-btn" title="View">

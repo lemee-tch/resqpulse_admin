@@ -27,6 +27,29 @@ class IncidentController extends Controller
         return view('incident', compact('incidents'));
     }
 
+    /**
+     * How an incident is named in the Audit Log — by what, where and when
+     * instead of its ID number, e.g. "Fire report at Rizal St, Brgy.
+     * Carmay East, Rosales, Pangasinan (Oct 13, 2026 9:01 AM)".
+     */
+    private function describeIncident(Incident $incident): string
+    {
+        $what = $incident->emergency_type === 'SOS Emergency'
+            ? 'SOS alert' . ($incident->sos_emergency_type ? " ({$incident->sos_emergency_type})" : '')
+            : ($incident->emergency_type ?: 'incident') . ' report';
+        if (! $incident->citizen_id) {
+            $what = "guest {$what}"; // no resident account behind it
+        }
+
+        // Location labels start with "SOS Alert — " / "Guest Report — ".
+        $where = trim((string) preg_replace('/^(SOS Alert|Guest Report)\s*—\s*/u', '', (string) $incident->location));
+        $when  = $incident->created_at?->format('M d, Y g:i A');
+
+        return $what
+            . ($where !== '' ? " at {$where}" : '')
+            . ($when ? " ({$when})" : '');
+    }
+
     public function sosIndex()
     {
         $sosAlerts = Incident::with(['citizen', 'responders'])
@@ -95,7 +118,7 @@ class IncidentController extends Controller
 
         AuditLogService::Log(
             'updated',
-            "Set priority of Incident #{$incident->id} to {$request->priority}.",
+            "Set priority of the {$this->describeIncident($incident)} to {$request->priority}.",
             $incident,
             ['priority' => $old],
             ['priority' => $request->priority]
@@ -115,7 +138,7 @@ class IncidentController extends Controller
 
         AuditLogService::log(
             'updated',
-            "Set status of Incident #{$incident->id} to {$request->status}.",
+            "Set status of the {$this->describeIncident($incident)} to {$request->status}.",
             $incident,
             ['status' => $old],
             ['status' => $request->status]
@@ -132,7 +155,7 @@ class IncidentController extends Controller
 
         $incident->update(['admin_notes' => $request->admin_notes]);
 
-        AuditLogService::log('updated', "Updated admin notes on Incident #{$incident->id}.", $incident);
+        AuditLogService::log('updated', "Updated admin notes on the {$this->describeIncident($incident)}.", $incident);
 
         return back()->with('success', 'Note saved.');
     }
@@ -178,10 +201,9 @@ class IncidentController extends Controller
             );
         }
 
-        $label = $incident->emergency_type === 'SOS Emergency' ? 'guest SOS alert' : 'guest report';
         AuditLogService::log(
             'approved',
-            "Approved {$label} #{$incident->id} — dispatched to responders.",
+            "Approved the {$this->describeIncident($incident)} — dispatched to responders.",
             $incident
         );
 
@@ -223,10 +245,9 @@ class IncidentController extends Controller
             );
         }
 
-        $label = $incident->emergency_type === 'SOS Emergency' ? 'guest SOS alert' : 'guest report';
         AuditLogService::log(
             'rejected',
-            "Declined {$label} #{$incident->id} — {$request->decline_reason}",
+            "Declined the {$this->describeIncident($incident)} — {$request->decline_reason}",
             $incident
         );
 
@@ -255,7 +276,10 @@ class IncidentController extends Controller
             $incident->update(['report_pdf_path' => $path]);
         }
 
-        $filename = "MDRRMC-Incident-Report-{$incident->id}.pdf";
+        // Named by type and date/time, not the incident's ID number.
+        $filename = 'MDRRMC-Incident-Report_'
+            . \Illuminate\Support\Str::slug($incident->emergency_type ?: 'incident')
+            . '_' . $incident->created_at->format('Y-m-d_Hi') . '.pdf';
 
         return $request->boolean('download')
             ? $disk->download($path, $filename)

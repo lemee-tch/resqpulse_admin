@@ -460,10 +460,12 @@
             $pendingReviewSos = $sosAlerts->where('needs_review', true)->values();
             // Active excludes anything still pending review AND anything
             // declined — a declined SOS was never dispatched, so it
-            // doesn't belong alongside genuinely active ones. It still
-            // shows up under Resolved History below, badged "Declined".
+            // doesn't belong alongside genuinely active ones. Declined
+            // alerts have their own tab; Resolved History is only the
+            // ones responders actually resolved.
             $activeSos   = $sosAlerts->where('needs_review', false)->where('status', '!=', 'resolved')->whereNull('declined_at')->values();
-            $resolvedSos = $sosAlerts->filter(fn ($s) => $s->status === 'resolved' || $s->declined_at)->values();
+            $resolvedSos = $sosAlerts->filter(fn ($s) => $s->status === 'resolved' && ! $s->declined_at)->values();
+            $declinedSos = $sosAlerts->filter(fn ($s) => (bool) $s->declined_at)->sortByDesc('declined_at')->values();
         @endphp
 
         <div class="page-header">
@@ -490,6 +492,7 @@
                 @endif
             </button>
             <button class="tab-btn" onclick="switchTab('history', this)">Resolved History ({{ $resolvedSos->count() }})</button>
+            <button class="tab-btn" onclick="switchTab('declined', this)">Declined ({{ $declinedSos->count() }})</button>
         </div>
 
         <!-- ══ TAB: ACTIVE SOS ══ -->
@@ -782,6 +785,111 @@
             @endif
         </div>
 
+        <!-- ══ TAB: DECLINED ══ -->
+        <div id="tab-declined" class="tab-panel">
+
+            @if($declinedSos->count())
+            <!-- FILTER BAR -->
+            <div class="filter-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                <input type="date" class="filter-date" id="filterDateD" title="Filter by date reported"
+                       style="border:1.5px solid #d1d5db;border-radius:8px;padding:9px 14px;font-size:.82rem;font-family:'Inter',sans-serif;color:#374151;background:#fff;">
+
+                <select class="filter-select" id="filterReasonD"
+                        style="appearance:none;-webkit-appearance:none;background:#fff url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E&quot;) no-repeat right 12px center;border:1.5px solid #d1d5db;border-radius:8px;padding:9px 34px 9px 14px;font-size:.82rem;color:#374151;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;max-width:320px;">
+                    <option value="">All Reasons</option>
+                    @foreach($declinedSos->pluck('decline_reason')->filter()->unique()->sort() as $reason)
+                        <option value="{{ $reason }}">{{ $reason }}</option>
+                    @endforeach
+                </select>
+
+                <div style="position:relative;flex:1;min-width:180px;max-width:280px;">
+                    <i class="bi bi-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:.9rem;"></i>
+                    <input type="text" id="searchInputD" placeholder="Search declined SOS..."
+                           style="width:100%;border:1.5px solid #d1d5db;border-radius:8px;padding:9px 14px 9px 34px;font-size:.82rem;color:#374151;font-family:'Inter',sans-serif;background:#fff;">
+                </div>
+
+                <button id="btnClearD"
+                        style="background:#fff;color:#6b7280;border:1.5px solid #d1d5db;border-radius:8px;padding:9px 18px;font-size:.82rem;font-family:'Inter',sans-serif;font-weight:600;cursor:pointer;">
+                    Clear Filters
+                </button>
+            </div>
+            <div class="results-count" id="resultsCountD" style="font-size:.8rem;color:#6b7280;margin-bottom:14px;"></div>
+            @endif
+
+            @forelse($declinedSos as $sos)
+                @php
+                    $reporter = $sos->reporter_name; // a guest's typed name, see Incident::getReporterNameAttribute()
+                    $mobile = $sos->reporter_mobile;
+                    $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
+
+                    $sosPhoto = null;
+                    if ($sos->photo_path) {
+                        $decodedSosPhotos = json_decode($sos->photo_path, true);
+                        $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
+                    }
+                @endphp
+                <div class="sos-card sos-card--declined declined-row"
+                    data-date="{{ $sos->created_at->format('Y-m-d') }}"
+                    data-reason="{{ $sos->decline_reason }}"
+                    data-search="{{ strtolower($reporter.' '.$mobile.' '.$sos->location.' '.$sos->decline_reason.' '.$sos->ai_detected_type) }}"
+                    onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'">
+
+                    @if($sosPhoto)
+                        <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo">
+                    @else
+                        <div class="sos-photo-placeholder"><i class="bi bi-camera-video-off"></i></div>
+                    @endif
+
+                    <div class="sos-body">
+                        <div class="sos-top-row">
+                            <div class="sos-title">
+                                🆘 SOS Emergency
+                                <span class="badge-status badge-declined">Declined</span>
+                                @if($sos->ai_detected_type)
+                                    <span class="badge-ai text-danger">{{ $sos->ai_detected_type }}</span>
+                                @endif
+                            </div>
+                            <div class="sos-time">
+                                Sent {{ $sos->created_at->format('M d, g:i A') }}
+                                · Declined {{ $sos->declined_at->format('M d, g:i A') }}
+                            </div>
+                        </div>
+
+                        <div class="sos-meta-row">
+                            <div class="sos-meta-item">
+                                <i class="bi bi-person-fill"></i>
+                                <span class="sos-reporter">{{ $reporter }}</span>
+                                @if(! $sos->citizen_id) <span class="tag-guest">Guest</span> @endif
+                                @if($mobile) <span>· {{ $mobile }}</span> @endif
+                            </div>
+                            <div class="sos-meta-item">
+                                <i class="bi bi-geo-alt-fill"></i>
+                                <a href="{{ $mapsUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#1a3c8f;text-decoration:none;font-weight:600;">
+                                    {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
+                                </a>
+                            </div>
+                        </div>
+
+                        <div class="declined-reason-note">
+                            Declined: "{{ \Illuminate\Support\Str::limit($sos->decline_reason ?: 'No reason given', 120) }}"
+                        </div>
+                    </div>
+                </div>
+            @empty
+                <div class="empty-state">
+                    <i class="bi bi-slash-circle"></i>
+                    No declined SOS alerts.
+                </div>
+            @endforelse
+
+            @if($declinedSos->count())
+            <div id="declinedNoMatch" class="empty-state" style="display:none;">
+                <i class="bi bi-search"></i>
+                No declined SOS alerts match these filters.
+            </div>
+            @endif
+        </div>
+
     </div>
 </div>
 
@@ -854,6 +962,49 @@
         searchInput.addEventListener('input', applyFilters);
         btnClear.addEventListener('click', () => {
             aiFilter.value = '';
+            dateFilter.value = searchInput.value = '';
+            applyFilters();
+        });
+
+        applyFilters();
+    })();
+
+    // Declined tab filters (date reported / reason / search)
+    (function () {
+        const dateFilter = document.getElementById('filterDateD');
+        if (!dateFilter) return;
+
+        const reasonFilter = document.getElementById('filterReasonD');
+        const searchInput  = document.getElementById('searchInputD');
+        const btnClear     = document.getElementById('btnClearD');
+        const cards        = Array.from(document.querySelectorAll('#tab-declined .declined-row'));
+        const resultsCount = document.getElementById('resultsCountD');
+        const noMatch      = document.getElementById('declinedNoMatch');
+        const totalCount   = cards.length;
+
+        function applyFilters() {
+            const date   = dateFilter.value;
+            const reason = reasonFilter.value;
+            const search = searchInput.value.trim().toLowerCase();
+            let visible  = 0;
+
+            cards.forEach(card => {
+                const ok = (!date   || card.dataset.date === date)
+                        && (!reason || card.dataset.reason === reason)
+                        && (!search || card.dataset.search.includes(search));
+                card.style.display = ok ? '' : 'none';
+                if (ok) visible++;
+            });
+
+            resultsCount.innerHTML = `Showing <strong>${visible}</strong> of <strong>${totalCount}</strong> declined SOS alerts`;
+            noMatch.style.display = (visible === 0 && totalCount > 0) ? 'block' : 'none';
+        }
+
+        dateFilter.addEventListener('change', applyFilters);
+        reasonFilter.addEventListener('change', applyFilters);
+        searchInput.addEventListener('input', applyFilters);
+        btnClear.addEventListener('click', () => {
+            reasonFilter.value = '';
             dateFilter.value = searchInput.value = '';
             applyFilters();
         });

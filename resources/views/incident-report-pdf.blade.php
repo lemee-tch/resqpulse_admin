@@ -2,110 +2,226 @@
 <html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-    <title>RESQPULSE Report</title>
+    <title>Incident Summary Report</title>
+    {{--
+        "Export Report" on Reports & Analytics (AuthController::exportReport()
+        → exportReportAsPdf()). That method always loaded this view, but the
+        file didn't exist, so every export ended in a server error.
+
+        Gets: $incidents (with citizen), $fromDate, $toDate, $totalIncidents,
+        $resolvedIncidents, $resolutionRate, $exportedBy.
+
+        dompdf only understands CSS 2.1 — no flexbox/grid — so the layout is
+        plain tables, same as incident-report-pdf.blade.php. DejaVu Sans
+        (bundled with dompdf) is used so ñ, — and · print correctly.
+    --}}
     <style>
-        /* dompdf only supports CSS 2.1 + a handful of CSS3 properties —
-           no flexbox, no grid, limited box-shadow/border-radius support.
-           Kept deliberately plain rather than reusing the admin panel's
-           normal CSS, which would silently break in ways only visible
-           once you actually open the PDF. */
-        body { font-family: Helvetica, Arial, sans-serif; color: #1f2937; font-size: 11px; }
-        .header { border-bottom: 3px solid #1a3c8f; padding-bottom: 10px; margin-bottom: 16px; }
-        .header h1 { font-size: 18px; color: #1a3c8f; margin: 0 0 2px; }
-        .header .sub { font-size: 10px; color: #6b7280; }
+        @page { margin: 26px 30px 40px; }
+        body { font-family: DejaVu Sans, sans-serif; font-size: 9px; color: #111; }
+        table { border-collapse: collapse; width: 100%; }
+        td, th { vertical-align: top; }
 
-        .summary { width: 100%; margin-bottom: 18px; }
-        .summary td {
-            width: 25%; text-align: center; padding: 10px 6px;
-            border: 1px solid #e5e7eb;
-        }
-        .summary .label { font-size: 9px; color: #6b7280; text-transform: uppercase; }
-        .summary .value { font-size: 18px; font-weight: bold; color: #111827; margin-top: 3px; }
+        .head td { text-align: center; vertical-align: middle; }
+        .head .muni { font-size: 10px; }
+        .head .council { font-size: 10.5px; font-weight: bold; }
+        .head .office { font-size: 9px; color: #444; }
+        .title { text-align: center; font-size: 14px; font-weight: bold; margin: 10px 0 2px; letter-spacing: .5px; }
+        .period { text-align: center; font-size: 9.5px; margin-bottom: 2px; }
+        .meta { text-align: center; font-size: 8px; color: #555; margin-bottom: 10px; }
 
-        table.data { width: 100%; border-collapse: collapse; }
-        table.data th {
-            background: #1a3c8f; color: #fff; text-align: left;
-            padding: 6px 8px; font-size: 9.5px; text-transform: uppercase;
-        }
-        table.data td {
-            padding: 6px 8px; font-size: 9.5px; border-bottom: 1px solid #e5e7eb;
-        }
-        table.data tr:nth-child(even) { background: #f9fafb; }
+        .stats td { border: 1px solid #999; text-align: center; padding: 6px 4px; width: 20%; }
+        .stats .num { font-size: 15px; font-weight: bold; color: #1a3c8f; }
+        .stats .lbl { font-size: 8px; color: #444; text-transform: uppercase; letter-spacing: .3px; }
 
-        .footer { margin-top: 16px; font-size: 8.5px; color: #9ca3af; text-align: center; }
+        .sect { font-size: 10.5px; font-weight: bold; margin: 14px 0 5px; padding-bottom: 2px; border-bottom: 1.5px solid #1a3c8f; color: #1a3c8f; }
+
+        .cols > tbody > tr > td { width: 50%; }
+        .cols > tbody > tr > td.gap { width: 2%; }
+
+        .breakdown th, .breakdown td { border: 1px solid #bbb; padding: 3px 6px; }
+        .breakdown th { background: #e8edf7; text-align: left; font-size: 8.5px; }
+        .breakdown td.n, .breakdown th.n { text-align: right; width: 18%; }
+
+        .list thead { display: table-header-group; }
+        .list tr { page-break-inside: avoid; }
+        .list th, .list td { border: 1px solid #bbb; padding: 3px 4px; }
+        .list th { background: #e8edf7; text-align: left; font-size: 8px; }
+        .list td { font-size: 8px; }
+        .list tr.alt td { background: #f7f8fb; }
+        .muted { color: #777; }
+        .empty { text-align: center; padding: 14px; color: #777; border: 1px solid #bbb; }
+
+        .footer { position: fixed; bottom: -26px; left: 0; right: 0; font-size: 7.5px; color: #777; }
+        .footer .page:after { content: counter(page); }
     </style>
 </head>
 <body>
+@php
+    // ── Logos (same files as the MDRRMC Incident Report) ──
+    $logo = function (string $file) {
+        $path = public_path('images/' . $file);
+        if (! is_file($path)) {
+            return null;
+        }
+        $mime = function_exists('mime_content_type') ? (mime_content_type($path) ?: 'image/png') : 'image/png';
+        return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+    };
+    $logoLeft  = $logo('logo_mdrrmo.png');
+    $logoRight = $logo('logo_rosales.png');
 
-    <div class="header">
-        <h1>MDRRMO Rosales — Incident Report</h1>
-        <div class="sub">
-            {{ $fromDate->format('M d, Y') }} – {{ $toDate->format('M d, Y') }}
-            @if($barangay ?? null)
-                &nbsp;·&nbsp; Barangay {{ $barangay }}
-            @endif
-            &nbsp;·&nbsp; Generated {{ now()->format('M d, Y g:i A') }}
-            &nbsp;·&nbsp; Exported by {{ $exportedBy }}
-        </div>
-    </div>
+    // ── Status, type and barangay of each incident ──
+    $statusOf = function ($inc) {
+        if ($inc->declined_at) return 'Declined';
+        if ($inc->needs_review) return 'Pending Review';
+        return ucfirst((string) ($inc->status ?: 'pending'));
+    };
 
-    <table class="summary">
+    // Same grouping as the "Reports by Type" chart on Reports & Analytics:
+    // SOS stays SOS, otherwise the AI-detected type if any, and anything
+    // that isn't a known type (free text from "Other") counts as Other.
+    $knownTypes = ['Fire', 'Flood', 'Earthquake', 'Accident', 'Medical Emergency', 'Landslide', 'Other'];
+    $typeOf = function ($inc) use ($knownTypes) {
+        if ($inc->emergency_type === 'SOS Emergency') return 'SOS Emergency';
+        $type = $inc->ai_detected_type ?: $inc->emergency_type;
+        if ($type === 'Vehicular Accident') return 'Accident';
+        return in_array($type, $knownTypes, true) ? $type : 'Other';
+    };
+
+    // Barangay from the location text, e.g. "SOS Alert — Rizal St, Brgy.
+    // Carmay East, Rosales, Pangasinan". Longest names first so
+    // "Zone II (Poblacion)" isn't read as "Zone I (Poblacion)".
+    $barangayNames = \App\Services\BarangayLocationService::names();
+    usort($barangayNames, fn ($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+    $barangayOf = function ($inc) use ($barangayNames) {
+        $text = (string) $inc->location;
+        if (stripos($text, 'Outside Rosales') !== false) return 'Outside Rosales';
+        foreach ($barangayNames as $name) {
+            if ($name !== '' && stripos($text, $name) !== false) return $name;
+        }
+        return 'Not identified';
+    };
+
+    // Who sent it — a guest's typed name when there's no account.
+    $reporterOf = function ($inc) {
+        return $inc->reporter_name
+            ?: ($inc->citizen?->full_name ?? ($inc->citizen_id ? 'Unknown' : 'Guest'));
+    };
+
+    $count = fn ($fn) => $incidents->groupBy($fn)->map->count()->sortDesc();
+    $byType     = $count($typeOf);
+    $byStatus   = $count($statusOf);
+    $byBarangay = $count($barangayOf);
+
+    $sosCount      = $incidents->where('emergency_type', 'SOS Emergency')->count();
+    $declinedCount = $incidents->filter(fn ($i) => (bool) $i->declined_at)->count();
+    $pct = fn ($n) => $totalIncidents > 0 ? round($n / $totalIncidents * 100) . '%' : '0%';
+@endphp
+
+<div class="footer">
+    <table>
         <tr>
-            <td>
-                <div class="label">Total Incidents</div>
-                <div class="value">{{ $totalIncidents }}</div>
-            </td>
-            <td>
-                <div class="label">Resolved</div>
-                <div class="value">{{ $resolvedIncidents }}</div>
-            </td>
-            <td>
-                <div class="label">Resolution Rate</div>
-                <div class="value">{{ $resolutionRate }}%</div>
-            </td>
-            <td>
-                <div class="label">Date Range</div>
-                <div class="value" style="font-size: 12px;">
-                    {{ $fromDate->diffInDays($toDate) + 1 }} days
-                </div>
-            </td>
+            <td>ResQPulse · MDRRMO Rosales, Pangasinan · Generated {{ now()->format('M d, Y g:i A') }}</td>
+            <td style="text-align:right;">Page <span class="page"></span></td>
         </tr>
     </table>
+</div>
 
-    @if($incidents->isEmpty())
-        <p style="text-align:center; color:#9ca3af; padding: 30px 0;">
-            No incidents were reported in this date range.
-        </p>
-    @else
-        <table class="data">
-            <thead>
-                <tr>
-                    <th>Type</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Location</th>
-                    <th>Reporter</th>
-                    <th>Reported At</th>
+<table class="head">
+    <tr>
+        <td style="width:15%;">@if($logoLeft)<img src="{{ $logoLeft }}" style="width:58px;height:58px;">@endif</td>
+        <td>
+            <div class="muni">Republic of the Philippines · Province of Pangasinan</div>
+            <div class="muni">Municipality of Rosales</div>
+            <div class="council">Municipal Disaster Risk Reduction and Management Council</div>
+            <div class="office">MDRRMO Rosales</div>
+        </td>
+        <td style="width:15%;">@if($logoRight)<img src="{{ $logoRight }}" style="width:58px;height:58px;">@endif</td>
+    </tr>
+</table>
+
+<div class="title">INCIDENT SUMMARY REPORT</div>
+<div class="period">
+    {{ $fromDate->format('F d, Y') }} – {{ $toDate->format('F d, Y') }}
+</div>
+<div class="meta">Prepared by {{ $exportedBy }} · {{ now()->format('F d, Y g:i A') }}</div>
+
+<table class="stats">
+    <tr>
+        <td><div class="num">{{ $totalIncidents }}</div><div class="lbl">Total incidents</div></td>
+        <td><div class="num">{{ $resolvedIncidents }}</div><div class="lbl">Resolved</div></td>
+        <td><div class="num">{{ $resolutionRate }}%</div><div class="lbl">Resolution rate</div></td>
+        <td><div class="num">{{ $sosCount }}</div><div class="lbl">SOS alerts</div></td>
+        <td><div class="num">{{ $declinedCount }}</div><div class="lbl">Declined</div></td>
+    </tr>
+</table>
+
+<table class="cols" style="margin-top:4px;">
+    <tr>
+        <td>
+            <div class="sect">By type</div>
+            <table class="breakdown">
+                <tr><th>Type</th><th class="n">Count</th><th class="n">Share</th></tr>
+                @forelse($byType as $label => $n)
+                    <tr><td>{{ $label }}</td><td class="n">{{ $n }}</td><td class="n">{{ $pct($n) }}</td></tr>
+                @empty
+                    <tr><td colspan="3" class="muted">No incidents.</td></tr>
+                @endforelse
+            </table>
+        </td>
+        <td class="gap"></td>
+        <td>
+            <div class="sect">By status</div>
+            <table class="breakdown">
+                <tr><th>Status</th><th class="n">Count</th><th class="n">Share</th></tr>
+                @forelse($byStatus as $label => $n)
+                    <tr><td>{{ $label }}</td><td class="n">{{ $n }}</td><td class="n">{{ $pct($n) }}</td></tr>
+                @empty
+                    <tr><td colspan="3" class="muted">No incidents.</td></tr>
+                @endforelse
+            </table>
+        </td>
+    </tr>
+</table>
+
+<div class="sect">By barangay</div>
+<table class="breakdown">
+    <tr><th>Barangay</th><th class="n">Count</th><th class="n">Share</th></tr>
+    @forelse($byBarangay as $label => $n)
+        <tr><td>{{ $label }}</td><td class="n">{{ $n }}</td><td class="n">{{ $pct($n) }}</td></tr>
+    @empty
+        <tr><td colspan="3" class="muted">No incidents.</td></tr>
+    @endforelse
+</table>
+
+<div class="sect">Incident list</div>
+@if($incidents->isEmpty())
+    <div class="empty">No incidents were reported in this period.</div>
+@else
+    <table class="list">
+        <thead>
+            <tr>
+                <th style="width:14%;">Date &amp; time</th>
+                <th style="width:17%;">Type</th>
+                <th>Location</th>
+                <th style="width:17%;">Reporter</th>
+                <th style="width:8%;">Priority</th>
+                <th style="width:11%;">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach($incidents as $i => $inc)
+                <tr class="{{ $i % 2 ? 'alt' : '' }}">
+                    <td>{{ $inc->created_at->format('M d, Y') }}<br><span class="muted">{{ $inc->created_at->format('g:i A') }}</span></td>
+                    <td>{{ $inc->display_type }}</td>
+                    <td>{{ $inc->location ?: '—' }}</td>
+                    <td>{{ $reporterOf($inc) }}</td>
+                    <td>{{ $inc->priority ? ucfirst($inc->priority) : '—' }}</td>
+                    <td>{{ $statusOf($inc) }}</td>
                 </tr>
-            </thead>
-            <tbody>
-                @foreach($incidents as $inc)
-                    <tr>
-                        <td>{{ $inc->emergency_type }}</td>
-                        <td>{{ $inc->priority ? ucfirst($inc->priority) : '—' }}</td>
-                        <td>{{ $inc->needs_review ? 'Pending Review' : ucfirst($inc->status) }}</td>
-                        <td>{{ $inc->location ?: '—' }}</td>
-                        <td>{{ $inc->citizen?->full_name ?? ($inc->citizen_id ? 'Unknown' : 'Guest') }}</td>
-                        <td>{{ $inc->created_at->format('M d, Y g:i A') }}</td>
-                    </tr>
-                @endforeach
-            </tbody>
-        </table>
-    @endif
-
-    <div class="footer">
-        RESQPULSE — Emergency Reporting &amp; Real-Time Alert System · MDRRMO Rosales, Pangasinan
-    </div>
+            @endforeach
+        </tbody>
+    </table>
+@endif
 
 </body>
 </html>
