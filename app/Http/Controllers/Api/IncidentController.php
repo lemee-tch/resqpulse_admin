@@ -10,7 +10,6 @@ use App\Services\AuditLogService;
 use App\Services\BarangayLocationService;
 use App\Services\ImageAnalysisService;
 use App\Services\IncidentReportService;
-use App\Services\PushNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
@@ -121,10 +120,12 @@ class IncidentController extends Controller
      * admin's Pending Review until an admin approves it
      * (Admin\IncidentController::approve() dispatches it then) or declines
      * it.
+     *
+     * Priority is left empty. The admin picks Critical, High or Low when
+     * approving — the photo is no longer run through the AI to guess one.
      */
     public function store(
         Request $request,
-        ImageAnalysisService $imageAnalysis,
         BarangayLocationService $locationService
     ) {
         $citizen = $this->resolveOptionalCitizen($request);
@@ -185,27 +186,9 @@ class IncidentController extends Controller
             // notified when an admin approves it (see
             // Admin\IncidentController::approve()).
             'needs_review'   => true,
+            // No priority yet — the admin sets it when approving.
+            'priority'       => null,
         ] + $this->guestColumns($guest));
-
-        if ($photoPaths) {
-            // Manual/regular reports: the citizen already told us the
-            // type via the "Type of Emergency" dropdown, so we don't
-            // need — or show — a second, possibly-conflicting AI guess
-            // here (ai_detected_type/ai_confidence/ai_analysis stay
-            // null, which also keeps the "AI Photo Analysis" block off
-            // incident-details.blade.php — it's gated on
-            // $incident->ai_detected_type). The photo is still worth
-            // running through the analyzer for ONE thing: letting it
-            // bump priority up (e.g. a photo that clearly shows an
-            // active fire) beyond whatever TYPE_PRIORITY would assign
-            // from the citizen's stated type alone.
-            $analysis = $imageAnalysis->classify($photoPaths[0], $request->emergency_type);
-            if ($analysis) {
-                $incident->update([
-                    'priority' => $analysis['priority'],
-                ]);
-            }
-        }
 
         // Resident activity trail — shows up in the admin Audit Log page
         // (filterable by action=created). Same convention as login() in
@@ -233,10 +216,17 @@ class IncidentController extends Controller
         ], 201);
     }
 
+    /**
+     * An SOS from the app's panic button.
+     *
+     * Like reports, every SOS waits in the admin's Pending Review —
+     * guest or resident, inside or outside Rosales — so MDRRMO can verify
+     * it first. Responders are notified only when an admin approves it
+     * (Admin\IncidentController::approve()).
+     */
     public function sos(
         Request $request,
         ImageAnalysisService $imageAnalysis,
-        PushNotificationService $push,
         BarangayLocationService $locationService
     ) {
         $citizen = $this->resolveOptionalCitizen($request);
@@ -266,9 +256,8 @@ class IncidentController extends Controller
             ? $request->file('photo')->store('incident_photos', 'public')
             : null;
 
-        // SOS always carries coordinates (required above for guest and
-        // citizen alike), so this check always runs — unlike store()
-        // above, where a citizen without a GPS pin skips it entirely.
+        // Only changes the message below now — every SOS is reviewed
+        // anyway. SOS always carries coordinates, so this always runs.
         $isOutsideRosales = ! $locationService->isWithinRosales($request->latitude, $request->longitude);
 
         $incident = Incident::create([
@@ -294,10 +283,8 @@ class IncidentController extends Controller
             // actually said). Purely informational for MDRRMO right now
             // — it doesn't change routing/dispatch.
             'sos_emergency_type' => $request->emergency_type ?: null,
-            // Same reasoning as store() above — a pin outside Rosales
-            // needs an admin to confirm it before responders get
-            // dispatched, even from a trusted logged-in citizen.
-            'needs_review'       => $isGuest || $isOutsideRosales,
+            // Every SOS waits for an admin to verify it, same as reports.
+            'needs_review'       => true,
         ] + $this->guestColumns($guest));
 
         if ($photoPath) {
@@ -323,15 +310,11 @@ class IncidentController extends Controller
             $incident
         );
 
-        if (! $incident->needs_review) {
-            $push->dispatchToRespondersForIncident($incident);
-        }
-
-        $message = match(true) {
-            $isGuest => 'SOS sent. MDRRMO will review it shortly before it reaches responders.',
-            $isOutsideRosales => 'SOS sent. Since this location is outside Rosales, MDRRMO will review it before responders are notified.',
-            default => 'SOS sent.',
-        };
+        // No responders are notified here — that happens when an admin
+        // approves the SOS (Admin\IncidentController::approve()).
+        $message = $isOutsideRosales
+            ? 'SOS sent. Since this location is outside Rosales, MDRRMO will review it before responders are notified.'
+            : 'SOS sent. MDRRMO will verify it right away and then send responders.';
 
         return response()->json([
             'message'  => $message,
@@ -359,9 +342,9 @@ class IncidentController extends Controller
 
         $incidents = Incident::with(['citizen', 'responders'])
             ->where('status', '!=', 'resolved')
-            // Guest reports pending admin approval must never reach the
-            // responder feed — dispatchToRespondersForIncident() is also
-            // withheld for them, so this is a belt-and-suspenders check.
+            // Reports and SOS alerts still waiting for admin review must
+            // never reach the responder feed — they're only dispatched
+            // when an admin approves them.
             ->where('needs_review', false)
             // An admin decline flips needs_review back to false too —
             // same as an approval (see the decline-fields migration) —
@@ -463,8 +446,8 @@ class IncidentController extends Controller
             ], 409);
         }
 
-        // Still waiting on admin review (a guest submission, or a pin
-        // outside Rosales) — store()/sos() withhold the responder
+        // Still waiting on admin review (every new report and SOS starts
+        // there) — store()/sos() withhold the responder
         // dispatch until an admin approves it, so there's nothing
         // actually dispatched yet to accept. assignedToResponder()
         // already keeps these out of the normal feed; this is the same

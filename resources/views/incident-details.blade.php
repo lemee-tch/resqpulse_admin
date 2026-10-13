@@ -120,6 +120,39 @@
         }
         .btn-decline-confirm:hover { background: #b91c1c; }
 
+        /* Approve dialog — the admin chooses the priority (same look as
+           the Approve dialog on the Incidents page). */
+        .prio-choices { display: flex; gap: 8px; margin: 2px 0 12px; }
+        .prio-input { position: absolute; opacity: 0; pointer-events: none; }
+        .prio-choice {
+            flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+            margin: 0; padding: 11px 6px; border-radius: 10px; border: 2px solid currentColor;
+            background: #fff; cursor: pointer; user-select: none;
+            font-family: 'Barlow', sans-serif; font-weight: 800; font-size: .95rem;
+            transition: background .15s, color .15s;
+        }
+        .prio-choice i { display: none; }
+        .prio-choice.prio-critical { color: #dc2626; }
+        .prio-choice.prio-high     { color: #f97316; }
+        .prio-choice.prio-low      { color: #3b82f6; }
+        .prio-choice.prio-critical:hover { background: #fef2f2; }
+        .prio-choice.prio-high:hover     { background: #fff7ed; }
+        .prio-choice.prio-low:hover      { background: #eff6ff; }
+        .prio-input:checked + .prio-choice { color: #fff; }
+        .prio-input:checked + .prio-choice i { display: inline; }
+        .prio-input:checked + .prio-choice.prio-critical { background: #dc2626; border-color: #dc2626; }
+        .prio-input:checked + .prio-choice.prio-high     { background: #f97316; border-color: #f97316; }
+        .prio-input:checked + .prio-choice.prio-low      { background: #3b82f6; border-color: #3b82f6; }
+        .prio-input:focus-visible + .prio-choice { outline: 3px solid #1a3c8f; outline-offset: 2px; }
+        .btn-approve-confirm {
+            background: #10b981; color: #fff; border: none; border-radius: 8px;
+            padding: 9px 22px; font-family: 'Barlow', sans-serif; font-weight: 700;
+            font-size: .88rem; cursor: pointer; transition: background .2s;
+        }
+        .btn-approve-confirm:hover { background: #059669; }
+        .btn-approve-confirm:disabled { background: #a7f3d0; cursor: not-allowed; }
+        .prio-hint { font-size: .78rem; color: #9ca3af; margin-right: auto; }
+
         /* Photos */
         .photos-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
         .photo-thumb { width: 68px; height: 52px; border-radius: 6px; object-fit: cover; cursor: pointer; border: 2px solid transparent; transition: border-color .2s; }
@@ -404,6 +437,11 @@
                 {{ session('success') }}
             </div>
         @endif
+        @if($errors->any())
+            <div class="alert alert-danger" style="border-radius:10px;font-size:.85rem;margin-bottom:16px;">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i> {{ $errors->first() }}
+            </div>
+        @endif
 
         <!-- INCIDENT BANNER -->
         <div class="incident-banner {{ $priority }}">
@@ -429,18 +467,15 @@
                     @if($mobile)
                         You can call {{ $reporter }} at <a href="tel:{{ $mobile }}" class="call-link">{{ $mobile }}</a> to confirm.
                     @endif
-                    Responders are <strong>not</strong> notified until you approve it.
+                    Responders are <strong>not</strong> notified until you approve it and choose its priority.
                 </span>
             </div>
 
             <div class="quick-actions">
-                <form action="{{ route('incident.approve', $incident->id) }}" method="POST" style="margin:0;"
-                      onsubmit="return confirm('Approve this report and send it to the responders?');">
-                    @csrf
-                    <button type="submit" class="btn-quick btn-approve-lg">
-                        <i class="bi bi-check-circle-fill"></i> Approve &amp; Send to Responders
-                    </button>
-                </form>
+                {{-- Opens the Approve dialog, where the admin picks the priority. --}}
+                <button type="button" class="btn-quick btn-approve-lg" data-bs-toggle="modal" data-bs-target="#approveModal">
+                    <i class="bi bi-check-circle-fill"></i> Approve &amp; Send to Responders
+                </button>
                 <button type="button" class="btn-quick btn-decline-lg" data-bs-toggle="modal" data-bs-target="#declineModal">
                     <i class="bi bi-x-circle-fill"></i> Decline
                 </button>
@@ -732,6 +767,41 @@
 @endif
 
 @if($incident->needs_review)
+{{-- Approve Modal — the admin chooses the priority, then the report is
+     sent to the responders. Nothing sets priority automatically. --}}
+<div class="modal fade" id="approveModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius:14px;border:none;">
+            <form action="{{ route('incident.approve', $incident->id) }}" method="POST" id="approveForm">
+                @csrf
+                <div class="modal-header border-0 pb-0">
+                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1.1rem;">Approve and send to responders?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body pt-3">
+                    <label class="form-label-m">Priority of this {{ $incident->emergency_type }} report</label>
+                    <div class="prio-choices" role="radiogroup" aria-label="Priority">
+                        @foreach(['critical' => 'Critical', 'high' => 'High', 'low' => 'Low'] as $value => $label)
+                            <input class="prio-input" type="radio" name="priority" id="prio-{{ $value }}" value="{{ $value }}"
+                                   required {{ old('priority', $incident->priority) === $value ? 'checked' : '' }}>
+                            <label class="prio-choice prio-{{ $value }}" for="prio-{{ $value }}"><i class="bi bi-check-lg"></i>{{ $label }}</label>
+                        @endforeach
+                    </div>
+                    <p style="font-size:.8rem;color:#6b7280;margin:0;">
+                        The responders will see this priority.
+                        {{ $incident->citizen_id ? 'The reporter will also get a notification that their report was approved.' : 'This report was sent by a guest, so there is no account to notify.' }}
+                    </p>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <span class="prio-hint" id="prioHint">Choose a priority first.</span>
+                    <button type="submit" class="btn-approve-confirm" id="approveSubmit">Approve &amp; Send</button>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {{-- Decline Modal — opened by the Decline button under the banner. --}}
 <div class="modal fade" id="declineModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -817,6 +887,21 @@
         const carousel = bootstrap.Carousel.getOrCreateInstance(carouselEl);
         carousel.to(index);
     }
+
+    // Approve dialog: "Approve & Send" stays off until a priority is picked.
+    (function () {
+        const form = document.getElementById('approveForm');
+        if (!form) return;
+        const submit = document.getElementById('approveSubmit');
+        const hint = document.getElementById('prioHint');
+        const sync = () => {
+            const picked = !!form.querySelector('input[name="priority"]:checked');
+            submit.disabled = !picked;
+            hint.style.visibility = picked ? 'hidden' : 'visible';
+        };
+        form.addEventListener('change', sync);
+        sync();
+    })();
 </script>
 <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google.maps_key') }}&callback=initDetailMap&v=weekly" async defer></script>
 @include('partials.sos-alert-overlay')

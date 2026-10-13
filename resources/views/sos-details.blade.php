@@ -424,17 +424,16 @@
         </div>
 
         @if($incident->needs_review)
+            {{-- Every SOS waits here for the admin to verify it. --}}
             <div class="review-banner">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                @if($isGuestReport)
-                    <span>This SOS came from a guest (not logged in).
-                        @if($mobile)
-                            Call {{ $reporter }} at <a href="tel:{{ $mobile }}" class="call-link">{{ $mobile }}</a> to confirm the emergency before approving.
-                        @endif
-                        Responders are NOT notified until you approve it below.</span>
-                @else
-                    <span>This SOS is outside Rosales, so it needs review. Responders are NOT notified until you approve it below.</span>
-                @endif
+                <span>This SOS is waiting for your review.
+                    @if($isGuestReport) It came from a guest (not logged in). @endif
+                    @if(str_contains((string) $incident->location, 'Outside Rosales')) The pin is outside Rosales. @endif
+                    @if($mobile)
+                        Call {{ $reporter }} at <a href="tel:{{ $mobile }}" class="call-link">{{ $mobile }}</a> to confirm the emergency before approving.
+                    @endif
+                    Responders are NOT notified until you approve it below.</span>
             </div>
         @endif
 
@@ -625,7 +624,7 @@
                     @if(!$incident->needs_review && !$isDeclined && $incident->status !== 'resolved')
                         <div class="dispatch-note">
                             <i class="bi bi-broadcast"></i>
-                            <span>Responders were automatically notified when this SOS was triggered. Status updates as they act on it.</span>
+                            <span>Approved and sent to the responders. Status updates as they act on it.</span>
                         </div>
                     @endif
 
@@ -653,7 +652,7 @@
                     <div class="tl-row">
                         <div class="tl-time">—</div>
                         <div class="tl-dot warning"></div>
-                        <div class="tl-text">Flagged for review — guest report, not yet approved</div>
+                        <div class="tl-text">Waiting for review — not yet approved</div>
                     </div>
                 @endif
                 @if($isDeclined)

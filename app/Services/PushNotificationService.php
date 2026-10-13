@@ -147,6 +147,12 @@ class PushNotificationService
             $isSos = $incident->emergency_type === 'SOS Emergency';
             $title = $isSos ? '🆘 SOS Emergency Alert' : "🚨 New {$incident->emergency_type} Report";
 
+            // The priority the admin picked when approving, e.g.
+            // "🚨 New Fire Report — High priority".
+            if (! $isSos && $incident->priority) {
+                $title .= ' — ' . ucfirst($incident->priority) . ' priority';
+            }
+
             $bodyParts = [$incident->location];
             if ($incident->description) {
                 $bodyParts[] = Str::limit($incident->description, 80);
@@ -230,25 +236,5 @@ class PushNotificationService
                 ]);
             }
         }
-    }
-        /**
-     * Suggests an incident priority from the AI-detected type and its
-     * confidence. Low-confidence detections are stepped down one level —
-     * an uncertain "Fire" guess shouldn't automatically page critical
-     * the same way a high-confidence one does.
-     */
-    public static function priorityFor(string $type, string $confidence): string
-    {
-        $base = self::TYPE_PRIORITY[$type] ?? 'moderate';
-
-        if (strtolower($confidence) !== 'low') {
-            return $base;
-        }
-
-        return match ($base) {
-            'critical' => 'high',
-            'high'     => 'moderate',
-            default    => 'low',
-        };
     }
 }

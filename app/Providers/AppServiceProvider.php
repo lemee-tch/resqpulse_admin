@@ -24,8 +24,10 @@ class AppServiceProvider extends ServiceProvider
         View::composer('*', function ($view) {
             static $sosCount = null;
             if ($sosCount === null) {
+                // A declined alert keeps status "pending", so leave it out.
                 $sosCount = Incident::where('emergency_type', 'SOS Emergency')
                     ->where('status', 'pending')
+                    ->whereNull('declined_at')
                     ->count();
             }
             $view->with('pendingSosCount', $sosCount);
@@ -38,6 +40,7 @@ class AppServiceProvider extends ServiceProvider
             if ($incidentCount === null) {
                 $incidentCount = Incident::where('emergency_type', '!=', 'SOS Emergency')
                     ->where('status', 'pending')
+                    ->whereNull('declined_at')
                     ->count();
             }
             $view->with('pendingIncidentsCount', $incidentCount);

@@ -177,6 +177,32 @@
         }
         .btn-decline-confirm:hover { background: #b91c1c; }
 
+        /* Priority choice in the Approve dialog — the admin picks it. */
+        .prio-choices { display: flex; gap: 8px; margin: 14px 0 12px; }
+        .prio-input { position: absolute; opacity: 0; pointer-events: none; }
+        .prio-choice {
+            flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+            margin: 0; padding: 11px 6px; border-radius: 10px; border: 2px solid currentColor;
+            background: #fff; cursor: pointer; user-select: none;
+            font-family: 'Barlow', sans-serif; font-weight: 800; font-size: .95rem;
+            transition: background .15s, color .15s;
+        }
+        .prio-choice i { display: none; }
+        .prio-choice.prio-critical { color: #dc2626; }
+        .prio-choice.prio-high     { color: #f97316; }
+        .prio-choice.prio-low      { color: #3b82f6; }
+        .prio-choice.prio-critical:hover { background: #fef2f2; }
+        .prio-choice.prio-high:hover     { background: #fff7ed; }
+        .prio-choice.prio-low:hover      { background: #eff6ff; }
+        .prio-input:checked + .prio-choice { color: #fff; }
+        .prio-input:checked + .prio-choice i { display: inline; }
+        .prio-input:checked + .prio-choice.prio-critical { background: #dc2626; border-color: #dc2626; }
+        .prio-input:checked + .prio-choice.prio-high     { background: #f97316; border-color: #f97316; }
+        .prio-input:checked + .prio-choice.prio-low      { background: #3b82f6; border-color: #3b82f6; }
+        .prio-input:focus-visible + .prio-choice { outline: 3px solid #1a3c8f; outline-offset: 2px; }
+        .approve-intro { font-size: .9rem; color: #374151; }
+        .approve-note  { font-size: .8rem; color: #6b7280; }
+
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn {
             display: none;
@@ -359,6 +385,11 @@
                 {{ session('success') }}
             </div>
         @endif
+        @if($errors->any())
+            <div class="alert alert-danger" style="border-radius:10px;font-size:.85rem;margin-bottom:16px;">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i> {{ $errors->first() }}
+            </div>
+        @endif
 
         @php
             // Pending Review — every new report waits here until an admin
@@ -406,20 +437,21 @@
             };
         @endphp
 
-        <!-- TABS -->
+        <!-- TABS — Pending Review comes first: every new report lands there
+             for the admin to verify before responders are notified. -->
         <div class="tab-bar">
-            <button class="tab-btn active" onclick="switchTab('active', this)">Active Incidents ({{ $activeIncidents->count() }})</button>
-            <button class="tab-btn" onclick="switchTab('review', this)">
+            <button class="tab-btn active" data-tab="review" onclick="switchTab('review', this)">
                 Pending Review ({{ $pendingReviewIncidents->count() }})
                 @if($pendingReviewIncidents->count() > 0)
                     <span class="pill-count">{{ $pendingReviewIncidents->count() }}</span>
                 @endif
             </button>
-            <button class="tab-btn" onclick="switchTab('history', this)">Resolved History ({{ $resolvedIncidents->count() }})</button>
+            <button class="tab-btn" data-tab="active" onclick="switchTab('active', this)">Active Incidents ({{ $activeIncidents->count() }})</button>
+            <button class="tab-btn" data-tab="history" onclick="switchTab('history', this)">Resolved History ({{ $resolvedIncidents->count() }})</button>
         </div>
 
-        <!-- ══ TAB: ACTIVE INCIDENTS ══ -->
-        <div id="tab-active" class="tab-panel active">
+        <!-- ══ TAB: ACTIVE INCIDENTS (approved and sent to responders) ══ -->
+        <div id="tab-active" class="tab-panel">
 
             <!-- FILTER BAR -->
             <div class="filter-bar">
@@ -539,10 +571,10 @@
         </div>
 
         <!-- ══ TAB: PENDING REVIEW (every new report) ══ -->
-        <div id="tab-review" class="tab-panel">
+        <div id="tab-review" class="tab-panel active">
             <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>Every new report waits here for your review. Responders are only notified after you approve it. Open <strong>View</strong> to check the photos, description and reporter first.</span>
+                <span>Every new report waits here for your review. When you approve it, you choose its priority (Critical, High or Low) and the responders are notified. Open <strong>View</strong> to check the photos, description and reporter first.</span>
             </div>
 
             <div class="table-card">
@@ -577,7 +609,9 @@
                                           data-reporter="{{ $reporterName }}"
                                           data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
                                         @csrf
-                                        <button type="submit" class="btn-approve" title="Approve and notify responders">
+                                        {{-- Filled in by the Approve dialog (Critical / High / Low). --}}
+                                        <input type="hidden" name="priority" value="{{ $inc->priority }}">
+                                        <button type="submit" class="btn-approve" title="Set priority and notify responders">
                                             <i class="bi bi-check-lg"></i> Approve
                                         </button>
                                     </form>
@@ -818,6 +852,9 @@
         const priorityParam = urlParams.get('priority');
         if (priorityParam && ['critical', 'high', 'low', 'unset'].includes(priorityParam)) {
             priorityFilter.value = priorityParam;
+            // Pending Review is the first tab, so open Active Incidents
+            // where this filter lives.
+            switchTab('active', document.querySelector('.tab-btn[data-tab="active"]'));
         }
 
         rows.forEach(row => {
@@ -828,6 +865,29 @@
         });
 
         applyFilters();
+    })();
+
+    // Pending Review is the first tab, so after changing something on
+    // another tab (e.g. a priority on Active Incidents) the reload would
+    // jump back to it. Remember the tab the change came from and reopen
+    // it once. (The priority dropdown sends its form with form.submit(),
+    // which doesn't fire "submit", so listen for "change" too.)
+    (function () {
+        const KEY = 'resqpulse_incidents_return_tab';
+        const remember = form => {
+            const panel = form.closest('.tab-panel');
+            if (!panel) return;
+            try { sessionStorage.setItem(KEY, panel.id.replace('tab-', '')); } catch (e) {}
+        };
+        document.querySelectorAll('.tab-panel form').forEach(form => {
+            form.addEventListener('submit', () => remember(form));
+            form.querySelectorAll('select').forEach(s => s.addEventListener('change', () => remember(form)));
+        });
+
+        let tab = null;
+        try { tab = sessionStorage.getItem(KEY); sessionStorage.removeItem(KEY); } catch (e) {}
+        const btn = tab && document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+        if (btn) switchTab(tab, btn);
     })();
 
     // Pending Review rows are also clickable through to the detail page
@@ -893,31 +953,63 @@
         applyFilters();
     })();
 
-    // Approve confirmation — SweetAlert2 (matches the confirm pattern used
-    // on the Residents Verification page). Blocks the form's normal
-    // submit, asks for a confirmation naming what the click will do
-    // (dispatch to responders, and notify the reporter when they're a
-    // logged-in citizen), and only submits once confirmed.
+    // Report types can be free text ("Other"), so escape before putting
+    // them inside the dialogs' HTML.
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Approve — SweetAlert2 dialog where the admin chooses the priority
+    // (Critical / High / Low) before the report goes to the responders.
+    // Nothing sets priority automatically: the choice goes into the
+    // form's hidden "priority" field, and the server refuses an approval
+    // without one.
+    const PRIORITY_CHOICES = [['critical', 'Critical'], ['high', 'High'], ['low', 'Low']];
+
     document.querySelectorAll('.approve-form').forEach(form => {
         form.addEventListener('submit', function (e) {
             e.preventDefault();
 
             const type = form.dataset.type || 'report';
+            const priorityField = form.querySelector('input[name="priority"]');
+            const current = priorityField.value;
             const notifiesCitizen = form.dataset.notifiesCitizen === '1';
             const notifyLine = notifiesCitizen
                 ? 'The reporter will also get a notification that their report was approved.'
                 : 'This report was submitted by a guest, so there is no account to notify.';
 
+            const choices = PRIORITY_CHOICES.map(([value, label]) => `
+                <input class="prio-input" type="radio" name="swalPriority" id="swalPrio-${value}" value="${value}"${current === value ? ' checked' : ''}>
+                <label class="prio-choice prio-${value}" for="swalPrio-${value}"><i class="bi bi-check-lg"></i>${label}</label>`).join('');
+
             Swal.fire({
-                icon: 'question',
                 title: 'Approve this report?',
-                html: `This will dispatch the <strong>${type}</strong> report to responders.<br><span style="font-size:.85em;color:#6b7280;">${notifyLine}</span>`,
+                html: `<div class="approve-intro">Choose the priority of this <strong>${escapeHtml(type)}</strong> report. The responders will see it.</div>
+                       <div class="prio-choices" role="radiogroup" aria-label="Priority">${choices}</div>
+                       <div class="approve-note">${notifyLine}</div>`,
                 showCancelButton: true,
-                confirmButtonText: 'Yes, approve',
+                confirmButtonText: 'Approve &amp; Send',
                 cancelButtonText: 'Cancel',
                 confirmButtonColor: '#10b981',
+                focusConfirm: false,
+                didOpen: (popup) => {
+                    popup.querySelectorAll('input[name="swalPriority"]').forEach(input => {
+                        input.addEventListener('change', () => Swal.resetValidationMessage());
+                    });
+                },
+                preConfirm: () => {
+                    const picked = Swal.getPopup().querySelector('input[name="swalPriority"]:checked');
+                    if (!picked) {
+                        Swal.showValidationMessage('Choose a priority first.');
+                        return false;
+                    }
+                    return picked.value;
+                },
             }).then(result => {
                 if (result.isConfirmed) {
+                    priorityField.value = result.value;
                     form.submit();
                 }
             });
@@ -959,7 +1051,7 @@
                 Swal.fire({
                     icon: 'warning',
                     title: 'Decline this report?',
-                    html: `<div style="text-align:left;font-size:.85em;color:#6b7280;">Declining the <strong>${type}</strong> report — responders will NOT be dispatched.<br>${notifyLine}</div>`,
+                    html: `<div style="text-align:left;font-size:.85em;color:#6b7280;">Declining the <strong>${escapeHtml(type)}</strong> report — responders will NOT be dispatched.<br>${notifyLine}</div>`,
                     showCancelButton: true,
                     confirmButtonText: 'Yes, decline',
                     cancelButtonText: 'Cancel',

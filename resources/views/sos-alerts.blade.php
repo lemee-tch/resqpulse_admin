@@ -472,7 +472,7 @@
             <div class="page-title">
                 <i class="bi bi-exclamation-octagon-fill" style="color:#dc2626;"></i> SOS Alerts
             </div>
-            <span class="live-pill"><span class="live-dot"></span> {{ $activeSos->where('status', 'pending')->count() }} pending</span>
+            <span class="live-pill"><span class="live-dot"></span> {{ $pendingReviewSos->count() }} waiting for review</span>
         </div>
         <div class="page-sub">Panic-button alerts from the mobile app — GPS location and photo captured automatically, always critical priority.</div>
 
@@ -482,21 +482,22 @@
             </div>
         @endif
 
-        <!-- TABS -->
+        <!-- TABS — Pending Review comes first: every new SOS lands there
+             for the admin to verify before responders are notified. -->
         <div class="tab-bar">
-            <button class="tab-btn active" onclick="switchTab('active', this)">Active SOS ({{ $activeSos->count() }})</button>
-            <button class="tab-btn" onclick="switchTab('review', this)">
+            <button class="tab-btn active" data-tab="review" onclick="switchTab('review', this)">
                 Pending Review ({{ $pendingReviewSos->count() }})
                 @if($pendingReviewSos->count() > 0)
                     <span class="pill-count">{{ $pendingReviewSos->count() }}</span>
                 @endif
             </button>
-            <button class="tab-btn" onclick="switchTab('history', this)">Resolved History ({{ $resolvedSos->count() }})</button>
-            <button class="tab-btn" onclick="switchTab('declined', this)">Declined ({{ $declinedSos->count() }})</button>
+            <button class="tab-btn" data-tab="active" onclick="switchTab('active', this)">Active SOS ({{ $activeSos->count() }})</button>
+            <button class="tab-btn" data-tab="history" onclick="switchTab('history', this)">Resolved History ({{ $resolvedSos->count() }})</button>
+            <button class="tab-btn" data-tab="declined" onclick="switchTab('declined', this)">Declined ({{ $declinedSos->count() }})</button>
         </div>
 
-        <!-- ══ TAB: ACTIVE SOS ══ -->
-        <div id="tab-active" class="tab-panel active">
+        <!-- ══ TAB: ACTIVE SOS (approved and sent to responders) ══ -->
+        <div id="tab-active" class="tab-panel">
             @forelse($activeSos as $sos)
                 @php
                     $statusClass = 'badge-' . $sos->status;
@@ -563,11 +564,11 @@
             @endforelse
         </div>
 
-        <!-- ══ TAB: PENDING REVIEW (guest SOS) ══ -->
-        <div id="tab-review" class="tab-panel">
+        <!-- ══ TAB: PENDING REVIEW (every new SOS) ══ -->
+        <div id="tab-review" class="tab-panel active">
             <div class="review-banner">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>These SOS alerts need review: they came from guests (not logged in) or from outside Rosales. Call the number shown to confirm the emergency before approving. Responders are not notified until you approve.</span>
+                <span>Every SOS alert waits here for your review. Call the number shown to confirm the emergency, then approve it to notify the responders. Responders are not notified until you approve.</span>
             </div>
 
             @forelse($pendingReviewSos as $sos)
@@ -910,6 +911,12 @@
 
         const card = document.querySelector('.sos-card[data-id="' + highlightId + '"]');
         if (card) {
+            // Open the tab the alert is in (usually Pending Review, the
+            // first tab) so the highlighted card is actually visible.
+            const panel = card.closest('.tab-panel');
+            const tabBtn = panel && document.querySelector('.tab-btn[data-tab="' + panel.id.replace('tab-', '') + '"]');
+            if (tabBtn && !panel.classList.contains('active')) switchTab(panel.id.replace('tab-', ''), tabBtn);
+
             card.classList.add('is-new-alert');
             card.scrollIntoView({ behavior: 'smooth', block: 'center' });
             setTimeout(() => card.classList.remove('is-new-alert'), 12000);

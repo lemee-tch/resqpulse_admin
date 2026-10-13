@@ -161,29 +161,43 @@ class IncidentController extends Controller
     }
 
     /**
-     * Approves a guest-submitted report/SOS that's been sitting in
-     * needs_review, then dispatches it to responders — the exact same
-     * push that would have fired immediately for a logged-in citizen's
-     * report (see Api\IncidentController::store()/sos()).
+     * Approves a report or SOS waiting in Pending Review and sends it to
+     * the responders.
      *
-     * A "needs_review" incident isn't always a true anonymous guest,
-     * though — it can also belong to a logged-in citizen whose report
-     * simply landed outside Rosales (see the needs_review = $isGuest ||
-     * $isOutsideRosales logic in Api\IncidentController). When that's
-     * the case ($incident->citizen_id is set), the citizen also gets a
-     * push telling them their own report was approved — a pure guest
-     * submission has no account to notify, so that half is skipped.
+     * For a report, this is where the admin decides its priority —
+     * Critical, High or Low, picked in the Approve dialog. Nothing sets
+     * priority automatically any more. SOS alerts are always Critical, so
+     * their Approve button doesn't ask.
+     *
+     * A logged-in citizen also gets a push saying their report was
+     * approved; a guest has no account to notify.
      */
-    public function approve(Incident $incident, PushNotificationService $push)
+    public function approve(Request $request, Incident $incident, PushNotificationService $push)
     {
         if (! $incident->needs_review) {
             return back()->with('success', 'This report was already approved.');
         }
 
-        $incident->update([
+        $isSos = $incident->emergency_type === 'SOS Emergency';
+
+        if (! $isSos) {
+            $request->validate([
+                'priority' => ['required', 'in:critical,high,low'],
+            ], [
+                'priority.required' => 'Choose a priority (Critical, High or Low) before approving the report.',
+                'priority.in'       => 'Choose a priority (Critical, High or Low) before approving the report.',
+            ]);
+        }
+
+        $oldPriority = $incident->priority;
+        $changes = [
             'needs_review' => false,
             'reviewed_at'  => now(),
-        ]);
+        ];
+        if (! $isSos) {
+            $changes['priority'] = $request->priority;
+        }
+        $incident->update($changes);
 
         $push->dispatchToRespondersForIncident($incident);
 
@@ -191,7 +205,6 @@ class IncidentController extends Controller
         // guest submission — a guest has no citizen_id and therefore no
         // account to push a notification to.
         if ($incident->citizen_id && $incident->citizen) {
-            $isSos = $incident->emergency_type === 'SOS Emergency';
             $push->notifyCitizen(
                 $incident->citizen,
                 'Report Approved',
@@ -201,13 +214,27 @@ class IncidentController extends Controller
             );
         }
 
+        if ($isSos) {
+            AuditLogService::log(
+                'approved',
+                "Approved the {$this->describeIncident($incident)} — dispatched to responders.",
+                $incident
+            );
+
+            return back()->with('success', 'Report approved and sent to responders.');
+        }
+
+        $priorityLabel = ucfirst($incident->priority);
+
         AuditLogService::log(
             'approved',
-            "Approved the {$this->describeIncident($incident)} — dispatched to responders.",
-            $incident
+            "Approved the {$this->describeIncident($incident)} as {$priorityLabel} priority — dispatched to responders.",
+            $incident,
+            ['priority' => $oldPriority],
+            ['priority' => $incident->priority]
         );
 
-        return back()->with('success', 'Report approved and sent to responders.');
+        return back()->with('success', "Report approved as {$priorityLabel} priority and sent to responders.");
     }
 
     /**
@@ -311,8 +338,11 @@ class IncidentController extends Controller
 
     public function latestSos()
     {
+        // A declined SOS keeps status "pending", so leave those out — the
+        // siren is for alerts that still need someone to act.
         $latest = Incident::where('emergency_type', 'SOS Emergency')
             ->where('status', 'pending')
+            ->whereNull('declined_at')
             ->orderByDesc('created_at')
             ->first(['id', 'created_at', 'location']);
 
@@ -322,6 +352,7 @@ class IncidentController extends Controller
         // SOS reports landing close together.
         $pendingCount = Incident::where('emergency_type', 'SOS Emergency')
             ->where('status', 'pending')
+            ->whereNull('declined_at')
             ->count();
 
         return response()->json(['latest' => $latest, 'pendingCount' => $pendingCount]);
