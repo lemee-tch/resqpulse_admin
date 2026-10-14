@@ -7,22 +7,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
-/**
- * Texts the 6-digit sign-up code when a resident picks "Mobile Number" on
- * Create Account step 3 (Api\AuthController::register / resend).
- *
- * The gateway comes from SMS_DRIVER in .env (config/services.php):
- *   semaphore  Semaphore (semaphore.co), the usual Philippine SMS API
- *   textbee    textbee.dev, sends from an Android phone with a SIM card
- *   log        writes the text to storage/logs/laravel.log — testing only
- *   none       texting is off (default); the app offers Email only
- *
- * Limits, so texting can't be abused or run up the bill:
- *   - one code per mobile number per minute (the app's "Resend in 60s"),
- *   - five codes per mobile number per hour,
- *   - SMS_DAILY_LIMIT codes per day for everyone together.
- * Only texts that were actually sent count.
- */
 class SmsService
 {
     /** Seconds before the same number can get another code. */
@@ -36,13 +20,11 @@ class SmsService
         return strtolower(trim((string) config('services.sms.driver', 'none')));
     }
 
-    /** Texting is set up and today's limit isn't used up. */
     public function isAvailable(): bool
     {
         return $this->isConfigured() && ! $this->dailyLimitReached();
     }
 
-    /** The chosen gateway has what it needs (an API key). */
     public function isConfigured(): bool
     {
         return match ($this->driver()) {
@@ -82,18 +64,6 @@ class SmsService
         return null;
     }
 
-    /**
-     * Texts the sign-up code to $mobile.
-     *
-     * Returns:
-     *   sent         whether the text went out
-     *   code         the code that was texted. Usually $code, but
-     *                Semaphore's OTP route makes its own code if it ignores
-     *                ours, and its reply says which one it sent.
-     *   reason       why it wasn't sent: unavailable, daily_limit,
-     *                invalid_number, too_soon, hourly_limit, gateway_error
-     *   retry_after  seconds to wait, for too_soon / hourly_limit
-     */
     public function sendVerificationCode(string $mobile, string $code, int $minutes = 10): array
     {
         if (! $this->isConfigured()) {
