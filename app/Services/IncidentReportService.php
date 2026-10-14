@@ -8,7 +8,9 @@ use Illuminate\Support\Facades\Storage;
 
 /**
  * Builds the official "MDRRMC Incident Report" PDF that a responder files
- * when resolving an incident (see Api\IncidentController::resolve()).
+ * from the field (see Api\IncidentController::resolve()). An Initial
+ * report can be updated as often as needed — the PDF is rebuilt each time;
+ * a Final report closes the incident and can't be changed.
  *
  * Needs barryvdh/laravel-dompdf (`composer require barryvdh/laravel-dompdf`).
  * If the package isn't installed the resolution itself still succeeds — the
@@ -26,10 +28,19 @@ class IncidentReportService
     /**
      * Cleans whatever the app sent and fills the blanks from the incident
      * itself, so the responder only has to type what the system can't know.
+     *
+     * $previous is the report already saved for this incident, when an
+     * Initial report is being updated. Its first filing time is kept and
+     * the revision number goes up:
+     *   filed_at      first time the report was submitted
+     *   updated_at    this submission
+     *   revision      1 for the first submission, 2 after one update, ...
+     *   finalized_at  when it was submitted as Final (null while Initial)
      */
-    public function normalize(Incident $incident, ?Responder $responder, array $input): array
+    public function normalize(Incident $incident, ?Responder $responder, array $input, ?array $previous = null): array
     {
         $created = $incident->created_at ?? now();
+        $now     = now();
 
         $type = in_array($input['report_type'] ?? null, ['initial', 'final'], true)
             ? $input['report_type'] : 'final';
@@ -81,7 +92,18 @@ class IncidentReportService
             'actions_taken'   => $clean($input['actions_taken'] ?? '', 1500),
             'released_by'     => $releasedBy,
             'team'            => $this->team($incident),
+            'filed_at'        => $previous['filed_at'] ?? $now->toIso8601String(),
+            'updated_at'      => $now->toIso8601String(),
+            // Reports saved before revisions were counted count as 1.
+            'revision'        => $previous ? max(1, (int) ($previous['revision'] ?? 1)) + 1 : 1,
+            'finalized_at'    => $type === 'final' ? $now->toIso8601String() : null,
         ];
+    }
+
+    /** Whether $report (an incident's report_data) is a Final report. */
+    public static function isFinal(?array $report): bool
+    {
+        return $report !== null && ($report['report_type'] ?? 'final') !== 'initial';
     }
 
     /**

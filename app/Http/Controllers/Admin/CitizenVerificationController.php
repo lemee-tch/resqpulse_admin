@@ -18,7 +18,8 @@ class CitizenVerificationController extends Controller
     {
         $this->pruneStaleUnverified();
 
-        $citizens = Citizen::whereNotNull('email_verified_at')
+        // Finished sign-ups only — the code was entered, by email or by text.
+        $citizens = Citizen::contactVerified()
             ->orderByDesc('created_at')
             ->get();
 
@@ -114,9 +115,9 @@ class CitizenVerificationController extends Controller
     }
 
     /**
-     * Opportunistic cleanup of registrations that never completed email
-     * verification. Runs at most once per hour, triggered by whoever next
-     * opens this page — no CLI/cron access needed.
+     * Opportunistic cleanup of registrations whose code was never entered
+     * (by email or by text) within a day. Runs at most once per hour,
+     * triggered by whoever next opens this page — no CLI/cron access needed.
      */
     private function pruneStaleUnverified(): void
     {
@@ -126,7 +127,7 @@ class CitizenVerificationController extends Controller
 
         Cache::put('citizens_pruned_recently', true, now()->addHour());
 
-        $stale = Citizen::whereNull('email_verified_at')
+        $stale = Citizen::contactUnverified()
             ->where('created_at', '<', now()->subDay())
             ->get();
 

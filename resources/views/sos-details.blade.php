@@ -173,6 +173,9 @@
         .report-pdf-sub { font-size: .72rem; color: #6b7280; }
         .report-pdf-btn { display: inline-flex; align-items: center; gap: 5px; border: 1.5px solid #d1d5db; border-radius: 8px; padding: 6px 11px; font-size: .78rem; font-weight: 600; color: #374151; background: #fff; text-decoration: none; }
         .report-pdf-btn:hover { border-color: #1a3c8f; color: #1a3c8f; }
+        .report-type-tag { display: inline-block; margin-left: 6px; font-size: .65rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; vertical-align: middle; }
+        .report-type-tag.is-initial { background: #fef3c7; color: #92400e; }
+        .report-type-tag.is-final { background: #d1fae5; color: #065f46; }
 
         /* Decline reason (set by admin when declining a guest SOS) */
         .decline-reason-box { background: #fef2f2; border: 1.5px solid #fecaca; border-left: 3px solid #dc2626; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #991b1b; line-height: 1.6; min-height: 44px; overflow-wrap: break-word; }
@@ -487,9 +490,29 @@
                     <div class="decline-reason-box">{{ $incident->decline_reason }}</div>
                 @endif
 
-                @if($incident->status === 'resolved')
+                @php
+                    // An Initial report can be filed while the incident is
+                    // still open; the team can keep updating it until they
+                    // submit it as Final (Api\IncidentController::resolve()).
+                    $report = is_array($incident->report_data) ? $incident->report_data : null;
+                    $reportIsInitial = $report && ($report['report_type'] ?? 'final') === 'initial';
+                    $reportUpdatedAt = null;
+                    if ($report && !empty($report['updated_at'])) {
+                        try {
+                            $reportUpdatedAt = \Carbon\Carbon::parse($report['updated_at'])->setTimezone(config('app.timezone'));
+                        } catch (\Throwable $e) {
+                            $reportUpdatedAt = null;
+                        }
+                    }
+                @endphp
+
+                @if($incident->status === 'resolved' || $report)
                     <div class="detail-sub" style="margin-top:14px;">
-                        <i class="bi bi-check-circle-fill" style="color:#10b981;"></i> Resolution (from responder)
+                        @if($incident->status === 'resolved')
+                            <i class="bi bi-check-circle-fill" style="color:#10b981;"></i> Resolution (from responder)
+                        @else
+                            <i class="bi bi-hourglass-split" style="color:#d97706;"></i> Initial report (from responder)
+                        @endif
                     </div>
                     @if($incident->resolution_notes)
                         <div class="resolution-notes-box">{{ $incident->resolution_notes }}</div>
@@ -508,13 +531,25 @@
                         </div>
                     @endif
 
-                    @if($incident->report_data)
+                    @if($report)
                         <div class="detail-sub" style="margin-top:12px;">Incident Report (PDF)</div>
                         <div class="report-pdf-row">
                             <div class="report-pdf-icon"><i class="bi bi-file-earmark-pdf-fill"></i></div>
                             <div class="report-pdf-meta">
-                                <div class="report-pdf-name">MDRRMC Incident Report</div>
-                                <div class="report-pdf-sub">Filed by the responding team</div>
+                                <div class="report-pdf-name">
+                                    MDRRMC Incident Report
+                                    <span class="report-type-tag {{ $reportIsInitial ? 'is-initial' : 'is-final' }}">{{ $reportIsInitial ? 'Initial' : 'Final' }}</span>
+                                </div>
+                                <div class="report-pdf-sub">
+                                    @if($reportIsInitial)
+                                        The responding team can still update it until they submit the Final report.
+                                    @else
+                                        Filed by the responding team
+                                    @endif
+                                    @if($reportUpdatedAt)
+                                        · {{ ($report['revision'] ?? 1) > 1 ? 'Last updated' : 'Filed' }} {{ $reportUpdatedAt->format('m/d/y, g:i A') }}
+                                    @endif
+                                </div>
                             </div>
                             <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="report-pdf-btn" title="View">
                                 <i class="bi bi-eye"></i> View

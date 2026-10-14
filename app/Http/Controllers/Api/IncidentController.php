@@ -546,12 +546,30 @@ class IncidentController extends Controller
     }
 
     /**
-     * Marks an incident resolved from the field — see
+     * Files the MDRRMC Incident Report from the field — see
      * IncidentResolutionScreen (incident_resolution.dart). Only a
      * responder who's actually on this incident (i.e. called accept()
-     * already) can resolve it: unlike accept(), this genuinely changes
-     * state and closes the mission out, so it isn't safe to leave open
-     * to any responder who merely sees it in their feed.
+     * already) can file it: a Final report closes the mission out, so it
+     * isn't safe to leave open to any responder who merely sees it in
+     * their feed.
+     *
+     * The report's type decides what happens:
+     *   initial  saved, and the incident stays open. It can be sent again
+     *            as often as needed — each time replaces the saved report
+     *            and rebuilds the PDF — until it's sent as Final.
+     *   final    saved, and the incident is resolved. After that the
+     *            report can't be changed (409).
+     *
+     * If an admin resolved the incident while the report was still
+     * Initial, the team can still update and finalize it (the status stays
+     * resolved). A resolved incident with no report at all is refused, as
+     * before.
+     *
+     * The photo is kept between updates unless a new one is sent (it
+     * replaces the old one) or remove_photo=1 is sent.
+     *
+     * Older app versions that send only notes (no report) still just
+     * resolve the incident.
      */
     public function resolve(Request $request, Incident $incident)
     {
@@ -561,14 +579,23 @@ class IncidentController extends Controller
             return response()->json(['message' => 'Not a responder account.'], 403);
         }
 
-        if ($incident->status === 'resolved') {
-            return response()->json(['message' => 'This incident has already been resolved.'], 409);
-        }
-
         $isAssigned = $incident->responders()->where('responder_id', $responder->id)->exists();
 
         if (! $isAssigned) {
             return response()->json(['message' => 'You are not assigned to this incident.'], 403);
+        }
+
+        $saved = is_array($incident->report_data) ? $incident->report_data : null;
+
+        if (IncidentReportService::isFinal($saved)) {
+            return response()->json([
+                'message'  => 'The final report for this incident was already submitted and can no longer be changed.',
+                'incident' => $incident->load(['responders', 'citizen']),
+            ], 409);
+        }
+
+        if ($incident->status === 'resolved' && $saved === null) {
+            return response()->json(['message' => 'This incident has already been resolved.'], 409);
         }
 
         // The app sends the MDRRMC Incident Report as a JSON string in
@@ -581,10 +608,12 @@ class IncidentController extends Controller
         $validator = Validator::make(
             array_merge($request->all(), ['report' => $reportInput]),
             [
-                'notes'  => ['nullable', 'string', 'max:2000'],
-                'photo'  => ['nullable', 'file', 'image', 'max:5120'],
-                'report' => ['nullable', 'array'],
-                'report.narrative' => ['nullable', 'string', 'max:2000'],
+                'notes'        => ['nullable', 'string', 'max:2000'],
+                'photo'        => ['nullable', 'file', 'image', 'max:5120'],
+                'remove_photo' => ['nullable', 'boolean'],
+                'report'       => ['nullable', 'array'],
+                'report.narrative'   => ['nullable', 'string', 'max:2000'],
+                'report.report_type' => ['nullable', 'in:initial,final'],
             ]
         );
 
@@ -592,27 +621,50 @@ class IncidentController extends Controller
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        $photoPath = $request->hasFile('photo')
-            ? $request->file('photo')->store('incident_resolution_photos', 'public')
-            : null;
-
         $reports    = app(IncidentReportService::class);
         $reportData = is_array($reportInput)
-            ? $reports->normalize($incident, $responder, $reportInput)
+            ? $reports->normalize($incident, $responder, $reportInput, $saved)
             : null;
+
+        // No report sent (older app versions) = resolve, as before.
+        $isFinal     = $reportData === null || IncidentReportService::isFinal($reportData);
+        $wasResolved = $incident->status === 'resolved';
+
+        $oldPhoto  = $incident->resolution_photo_path;
+        $photoPath = $oldPhoto;
+        if ($request->hasFile('photo')) {
+            $photoPath = $request->file('photo')->store('incident_resolution_photos', 'public');
+        } elseif ($request->boolean('remove_photo')) {
+            $photoPath = null;
+        }
 
         // The narrative doubles as the short "resolution notes" shown in
         // the admin panel and Report History, unless plain notes were sent.
-        $notes = $request->notes ?: ($reportData['narrative'] ?? null);
+        $notes = $request->notes ?: ($reportData['narrative'] ?? $incident->resolution_notes);
 
-        $incident->update([
-            'status'                => 'resolved',
+        $changes = [
             'resolution_notes'      => $notes,
             'resolution_photo_path' => $photoPath,
-            'report_data'           => $reportData,
-        ]);
+        ];
+        if ($reportData !== null) {
+            $changes['report_data'] = $reportData;
+        }
+        if ($isFinal && ! $wasResolved) {
+            $changes['status'] = 'resolved';
+        }
 
-        // Never let a PDF problem undo a resolution that already happened.
+        $incident->update($changes);
+
+        // The replaced or removed photo isn't used anywhere else.
+        if ($oldPhoto && $oldPhoto !== $photoPath) {
+            try {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($oldPhoto);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        // Never let a PDF problem undo a report that was already saved.
         if ($reportData) {
             try {
                 $pdfPath = $reports->generate($incident->fresh());
@@ -624,19 +676,85 @@ class IncidentController extends Controller
             }
         }
 
-        AuditLogService::responder(
-            $responder,
-            'resolved',
-            'Resolved the ' . AuditLogService::describeIncident($incident)
-                . ($reportData ? ' and filed the MDRRMC Incident Report.' : '.'),
-            ['incident' => AuditLogService::describeIncident($incident)]
-        );
+        $what = AuditLogService::describeIncident($incident);
+
+        [$action, $description, $message] = match (true) {
+            $reportData === null => [
+                'resolved',
+                "Resolved the {$what}.",
+                'Incident marked as resolved.',
+            ],
+            ! $isFinal && $saved === null => [
+                'created',
+                "Filed the initial MDRRMC Incident Report for the {$what} — the incident stays open until the final report.",
+                'Initial report submitted. You can update it until you submit the Final report.',
+            ],
+            ! $isFinal => [
+                'updated',
+                "Updated the initial MDRRMC Incident Report for the {$what}.",
+                'Initial report updated. You can keep updating it until you submit the Final report.',
+            ],
+            $wasResolved => [
+                'updated',
+                "Filed the final MDRRMC Incident Report for the {$what}.",
+                'Final report submitted.',
+            ],
+            default => [
+                'resolved',
+                "Resolved the {$what} and filed the final MDRRMC Incident Report.",
+                'Final report submitted. The incident is now resolved.',
+            ],
+        };
+
+        AuditLogService::responder($responder, $action, $description, ['incident' => $what]);
 
         $incident->refresh()->load(['responders', 'citizen']);
 
         return response()->json([
-            'message'  => 'Incident marked as resolved.',
-            'incident' => $incident,
+            'message'     => $message,
+            'incident'    => $incident,
+            'report_type' => $reportData['report_type'] ?? null,
+            'resolved'    => $incident->status === 'resolved',
+            'can_edit'    => ! $isFinal,
+        ]);
+    }
+
+    /**
+     * GET /api/responder/incidents/{incident}/report — the report already
+     * filed for this incident, so the app's report form opens with it
+     * filled in when an Initial report is being updated.
+     *
+     *   report           the saved report (null if none yet)
+     *   is_final         a Final report was submitted — nothing to edit
+     *   can_edit         the form may be sent (see resolve())
+     *   photo_path       the report's photo, on the public disk
+     *   incident_status  so the app can update its own copy
+     */
+    public function reportForResponder(Request $request, Incident $incident)
+    {
+        $responder = $request->user();
+
+        if (! $responder instanceof Responder) {
+            return response()->json(['message' => 'Not a responder account.'], 403);
+        }
+
+        if (! $incident->responders()->where('responder_id', $responder->id)->exists()) {
+            return response()->json(['message' => 'You are not assigned to this incident.'], 403);
+        }
+
+        $report  = is_array($incident->report_data) ? $incident->report_data : null;
+        $isFinal = IncidentReportService::isFinal($report);
+        $canEdit = ! $isFinal && ! ($incident->status === 'resolved' && $report === null);
+
+        return response()->json([
+            'report'          => $report,
+            'is_final'        => $isFinal,
+            'can_edit'        => $canEdit,
+            'photo_path'      => $incident->resolution_photo_path,
+            'incident_status' => $incident->status,
+            'message'         => $canEdit ? null : ($isFinal
+                ? 'The final report for this incident was already submitted and can no longer be changed.'
+                : 'This incident has already been resolved.'),
         ]);
     }
 }

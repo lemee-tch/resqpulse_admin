@@ -12,6 +12,8 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
 Route::post('/resend-verification-otp', [AuthController::class, 'resendVerificationOtp']);
+// Create Account step 3: whether "Mobile Number" (code by text) can be offered.
+Route::get('/verification-options', [AuthController::class, 'verificationOptions']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 Route::get('/evacuation-centers', [EvacuationCenterController::class, 'index']);
@@ -63,5 +65,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/responder/incidents/{incident}/accept', [IncidentController::class, 'accept']);
     Route::post('/responder/incidents/{incident}/decline', [IncidentController::class, 'decline']);
+    // Files the MDRRMC Incident Report: Initial (stays editable, incident
+    // stays open) or Final (resolves the incident, locks the report).
     Route::post('/responder/incidents/{incident}/resolve', [IncidentController::class, 'resolve']);
+    // The report already filed, so the app can open it for updating.
+    Route::get('/responder/incidents/{incident}/report', [IncidentController::class, 'reportForResponder']);
 });

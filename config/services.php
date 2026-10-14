@@ -57,5 +57,38 @@ return [
         // silently pointing at a dead model.
         'model'   => env('GEMINI_VISION_MODEL', 'gemini-3.1-flash-lite'),
     ],
-    
+
+    /*
+    | Text messages — the 6-digit sign-up code when a resident picks
+    | "Mobile Number" on Create Account step 3 (App\Services\SmsService).
+    |
+    | SMS_DRIVER:
+    |   none       (default) texting is off; the app shows Email only
+    |   semaphore  Semaphore (semaphore.co) — needs an API key and an
+    |              approved sender name
+    |   textbee    textbee.dev — sends from an Android phone with a SIM
+    |   log        writes the text to storage/logs/laravel.log instead of
+    |              sending it — for testing without credits only
+    |
+    | SMS_DAILY_LIMIT caps how many codes are texted per day, so nobody can
+    | use up the credits. Past it, codes go by email until the next day.
+    */
+    'sms' => [
+        'driver'      => env('SMS_DRIVER', 'none'),
+        'daily_limit' => (int) env('SMS_DAILY_LIMIT', 100),
+    ],
+
+    'semaphore' => [
+        'api_key'     => env('SEMAPHORE_API_KEY'),
+        'sender_name' => env('SEMAPHORE_SENDER_NAME'),
+        // otp     = Semaphore's OTP route: delivered first, 2 credits per text
+        // regular = normal route: 1 credit per text, can be slower when busy
+        'route'       => env('SEMAPHORE_ROUTE', 'otp'),
+    ],
+
+    'textbee' => [
+        'api_key'   => env('TEXTBEE_API_KEY'),
+        'device_id' => env('TEXTBEE_DEVICE_ID'),
+    ],
+
 ];
