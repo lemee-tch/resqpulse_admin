@@ -155,101 +155,175 @@
         .main-wrap, .content { min-width: 0; }
         @media (max-width: 560px) { .tab-btn { padding: 10px 12px; } }
 
-        /* ── SOS CARD ── */
+        /* ── SOS CARD (partials/sos-card.blade.php) ──
+           Photo │ type, who, where, team │ time + View.
+           The buttons for the tab (Approve / Decline, Mark as Resolved /
+           Return, Delete) run along the bottom. On phones: photo + text,
+           then the buttons, then the time and View. */
         .sos-card {
+            display: grid;
+            grid-template-columns: 104px minmax(0, 1fr) auto;
+            grid-template-areas: "thumb main side";
+            column-gap: 18px;
+            align-items: start;
             background: #fff;
-            border: 1.5px solid #e5e7eb;
+            border: 1px solid #e5e7eb;
             border-left: 5px solid #dc2626;
             border-radius: 14px;
-            padding: 18px 20px;
+            padding: 16px 18px;
             margin-bottom: 14px;
-            display: flex;
-            gap: 16px;
-            align-items: flex-start;
-            transition: box-shadow .2s, transform .15s;
             cursor: pointer;
             box-shadow: 0 1px 3px rgba(0,0,0,.04);
+            transition: box-shadow .2s, transform .15s;
         }
-        .sos-card:hover {
-            box-shadow: 0 8px 24px rgba(17,24,39,.1);
-            transform: translateY(-1px);
-        }
+        .sos-card.has-foot { grid-template-areas: "thumb main side" "thumb foot foot"; }
+        .sos-card:hover { box-shadow: 0 8px 24px rgba(17,24,39,.1); transform: translateY(-1px); }
 
-        /* Severity reflects actual status, not a blanket alarm on every
-           card — a SOS nobody has touched yet stays the loud red/tinted
-           treatment; one already being responded to (or resolved) reads
-           calmer, so the cards that still need eyes on them actually
-           stand out instead of everything looking equally urgent. */
-        .sos-card--pending {
-            border-left-color: #dc2626;
-            background: linear-gradient(to right, #fff5f5, #fff 70px);
-        }
+        /* Left edge: what the alert needs. Waiting for review = amber (same
+           as the banner); sent but nobody accepted yet = red; responding =
+           blue; For Review = purple; resolved = green; declined = dark red. */
+        .sos-card--review     { border-left-color: #f59e0b; }
+        .sos-card--pending    { border-left-color: #dc2626; background: linear-gradient(to right, #fff5f5, #fff 110px); }
         .sos-card--responding,
-        .sos-card--acknowledged {
-            border-left-color: #2563eb;
+        .sos-card--acknowledged { border-left-color: #2563eb; }
+        .sos-card--for_review { border-left-color: #7c3aed; }
+        .sos-card--resolved   { border-left-color: #10b981; }
+        .sos-card--declined   { border-left-color: #991b1b; background: #fcfcfd; }
+
+        /* Photo */
+        .sos-thumb {
+            grid-area: thumb;
+            position: relative; display: block;
+            width: 104px; height: 104px;
+            border-radius: 12px; overflow: hidden;
+            background: #f3f4f6; border: 1px solid #eef0f4;
+            text-decoration: none;
         }
-        .sos-card--resolved {
-            border-left-color: #10b981;
-            opacity: .8;
+        .sos-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s; }
+        .sos-card:hover .sos-thumb img { transform: scale(1.04); }
+        .sos-thumb .no-photo {
+            position: absolute; inset: 0; display: none;
+            flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+            padding: 6px; text-align: center;
+            color: #9ca3af; font-size: .7rem; font-weight: 600; line-height: 1.2;
         }
-        .sos-card--review {
-            border-left-color: #f59e0b;
-        }
-        .sos-card--declined {
-            border-left-color: #991b1b;
-            opacity: .8;
-        }
-        .sos-card--for_review {
-            border-left-color: #7c3aed;
+        .sos-thumb .no-photo i { font-size: 1.5rem; color: #c4c9d4; }
+        .sos-thumb.is-empty, .sos-thumb.is-broken { background: #f9fafb; border-style: dashed; border-color: #e5e7eb; }
+        .sos-thumb.is-empty .no-photo, .sos-thumb.is-broken .no-photo { display: flex; }
+        .photo-count {
+            position: absolute; right: 6px; bottom: 6px;
+            display: inline-flex; align-items: center; gap: 4px;
+            background: rgba(17,24,39,.75); color: #fff;
+            font-size: .68rem; font-weight: 700; padding: 2px 7px; border-radius: 20px;
         }
 
-        .sos-photo {
-            width: 92px; height: 92px; border-radius: 12px; object-fit: cover;
-            flex-shrink: 0; border: 1px solid #f3f4f6;
-            box-shadow: 0 2px 8px rgba(0,0,0,.08);
-            transition: transform .15s;
+        /* Type, status, facts */
+        .sos-main { grid-area: main; min-width: 0; }
+        .sos-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin-bottom: 10px; }
+        .sos-title {
+            font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1.06rem; line-height: 1.25;
+            color: #111827; margin: 0; display: inline-flex; align-items: center; gap: 7px;
         }
-        .sos-card:hover .sos-photo { transform: scale(1.03); }
-        .sos-photo-placeholder {
-            width: 92px; height: 92px; border-radius: 12px; flex-shrink: 0;
-            background: #f9fafb; display: flex; align-items: center; justify-content: center;
-            color: #d1d5db; font-size: 1.5rem;
-            border: 1px dashed #e5e7eb;
-        }
+        .sos-title i { color: #dc2626; font-size: .95rem; }
 
-        .sos-body { flex: 1; min-width: 0; }
-        .sos-top-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
-        .sos-title { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1rem; color: #111827; display: flex; align-items: center; gap: 8px; }
-        .sos-time { font-size: .75rem; color: #9ca3af; white-space: nowrap; }
-
-        .badge-status { font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-        .badge-pending      { background: #fef3c7; color: #92400e; }
+        .badge-status { font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+        .badge-pending      { background: #fef3c7; color: #92400e; }   /* Active: Awaiting Responder */
         .badge-acknowledged { background: #dbeafe; color: #1e40af; }
-        .badge-responding   { background: #e0f2f1; color: #0369a1; }
+        .badge-responding   { background: #e0f2fe; color: #0369a1; }
         .badge-resolved     { background: #d1fae5; color: #065f46; }
         .badge-review       { background: #fef3c7; color: #92400e; }
         .badge-declined     { background: #fee2e2; color: #991b1b; }
         .badge-forreview    { background: #ede9fe; color: #5b21b6; }
+        .badge-ai {
+            display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+            background: #eef2ff; color: #4338ca; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+        }
 
-        .badge-ai { background: #eef2ff; color: #4338ca; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-
-        .sos-meta-row { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; }
-        .sos-meta-item { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: #4b5563; }
-        .sos-meta-item i { color: #9ca3af; }
+        /* Each fact takes the room it needs and wraps to the next line when
+           the card is narrow. */
+        .sos-facts { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 7px 26px; }
+        .sos-facts li { display: flex; align-items: flex-start; gap: 8px; min-width: 0; max-width: 100%; font-size: .82rem; line-height: 1.45; color: #374151; }
+        .sos-facts li > i { width: 16px; flex-shrink: 0; margin-top: 1px; text-align: center; font-size: .88rem; color: #9ca3af; }
+        .sos-facts li > span { min-width: 0; overflow-wrap: anywhere; }
+        .sos-facts li.wide { flex-basis: 100%; }
+        .sos-facts .muted { color: #9ca3af; }
+        .sos-facts .warn-text { color: #b45309; font-weight: 600; }
+        .ai-quote { color: #6b7280; font-style: italic; }
 
         .sos-reporter { font-weight: 700; color: #111827; }
-        .tag-guest {
-            display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 20px;
-            background: #fff7ed; color: #c2410c; font-size: .68rem; font-weight: 700;
-            letter-spacing: .3px; vertical-align: middle;
+        .tag-guest, .tag-resident {
+            display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 20px;
+            font-size: .68rem; font-weight: 700; letter-spacing: .3px; vertical-align: 1px;
         }
-        .call-link { color: #1a3c8f; font-weight: 700; text-decoration: none; white-space: nowrap; }
+        .tag-guest    { background: #fff7ed; color: #c2410c; }
+        .tag-resident { background: #ecfdf5; color: #047857; }
+        .tag-outside {
+            display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; white-space: nowrap;
+            padding: 1px 8px; border-radius: 20px; border: 1px solid #fecaca;
+            background: #fef2f2; color: #b91c1c; font-size: .68rem; font-weight: 700; vertical-align: 1px;
+        }
+        .call-pill {
+            display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; white-space: nowrap;
+            padding: 2px 10px; border-radius: 20px; background: #eef2ff; color: #1a3c8f;
+            font-size: .78rem; font-weight: 700; text-decoration: none; transition: background .2s, color .2s;
+        }
+        .call-pill:hover { background: #1a3c8f; color: #fff; }
+        .call-link { margin-left: 4px; color: #1a3c8f; font-weight: 600; text-decoration: none; white-space: nowrap; }
         .call-link:hover { text-decoration: underline; }
+        .place-link { color: #1a3c8f; font-weight: 600; text-decoration: none; }
+        .place-link:hover { text-decoration: underline; }
+
+        /* Time + View */
+        .sos-side { grid-area: side; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; text-align: right; }
+        .sos-when .ago { font-size: .8rem; font-weight: 700; color: #374151; white-space: nowrap; }
+        .sos-when .ago.waiting { color: #b45309; }
+        .sos-when .ago.late { color: #dc2626; }
+        .sos-when .at { margin-top: 2px; font-size: .72rem; color: #9ca3af; white-space: nowrap; }
+        .btn-view {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+            background: #fff; color: #1a3c8f; border: 1.5px solid #c7d2fe; border-radius: 8px;
+            padding: 7px 16px; font-size: .8rem; font-weight: 700; text-decoration: none;
+            transition: background .2s, color .2s, border-color .2s;
+        }
+        .btn-view i { font-size: .95rem; }
+        .btn-view:hover, .btn-view:focus-visible { background: #1a3c8f; border-color: #1a3c8f; color: #fff; outline: none; }
+
+        /* Buttons along the bottom */
+        .sos-foot {
+            grid-area: foot; min-width: 0;
+            margin-top: 14px; padding-top: 12px; border-top: 1px dashed #e5e7eb;
+            display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px;
+        }
+        .foot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .foot-actions form { margin: 0; display: flex; }
+        .sos-foot .dispatch-hint { margin: 0; }
+        .sos-foot .declined-reason-note { flex: 1; min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px; }
+        .sos-foot form.delete-form { margin: 0; display: flex; }
+
+        @media (max-width: 720px) {
+            .sos-card {
+                grid-template-columns: 76px minmax(0, 1fr);
+                grid-template-areas: "thumb main" "side side";
+                column-gap: 14px; padding: 14px;
+            }
+            .sos-card.has-foot { grid-template-areas: "thumb main" "foot foot" "side side"; }
+            .sos-thumb { width: 76px; height: 76px; }
+            .sos-facts { flex-direction: column; }
+            .sos-side {
+                flex-direction: row; align-items: center; justify-content: space-between; text-align: left;
+                margin-top: 12px; padding-top: 10px; border-top: 1px solid #f1f2f6;
+            }
+            .sos-foot { flex-direction: column; align-items: stretch; }
+            .foot-actions { flex-direction: column; }
+            .foot-actions > *, .foot-actions form { width: 100%; }
+            .foot-actions button, .foot-actions a { width: 100%; justify-content: center; padding-top: 10px; padding-bottom: 10px; }
+            .sos-foot .declined-reason-note { flex: none; }
+            .sos-foot form.delete-form .btn-delete { width: 100%; justify-content: center; padding-top: 10px; padding-bottom: 10px; }
+        }
 
         .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
         .empty-state i { font-size: 2.4rem; display: block; margin-bottom: 12px; color: #d1d5db; }
 
-        .review-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
         .btn-approve {
             background: #10b981; color: #fff; border: none; border-radius: 8px;
             padding: 8px 16px; font-size: .8rem; font-weight: 700; cursor: pointer;
@@ -267,7 +341,6 @@
             font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;
         }
         .review-banner--report { background: #f5f3ff; border-color: #ddd6fe; color: #5b21b6; }
-        .review-actions form { margin: 0; }
         /* Under Approve: which team(s) the quick Approve sends the SOS to. */
         .dispatch-hint { font-size: .76rem; color: #6b7280; margin-top: 8px; line-height: 1.45; }
         .dispatch-hint i { margin-right: 2px; }
@@ -313,14 +386,16 @@
             font-size: .88rem; cursor: pointer; transition: background .2s;
         }
         .btn-decline-confirm:hover { background: #b91c1c; }
+        .decline-who { font-size: .85rem; color: #111827; margin-bottom: 6px; }
+        .decline-outside {
+            display: flex; gap: 8px; align-items: flex-start; margin-bottom: 12px;
+            background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px;
+            font-size: .8rem; color: #991b1b;
+        }
         .declined-reason-note {
             margin-top: 8px; font-size: .8rem; color: #991b1b; font-style: italic;
             background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px;
         }
-        /* Declined card: the reason, with Delete beside it. */
-        .declined-foot { display: flex; align-items: stretch; gap: 10px; margin-top: 8px; }
-        .declined-foot .declined-reason-note { flex: 1; margin-top: 0; display: flex; align-items: center; }
-        .declined-foot form { margin: 0; display: flex; }
         .btn-delete {
             background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; border-radius: 8px;
             padding: 6px 14px; font-size: .8rem; font-weight: 700; cursor: pointer; white-space: nowrap;
@@ -374,6 +449,8 @@
             }
             table { display: block; overflow-x: auto; white-space: nowrap; }
             img, svg, canvas, iframe { max-width: 100%; }
+            /* .main-wrap already has the side padding here — don't add more. */
+            .content { padding: 4px 0 24px; }
         }
 
         @media (max-width: 560px) {
@@ -477,6 +554,9 @@
             $forReviewSos = $sosAlerts->filter(fn ($s) => $s->stage === 'for_review')->values();
             $resolvedSos  = $sosAlerts->filter(fn ($s) => $s->status === 'resolved' && ! $s->declined_at)->values();
             $declinedSos  = $sosAlerts->filter(fn ($s) => (bool) $s->declined_at)->sortByDesc('declined_at')->values();
+
+            // The cards say who resolved or declined it — loaded once for all.
+            $sosAlerts->loadMissing(['resolvedBy', 'reviewedBy']);
         @endphp
 
         <div class="page-header">
@@ -512,72 +592,7 @@
         <!-- ══ TAB: ACTIVE SOS (approved and sent to responders) ══ -->
         <div id="tab-active" class="tab-panel">
             @forelse($activeSos as $sos)
-                @php
-                    $statusClass = 'badge-' . $sos->status;
-                    $statusLabel = $sos->status_label; // "Awaiting Responder" / "Responding"
-                    $reporter = $sos->reporter_name; // a guest's typed name, see Incident::getReporterNameAttribute()
-                    $mobile = $sos->reporter_mobile;
-                    $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
-
-                    $sosPhoto = null;
-                    if ($sos->photo_path) {
-                        $decodedSosPhotos = json_decode($sos->photo_path, true);
-                        $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
-                    }
-                @endphp
-                <div class="sos-card sos-card--{{ $sos->status }}"
-                    data-id="{{ $sos->id }}"
-                    onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'">
-
-                    @if($sosPhoto)
-                        <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo">
-                    @else
-                        <div class="sos-photo-placeholder"><i class="bi bi-camera-video-off"></i></div>
-                    @endif
-
-                    <div class="sos-body">
-                        <div class="sos-top-row">
-                            <div class="sos-title">
-                                🆘 {{ $sos->display_type }}
-                                <span class="badge-status {{ $statusClass }}">{{ $statusLabel }}</span>
-                                @if($sos->ai_detected_type)
-                                    <span class="badge-ai text-danger">{{ $sos->ai_detected_type }}</span>
-                                @endif
-                                @if($sos->report_returned_at && $sos->report_return_reason)
-                                    <span class="tag-returned" title="{{ $sos->report_return_reason }}"><i class="bi bi-arrow-return-left"></i> Report sent back</span>
-                                @endif
-                            </div>
-                            <div class="sos-time">{{ $sos->created_at->diffForHumans() }} · {{ $sos->created_at->format('M d, g:i A') }}</div>
-                        </div>
-
-                        <div class="sos-meta-row">
-                            <div class="sos-meta-item">
-                                <i class="bi bi-person-fill"></i>
-                                <span class="sos-reporter">{{ $reporter }}</span>
-                                @if(! $sos->citizen_id) <span class="tag-guest">Guest</span> @endif
-                                @if($mobile) <span>· {{ $mobile }}</span> @endif
-                            </div>
-                            <div class="sos-meta-item">
-                                <i class="bi bi-geo-alt-fill"></i>
-                                <a href="{{ $mapsUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#1a3c8f;text-decoration:none;font-weight:600;">
-                                    {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
-                                </a>
-                            </div>
-                            @if($sos->assignedTeamCodes())
-                                <div class="sos-meta-item" title="Response team">
-                                    <i class="bi bi-people-fill"></i>
-                                    <span>Sent to {{ implode(' · ', $sos->assignedTeamCodes()) }}</span>
-                                </div>
-                            @endif
-                        </div>
-
-                        @if($sos->ai_analysis)
-                            <div style="margin-top:8px;font-size:.8rem;color:#6b7280;font-style:italic;">
-                                "{{ $sos->ai_analysis }}"
-                            </div>
-                        @endif
-                    </div>
-                </div>
+                @include('partials.sos-card', ['sos' => $sos, 'tab' => 'active'])
             @empty
                 <div class="empty-state">
                     <i class="bi bi-shield-check"></i>
@@ -594,81 +609,7 @@
             </div>
 
             @forelse($forReviewSos as $sos)
-                @php
-                    $reporter = $sos->reporter_name;
-                    $mobile = $sos->reporter_mobile;
-                    $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
-                    $sentAt = $sos->report_submitted_at ?? $sos->updated_at;
-                    $team = $sos->responders->sortBy(fn ($r) => $r->pivot->accepted_at)->values();
-
-                    $sosPhoto = null;
-                    if ($sos->photo_path) {
-                        $decodedSosPhotos = json_decode($sos->photo_path, true);
-                        $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
-                    }
-                @endphp
-                <div class="sos-card sos-card--for_review" data-id="{{ $sos->id }}"
-                     onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'">
-                    @if($sosPhoto)
-                        <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo">
-                    @else
-                        <div class="sos-photo-placeholder"><i class="bi bi-camera-video-off"></i></div>
-                    @endif
-
-                    <div class="sos-body">
-                        <div class="sos-top-row">
-                            <div class="sos-title">
-                                🆘 {{ $sos->display_type }}
-                                <span class="badge-status badge-forreview">For Review</span>
-                                @if($sos->report_returned_at)
-                                    <span class="tag-resent" title="Sent again after you returned it"><i class="bi bi-arrow-repeat"></i> Sent again</span>
-                                @endif
-                            </div>
-                            <div class="sos-time">Report sent {{ $sentAt->diffForHumans() }} · {{ $sentAt->format('M d, g:i A') }}</div>
-                        </div>
-
-                        <div class="sos-meta-row">
-                            <div class="sos-meta-item">
-                                <i class="bi bi-person-fill"></i>
-                                <span class="sos-reporter">{{ $reporter }}</span>
-                                @if(! $sos->citizen_id) <span class="tag-guest">Guest</span> @endif
-                                @if($mobile) <span>· {{ $mobile }}</span> @endif
-                            </div>
-                            <div class="sos-meta-item">
-                                <i class="bi bi-geo-alt-fill"></i>
-                                <a href="{{ $mapsUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#1a3c8f;text-decoration:none;font-weight:600;">
-                                    {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
-                                </a>
-                            </div>
-                            @if($team->isNotEmpty())
-                                <div class="sos-meta-item">
-                                    <i class="bi bi-shield-fill-check"></i>
-                                    <span>{{ $team->first()->full_name }}{{ $team->first()->agency ? ' (' . $team->first()->agency . ')' : '' }}{{ $team->count() > 1 ? ' +' . ($team->count() - 1) : '' }}</span>
-                                </div>
-                            @endif
-                        </div>
-
-                        <div class="review-actions" onclick="event.stopPropagation()">
-                            @if($sos->report_data)
-                                <a href="{{ route('incident.report-pdf', $sos) }}" target="_blank" class="btn-pdf">
-                                    <i class="bi bi-file-earmark-pdf"></i> Report
-                                </a>
-                            @endif
-                            <form action="{{ route('incident.confirm-resolved', $sos->id) }}" method="POST" class="resolve-form"
-                                  data-type="SOS"
-                                  data-notifies-citizen="{{ $sos->citizen_id ? '1' : '0' }}">
-                                @csrf
-                                <button type="submit" class="btn-approve">
-                                    <i class="bi bi-check2-circle"></i> Mark as Resolved
-                                </button>
-                            </form>
-                            <button type="button" class="btn-return" data-bs-toggle="modal" data-bs-target="#returnModal{{ $sos->id }}">
-                                <i class="bi bi-arrow-return-left"></i> Return
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
+                @include('partials.sos-card', ['sos' => $sos, 'tab' => 'for-review'])
                 @include('partials.return-report-modal', ['incident' => $sos, 'modalId' => 'returnModal' . $sos->id])
             @empty
                 <div class="empty-state">
@@ -682,80 +623,13 @@
         <div id="tab-pending" class="tab-panel active">
             <div class="review-banner">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>Every SOS alert waits here for your review. Call the number shown to confirm the emergency, then approve it to notify the responders. Responders are not notified until you approve.</span>
+                <span>Every SOS alert waits here for your review. Call the number shown to confirm the emergency, then approve it to notify the responders. Click <strong>View</strong> to see the photos and the map, choose the teams, or add notes for them. Responders are not notified until you approve.</span>
             </div>
 
             @forelse($pendingReviewSos as $sos)
-                @php
-                    $reporter = $sos->reporter_name; // a guest's typed name, see Incident::getReporterNameAttribute()
-                    $mobile = $sos->reporter_mobile;
-                    $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
+                @include('partials.sos-card', ['sos' => $sos, 'tab' => 'pending'])
 
-                    $sosPhoto = null;
-                    if ($sos->photo_path) {
-                        $decodedSosPhotos = json_decode($sos->photo_path, true);
-                        $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
-                    }
-                @endphp
-                <div class="sos-card sos-card--review" data-id="{{ $sos->id }}">
-                    @if($sosPhoto)
-                        <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo" onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'">
-                    @else
-                        <div class="sos-photo-placeholder" onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'"><i class="bi bi-camera-video-off"></i></div>
-                    @endif
-
-                    <div class="sos-body">
-                        <div class="sos-top-row">
-                            <div class="sos-title">
-                                🆘 SOS Emergency
-                                <span class="badge-status badge-review">Needs Review</span>
-                            </div>
-                            <div class="sos-time">{{ $sos->created_at->diffForHumans() }} · {{ $sos->created_at->format('M d, g:i A') }}</div>
-                        </div>
-
-                        <div class="sos-meta-row">
-                            <div class="sos-meta-item">
-                                <i class="bi bi-person-fill"></i>
-                                <span class="sos-reporter">{{ $reporter }}</span>
-                                @if(! $sos->citizen_id) <span class="tag-guest">Guest</span> @endif
-                                @if($mobile)
-                                    <span>·</span>
-                                    <a href="tel:{{ $mobile }}" class="call-link"><i class="bi bi-telephone-fill"></i> Call {{ $mobile }}</a>
-                                @endif
-                            </div>
-                            <div class="sos-meta-item">
-                                <i class="bi bi-geo-alt-fill"></i>
-                                <a href="{{ $mapsUrl }}" target="_blank" style="color:#1a3c8f;text-decoration:none;font-weight:600;">
-                                    {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
-                                </a>
-                            </div>
-                        </div>
-
-                        <div class="review-actions">
-                            <form action="{{ route('incident.approve', $sos->id) }}" method="POST">
-                                @csrf
-                                <button type="submit" class="btn-approve">
-                                    <i class="bi bi-check-lg"></i> Approve &amp; Dispatch to Responders
-                                </button>
-                            </form>
-                            <button type="button" class="btn-decline" data-bs-toggle="modal" data-bs-target="#declineModal{{ $sos->id }}">
-                                <i class="bi bi-x-lg"></i> Decline
-                            </button>
-                        </div>
-                        @php
-                            $sosTeams = $sos->defaultTeams();
-                            $sosTeamText = count($sosTeams) > 1
-                                ? implode(', ', array_slice($sosTeams, 0, -1)) . ' and ' . end($sosTeams)
-                                : ($sosTeams[0] ?? 'SARS');
-                        @endphp
-                        <div class="dispatch-hint">
-                            <i class="bi bi-people"></i>
-                            Approve sends it to <strong>{{ $sosTeamText }}</strong>.
-                            <a href="{{ route('sos.detail', $sos->id) }}">Choose other teams or add notes for the team</a>
-                        </div>
-                    </div>
-                </div>
-
+                {{-- Decline: pick a reason (the card's Decline button opens this). --}}
                 <div class="modal fade" id="declineModal{{ $sos->id }}" tabindex="-1">
                     <div class="modal-dialog modal-dialog-centered">
                         <div class="modal-content" style="border-radius:14px;border:none;">
@@ -767,10 +641,19 @@
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                 </div>
                                 <div class="modal-body pt-3">
+                                    <div class="decline-who">
+                                        SOS from <strong>{{ $sos->reporter_name }}</strong>{{ $sos->citizen_id ? '' : ' (guest)' }}, sent {{ $sos->created_at->format('M d, g:i A') }}.
+                                    </div>
                                     <p style="font-size:.82rem;color:#6b7280;margin-bottom:12px;">
                                         Responders will NOT be dispatched.
                                         {{ $sos->citizen_id ? 'The reporter will get a notification with this reason.' : 'This SOS was submitted by a guest, so there is no account to notify.' }}
                                     </p>
+                                    @if(str_contains((string) $sos->location, 'Outside Rosales'))
+                                        <div class="decline-outside">
+                                            <i class="bi bi-exclamation-triangle-fill"></i>
+                                            <span>The GPS pin is outside Rosales. If MDRRMO Rosales can't respond there, choose "Location is outside Rosales / MDRRMO service area".</span>
+                                        </div>
+                                    @endif
                                     <label class="form-label-m">Reason for declining</label>
                                     <select name="decline_reason" class="form-control-m" required>
                                         <option value="" disabled selected>Select a reason...</option>
@@ -793,7 +676,7 @@
             @empty
                 <div class="empty-state">
                     <i class="bi bi-check2-circle"></i>
-                    No guest SOS alerts waiting for review.
+                    No SOS alerts waiting for review.
                 </div>
             @endforelse
         </div>
@@ -830,72 +713,7 @@
             @endif
 
             @forelse($resolvedSos as $sos)
-                @php
-                    $reporter = $sos->reporter_name; // a guest's typed name, see Incident::getReporterNameAttribute()
-                    $mobile = $sos->reporter_mobile;
-                    $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
-                    $isDeclined = (bool) $sos->declined_at;
-
-                    $sosPhoto = null;
-                    if ($sos->photo_path) {
-                        $decodedSosPhotos = json_decode($sos->photo_path, true);
-                        $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
-                    }
-                @endphp
-                <div class="sos-card sos-card--{{ $isDeclined ? 'declined' : 'resolved' }} history-row"
-                    data-date="{{ $sos->created_at->format('Y-m-d') }}"
-                    data-ai="{{ $sos->ai_detected_type }}"
-                    data-search="{{ strtolower($reporter.' '.$sos->location.' '.$sos->ai_detected_type.' '.$sos->ai_analysis) }}"
-                    onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'">
-
-                    @if($sosPhoto)
-                        <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo">
-                    @else
-                        <div class="sos-photo-placeholder"><i class="bi bi-camera-video-off"></i></div>
-                    @endif
-
-                    <div class="sos-body">
-                        <div class="sos-top-row">
-                            <div class="sos-title">
-                                🆘 SOS Emergency
-                                @if($isDeclined)
-                                    <span class="badge-status badge-declined">Declined</span>
-                                @else
-                                    <span class="badge-status badge-resolved">Resolved</span>
-                                @endif
-                                @if($sos->ai_detected_type)
-                                    <span class="badge-ai text-danger">{{ $sos->ai_detected_type }}</span>
-                                @endif
-                            </div>
-                            <div class="sos-time">{{ $sos->created_at->diffForHumans() }} · {{ $sos->created_at->format('M d, g:i A') }}</div>
-                        </div>
-
-                        <div class="sos-meta-row">
-                            <div class="sos-meta-item">
-                                <i class="bi bi-person-fill"></i>
-                                <span class="sos-reporter">{{ $reporter }}</span>
-                                @if(! $sos->citizen_id) <span class="tag-guest">Guest</span> @endif
-                                @if($mobile) <span>· {{ $mobile }}</span> @endif
-                            </div>
-                            <div class="sos-meta-item">
-                                <i class="bi bi-geo-alt-fill"></i>
-                                <a href="{{ $mapsUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#1a3c8f;text-decoration:none;font-weight:600;">
-                                    {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
-                                </a>
-                            </div>
-                        </div>
-
-                        @if($isDeclined && $sos->decline_reason)
-                            <div class="declined-reason-note">
-                                Declined: "{{ \Illuminate\Support\Str::limit($sos->decline_reason, 120) }}"
-                            </div>
-                        @elseif($sos->ai_analysis)
-                            <div style="margin-top:8px;font-size:.8rem;color:#6b7280;font-style:italic;">
-                                "{{ $sos->ai_analysis }}"
-                            </div>
-                        @endif
-                    </div>
-                </div>
+                @include('partials.sos-card', ['sos' => $sos, 'tab' => 'resolved'])
             @empty
                 <div class="empty-state">
                     <i class="bi bi-inbox"></i>
@@ -943,75 +761,7 @@
             @endif
 
             @forelse($declinedSos as $sos)
-                @php
-                    $reporter = $sos->reporter_name; // a guest's typed name, see Incident::getReporterNameAttribute()
-                    $mobile = $sos->reporter_mobile;
-                    $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
-
-                    $sosPhoto = null;
-                    if ($sos->photo_path) {
-                        $decodedSosPhotos = json_decode($sos->photo_path, true);
-                        $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
-                    }
-                @endphp
-                <div class="sos-card sos-card--declined declined-row"
-                    data-date="{{ $sos->created_at->format('Y-m-d') }}"
-                    data-reason="{{ $sos->decline_reason }}"
-                    data-search="{{ strtolower($reporter.' '.$mobile.' '.$sos->location.' '.$sos->decline_reason.' '.$sos->ai_detected_type) }}"
-                    onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'">
-
-                    @if($sosPhoto)
-                        <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo">
-                    @else
-                        <div class="sos-photo-placeholder"><i class="bi bi-camera-video-off"></i></div>
-                    @endif
-
-                    <div class="sos-body">
-                        <div class="sos-top-row">
-                            <div class="sos-title">
-                                🆘 SOS Emergency
-                                <span class="badge-status badge-declined">Declined</span>
-                                @if($sos->ai_detected_type)
-                                    <span class="badge-ai text-danger">{{ $sos->ai_detected_type }}</span>
-                                @endif
-                            </div>
-                            <div class="sos-time">
-                                Sent {{ $sos->created_at->format('M d, g:i A') }}
-                                · Declined {{ $sos->declined_at->format('M d, g:i A') }}
-                            </div>
-                        </div>
-
-                        <div class="sos-meta-row">
-                            <div class="sos-meta-item">
-                                <i class="bi bi-person-fill"></i>
-                                <span class="sos-reporter">{{ $reporter }}</span>
-                                @if(! $sos->citizen_id) <span class="tag-guest">Guest</span> @endif
-                                @if($mobile) <span>· {{ $mobile }}</span> @endif
-                            </div>
-                            <div class="sos-meta-item">
-                                <i class="bi bi-geo-alt-fill"></i>
-                                <a href="{{ $mapsUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#1a3c8f;text-decoration:none;font-weight:600;">
-                                    {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
-                                </a>
-                            </div>
-                        </div>
-
-                        <div class="declined-foot">
-                            <div class="declined-reason-note">
-                                Declined: "{{ \Illuminate\Support\Str::limit($sos->decline_reason ?: 'No reason given', 120) }}"
-                            </div>
-                            {{-- Permanently removes this declined alert (IncidentController::destroy()). --}}
-                            <form method="POST" action="{{ route('incident.destroy', $sos->id) }}" class="delete-form"
-                                  data-what="SOS alert from {{ $reporter }}" onclick="event.stopPropagation()">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn-delete" title="Delete this declined SOS alert">
-                                    <i class="bi bi-trash3"></i> Delete
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
+                @include('partials.sos-card', ['sos' => $sos, 'tab' => 'declined'])
             @empty
                 <div class="empty-state">
                     <i class="bi bi-slash-circle"></i>
@@ -1072,6 +822,17 @@
         try { tab = sessionStorage.getItem(KEY); sessionStorage.removeItem(KEY); } catch (e) {}
         if (tab) openTab(tab);
     })();
+
+    // Clicking a card opens the SOS details, like its View button —
+    // except on the card's own buttons, links and forms, or while text is
+    // being selected.
+    document.querySelectorAll('.sos-card[data-href]').forEach(card => {
+        card.addEventListener('click', e => {
+            if (e.target.closest('a, button, form, input, select, textarea, label')) return;
+            if (String(window.getSelection ? window.getSelection() : '').trim() !== '') return;
+            window.location.href = card.dataset.href;
+        });
+    });
 
     // Delete (declined alerts only) — asks first, since it can't be undone.
     document.querySelectorAll('.delete-form').forEach(form => {
