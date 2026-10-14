@@ -708,14 +708,39 @@ class AuthController extends Controller
         return response()->json(['message' => 'Profile updated.', 'citizen' => $citizen]);
     }
 
-    public function forgotPassword(Request $request)
+    /**
+     * Sends a 6-digit password-reset code.
+     *
+     *   via=email (default)  emails it, as before.
+     *   via=sms              texts it to the mobile number on the account.
+     *                        The resident gives the email they log in with
+     *                        AND the mobile number; the code is texted only
+     *                        when both belong to the same account. Mobile
+     *                        numbers of residents who signed up by email
+     *                        were never confirmed, so the number alone isn't
+     *                        proof — a stranger whose number was mistyped
+     *                        into someone's account doesn't know that
+     *                        account's email, and resetPassword() needs it.
+     *
+     * Either way the reply doesn't say whether an account was found. For
+     * texts, the per-number limits (1 a minute, 5 an hour) count every
+     * request, found or not, so they don't give that away either.
+     */
+    public function forgotPassword(Request $request, SmsService $sms)
     {
+        $bySms = $request->input('via') === 'sms';
+
         $validator = Validator::make($request->all(), [
-            'email' => ['required', 'email'],
+            'email'  => ['required', 'email'],
+            'mobile' => $bySms ? ['required', 'string', $this->textableNumberRule()] : ['nullable'],
         ]);
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+        }
+
+        if ($bySms) {
+            return $this->sendResetCodeByText($request, $sms);
         }
 
         $citizen = Citizen::where('email', $request->email)->first();
@@ -729,12 +754,82 @@ class AuthController extends Controller
 
         $citizen->update([
             'reset_otp' => $otp,
-            'reset_otp_expires_at' => now()->addMinutes(10),
+            'reset_otp_expires_at' => now()->addMinutes(self::CODE_MINUTES),
         ]);
+
+        RateLimiter::clear($this->wrongResetCodeKey($citizen->email));
 
         Mail::to($citizen->email)->send(new PasswordResetOtp($otp, $citizen->full_name));
 
         return response()->json(['message' => 'If that email is registered, a code has been sent.']);
+    }
+
+    /** forgotPassword() with via=sms. */
+    private function sendResetCodeByText(Request $request, SmsService $sms)
+    {
+        // Checked before looking anything up, so it's the same for everyone.
+        if (! $sms->isAvailable()) {
+            return response()->json([
+                'message' => 'Text messages aren\'t available right now. Please reset your password by email instead.',
+            ], 503);
+        }
+
+        $number   = SmsService::normalizeNumber($request->input('mobile'));
+        $cooldown = 'reset-text:' . $number;
+        $hourly   = 'reset-text-hour:' . $number;
+
+        if (RateLimiter::tooManyAttempts($cooldown, 1)) {
+            $wait = max(1, RateLimiter::availableIn($cooldown));
+
+            return response()->json([
+                'message'     => "Please wait {$wait} " . ($wait === 1 ? 'second' : 'seconds') . ' before asking for another code.',
+                'retry_after' => $wait,
+            ], 429);
+        }
+
+        if (RateLimiter::tooManyAttempts($hourly, 5)) {
+            return response()->json([
+                'message' => 'Too many codes were asked for this number. Try again later, or reset your password by email instead.',
+            ], 429);
+        }
+
+        RateLimiter::hit($cooldown, 60);
+        RateLimiter::hit($hourly, 3600);
+
+        $sameReply = [
+            'message' => 'If the email and mobile number match an account, we texted a code to that number.',
+            'via'     => 'sms',
+        ];
+
+        $citizen = Citizen::where('email', $request->input('email'))->first();
+
+        if (! $citizen || SmsService::normalizeNumber((string) $citizen->mobile) !== $number) {
+            return response()->json($sameReply);
+        }
+
+        $otp  = (string) random_int(100000, 999999);
+        $text = $sms->sendVerificationCode((string) $citizen->mobile, $otp, self::CODE_MINUTES, 'reset');
+
+        if (! $text['sent']) {
+            [$message, $status] = $this->notSentReply($text, $citizen);
+
+            return response()->json(['message' => $message], $status);
+        }
+
+        $citizen->update([
+            'reset_otp'            => $text['code'],
+            'reset_otp_expires_at' => now()->addMinutes(self::CODE_MINUTES),
+        ]);
+
+        RateLimiter::clear($this->wrongResetCodeKey($citizen->email));
+
+        return response()->json($sameReply);
+    }
+
+    /** Counts wrong reset codes per email (see resetPassword()). */
+    private function wrongResetCodeKey(?string $email): string
+    {
+        return 'reset-code-wrong:' . sha1(strtolower(trim((string) $email)));
     }
 
     public function resetPassword(Request $request)
@@ -752,17 +847,31 @@ class AuthController extends Controller
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
+        // After MAX_WRONG_CODES wrong codes, a new code is needed, so the
+        // 6 digits can't be guessed by trying them all.
+        $wrongCodes = $this->wrongResetCodeKey($request->email);
+
+        if (RateLimiter::tooManyAttempts($wrongCodes, self::MAX_WRONG_CODES)) {
+            return response()->json([
+                'message' => 'Too many wrong codes. Tap "Resend" to get a new one.',
+            ], 429);
+        }
+
         $citizen = Citizen::where('email', $request->email)
             ->where('reset_otp', $request->otp)
             ->first();
 
         if (! $citizen) {
+            RateLimiter::hit($wrongCodes, self::CODE_MINUTES * 60);
+
             return response()->json(['message' => 'Invalid code.'], 422);
         }
 
         if ($citizen->reset_otp_expires_at === null || now()->greaterThan($citizen->reset_otp_expires_at)) {
             return response()->json(['message' => 'This code has expired. Please request a new one.'], 422);
         }
+
+        RateLimiter::clear($wrongCodes);
 
         $citizen->update([
             'password' => Hash::make($request->password),

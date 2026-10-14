@@ -7,6 +7,24 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
+/**
+ * Texts the 6-digit sign-up code when a resident picks "Mobile Number" on
+ * Create Account step 3 (Api\AuthController::register / resend), and the
+ * password-reset code for Forgot Password by text
+ * (Api\AuthController::forgotPassword).
+ *
+ * The gateway comes from SMS_DRIVER in .env (config/services.php):
+ *   semaphore  Semaphore (semaphore.co), the usual Philippine SMS API
+ *   textbee    textbee.dev, sends from an Android phone with a SIM card
+ *   log        writes the text to storage/logs/laravel.log — testing only
+ *   none       texting is off (default); the app offers Email only
+ *
+ * Limits, so texting can't be abused or run up the bill:
+ *   - one code per mobile number per minute (the app's "Resend in 60s"),
+ *   - five codes per mobile number per hour,
+ *   - SMS_DAILY_LIMIT codes per day for everyone together.
+ * Only texts that were actually sent count.
+ */
 class SmsService
 {
     /** Seconds before the same number can get another code. */
@@ -20,11 +38,13 @@ class SmsService
         return strtolower(trim((string) config('services.sms.driver', 'none')));
     }
 
+    /** Texting is set up and today's limit isn't used up. */
     public function isAvailable(): bool
     {
         return $this->isConfigured() && ! $this->dailyLimitReached();
     }
 
+    /** The chosen gateway has what it needs (an API key). */
     public function isConfigured(): bool
     {
         return match ($this->driver()) {
@@ -64,7 +84,22 @@ class SmsService
         return null;
     }
 
-    public function sendVerificationCode(string $mobile, string $code, int $minutes = 10): array
+    /**
+     * Texts the sign-up code to $mobile.
+     *
+     * Returns:
+     *   sent         whether the text went out
+     *   code         the code that was texted. Usually $code, but
+     *                Semaphore's OTP route makes its own code if it ignores
+     *                ours, and its reply says which one it sent.
+     *   reason       why it wasn't sent: unavailable, daily_limit,
+     *                invalid_number, too_soon, hourly_limit, gateway_error
+     *   retry_after  seconds to wait, for too_soon / hourly_limit
+     *
+     * $purpose picks the wording: 'signup' ("verification code") or
+     * 'reset' ("password reset code", for Forgot Password by text).
+     */
+    public function sendVerificationCode(string $mobile, string $code, int $minutes = 10, string $purpose = 'signup'): array
     {
         if (! $this->isConfigured()) {
             return $this->notSent('unavailable');
@@ -90,9 +125,9 @@ class SmsService
 
         try {
             $sentCode = match ($this->driver()) {
-                'semaphore' => $this->sendWithSemaphore($number, $code, $minutes),
-                'textbee'   => $this->sendWithTextbee($number, $code, $minutes),
-                'log'       => $this->writeToLog($number, $code, $minutes),
+                'semaphore' => $this->sendWithSemaphore($number, $code, $minutes, $purpose),
+                'textbee'   => $this->sendWithTextbee($number, $code, $minutes, $purpose),
+                'log'       => $this->writeToLog($number, $code, $minutes, $purpose),
             };
         } catch (\Throwable $e) {
             Log::warning('SMS: could not reach the ' . $this->driver() . ' gateway.', [
@@ -116,9 +151,11 @@ class SmsService
      * The text itself — plain letters only and under 160 characters, so it
      * goes as one message (one charge).
      */
-    public function verificationMessage(string $code, int $minutes = 10): string
+    public function verificationMessage(string $code, int $minutes = 10, string $purpose = 'signup'): string
     {
-        return "ResQPulse: Your verification code is {$code}. "
+        $what = $purpose === 'reset' ? 'password reset code' : 'verification code';
+
+        return "ResQPulse: Your {$what} is {$code}. "
             . "It expires in {$minutes} minutes. Do not share it with anyone.";
     }
 
@@ -130,7 +167,7 @@ class SmsService
      * slower when Semaphore is busy. Returns the code that was texted, or
      * null when Semaphore didn't take the message.
      */
-    private function sendWithSemaphore(string $number, string $code, int $minutes): ?string
+    private function sendWithSemaphore(string $number, string $code, int $minutes, string $purpose): ?string
     {
         $otpRoute = strtolower((string) config('services.semaphore.route', 'otp')) !== 'regular';
 
@@ -138,7 +175,7 @@ class SmsService
             'apikey'  => config('services.semaphore.api_key'),
             'number'  => '0' . substr($number, 2), // 09171234567, as in Semaphore's examples
             // On the OTP route Semaphore puts the code where {otp} is.
-            'message' => $this->verificationMessage($otpRoute ? '{otp}' : $code, $minutes),
+            'message' => $this->verificationMessage($otpRoute ? '{otp}' : $code, $minutes, $purpose),
         ];
 
         if ($otpRoute) {
@@ -185,11 +222,11 @@ class SmsService
      * The text is sent by the textbee app on an Android phone, using that
      * phone's SIM. Returns the code, or null when textbee didn't take it.
      */
-    private function sendWithTextbee(string $number, string $code, int $minutes): ?string
+    private function sendWithTextbee(string $number, string $code, int $minutes, string $purpose): ?string
     {
         $body = [
             'recipients' => ['+' . $number],
-            'message'    => $this->verificationMessage($code, $minutes),
+            'message'    => $this->verificationMessage($code, $minutes, $purpose),
         ];
 
         // Optional — without it textbee uses the account's default phone.
@@ -213,10 +250,10 @@ class SmsService
     }
 
     /** SMS_DRIVER=log — for trying the flow without spending credits. */
-    private function writeToLog(string $number, string $code, int $minutes): string
+    private function writeToLog(string $number, string $code, int $minutes, string $purpose): string
     {
         Log::info('SMS (not sent, SMS_DRIVER=log) to +' . $number . ': '
-            . $this->verificationMessage($code, $minutes));
+            . $this->verificationMessage($code, $minutes, $purpose));
 
         return $code;
     }
