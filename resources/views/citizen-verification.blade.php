@@ -336,9 +336,15 @@
                         <tr>
                             <td class="td-name">{{ $citizen->full_name }}</td>
                             <td>
-                                {{ $citizen->email }}
-                                @if($citizen->mobile)
-                                    <div class="td-sub">{{ $citizen->mobile }}</div>
+                                @if($citizen->isMobileAccount())
+                                    {{-- Signed up with a mobile number: no email, logs in with the number --}}
+                                    {{ $citizen->mobile }}
+                                    <div class="td-sub">Logs in with mobile number</div>
+                                @else
+                                    {{ $citizen->email }}
+                                    @if($citizen->mobile)
+                                        <div class="td-sub">{{ $citizen->mobile }}</div>
+                                    @endif
                                 @endif
                             </td>
                             <td>
@@ -415,9 +421,15 @@
                         <tr>
                             <td class="td-name">{{ $citizen->full_name }}</td>
                             <td>
-                                {{ $citizen->email }}
-                                @if($citizen->mobile)
-                                    <div class="td-sub">{{ $citizen->mobile }}</div>
+                                @if($citizen->isMobileAccount())
+                                    {{-- Signed up with a mobile number: no email, logs in with the number --}}
+                                    {{ $citizen->mobile }}
+                                    <div class="td-sub">Logs in with mobile number</div>
+                                @else
+                                    {{ $citizen->email }}
+                                    @if($citizen->mobile)
+                                        <div class="td-sub">{{ $citizen->mobile }}</div>
+                                    @endif
                                 @endif
                             </td>
                             <td>

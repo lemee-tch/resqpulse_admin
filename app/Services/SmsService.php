@@ -160,6 +160,43 @@ class SmsService
     }
 
     /**
+     * Texts a plain notice instead of a code — e.g. telling a resident who
+     * signed up with a mobile number (no email) that their ID wasn't
+     * approved. Uses Semaphore's regular route, since its OTP route is for
+     * codes only. Counts toward SMS_DAILY_LIMIT. Returns whether it went out.
+     */
+    public function sendMessage(string $mobile, string $message): bool
+    {
+        if (! $this->isAvailable()) {
+            return false;
+        }
+
+        $number = self::normalizeNumber($mobile);
+        if ($number === null) {
+            return false;
+        }
+
+        try {
+            $sent = match ($this->driver()) {
+                'semaphore' => $this->postToSemaphore($number, $message, null) !== null,
+                'textbee'   => $this->postToTextbee($number, $message),
+                'log'       => $this->logText($number, $message),
+            };
+        } catch (\Throwable $e) {
+            Log::warning('SMS: could not reach the ' . $this->driver() . ' gateway.', [
+                'error' => $e->getMessage(),
+            ]);
+            $sent = false;
+        }
+
+        if ($sent) {
+            RateLimiter::hit($this->dailyKey(), 86400);
+        }
+
+        return $sent;
+    }
+
+    /**
      * Semaphore — https://semaphore.co/docs
      *
      * The OTP route (default) is delivered ahead of other traffic and costs
@@ -171,38 +208,11 @@ class SmsService
     {
         $otpRoute = strtolower((string) config('services.semaphore.route', 'otp')) !== 'regular';
 
-        $params = [
-            'apikey'  => config('services.semaphore.api_key'),
-            'number'  => '0' . substr($number, 2), // 09171234567, as in Semaphore's examples
-            // On the OTP route Semaphore puts the code where {otp} is.
-            'message' => $this->verificationMessage($otpRoute ? '{otp}' : $code, $minutes, $purpose),
-        ];
+        // On the OTP route Semaphore puts the code where {otp} is.
+        $message = $this->verificationMessage($otpRoute ? '{otp}' : $code, $minutes, $purpose);
+        $sent    = $this->postToSemaphore($number, $message, $otpRoute ? $code : null);
 
-        if ($otpRoute) {
-            $params['code'] = $code;
-        }
-
-        // Without it Semaphore uses the account's default sender name.
-        if (filled(config('services.semaphore.sender_name'))) {
-            $params['sendername'] = config('services.semaphore.sender_name');
-        }
-
-        $response = Http::asForm()
-            ->acceptJson()
-            ->connectTimeout(5)
-            ->timeout(8)
-            ->post('https://api.semaphore.co/api/v4/' . ($otpRoute ? 'otp' : 'messages'), $params);
-
-        // On success Semaphore answers with a list: one entry per number.
-        $sent   = $response->json('0');
-        $status = is_array($sent) ? strtolower((string) ($sent['status'] ?? '')) : '';
-
-        if (! $response->successful()
-            || ! is_array($sent)
-            || empty($sent['message_id'])
-            || in_array($status, ['failed', 'refunded'], true)) {
-            $this->logRejected('semaphore', $response->status(), $response->body());
-
+        if ($sent === null) {
             return null;
         }
 
@@ -217,6 +227,50 @@ class SmsService
     }
 
     /**
+     * Posts one text to Semaphore: on the OTP route when $otpCode is given,
+     * otherwise on the regular route. Returns Semaphore's entry for the
+     * message, or null when it didn't take it.
+     */
+    private function postToSemaphore(string $number, string $message, ?string $otpCode): ?array
+    {
+        $params = [
+            'apikey'  => config('services.semaphore.api_key'),
+            'number'  => '0' . substr($number, 2), // 09171234567, as in Semaphore's examples
+            'message' => $message,
+        ];
+
+        if ($otpCode !== null) {
+            $params['code'] = $otpCode;
+        }
+
+        // Without it Semaphore uses the account's default sender name.
+        if (filled(config('services.semaphore.sender_name'))) {
+            $params['sendername'] = config('services.semaphore.sender_name');
+        }
+
+        $response = Http::asForm()
+            ->acceptJson()
+            ->connectTimeout(5)
+            ->timeout(8)
+            ->post('https://api.semaphore.co/api/v4/' . ($otpCode !== null ? 'otp' : 'messages'), $params);
+
+        // On success Semaphore answers with a list: one entry per number.
+        $sent   = $response->json('0');
+        $status = is_array($sent) ? strtolower((string) ($sent['status'] ?? '')) : '';
+
+        if (! $response->successful()
+            || ! is_array($sent)
+            || empty($sent['message_id'])
+            || in_array($status, ['failed', 'refunded'], true)) {
+            $this->logRejected('semaphore', $response->status(), $response->body());
+
+            return null;
+        }
+
+        return $sent;
+    }
+
+    /**
      * textbee — https://textbee.dev/docs/sending-sms
      *
      * The text is sent by the textbee app on an Android phone, using that
@@ -224,9 +278,16 @@ class SmsService
      */
     private function sendWithTextbee(string $number, string $code, int $minutes, string $purpose): ?string
     {
+        return $this->postToTextbee($number, $this->verificationMessage($code, $minutes, $purpose))
+            ? $code
+            : null;
+    }
+
+    private function postToTextbee(string $number, string $message): bool
+    {
         $body = [
             'recipients' => ['+' . $number],
-            'message'    => $this->verificationMessage($code, $minutes, $purpose),
+            'message'    => $message,
         ];
 
         // Optional — without it textbee uses the account's default phone.
@@ -243,24 +304,30 @@ class SmsService
         if (! $response->successful() || $response->json('data.success') === false) {
             $this->logRejected('textbee', $response->status(), $response->body());
 
-            return null;
+            return false;
         }
 
-        return $code;
+        return true;
     }
 
     /** SMS_DRIVER=log — for trying the flow without spending credits. */
     private function writeToLog(string $number, string $code, int $minutes, string $purpose): string
     {
-        Log::info('SMS (not sent, SMS_DRIVER=log) to +' . $number . ': '
-            . $this->verificationMessage($code, $minutes, $purpose));
+        $this->logText($number, $this->verificationMessage($code, $minutes, $purpose));
 
         return $code;
     }
 
+    private function logText(string $number, string $message): bool
+    {
+        Log::info('SMS (not sent, SMS_DRIVER=log) to +' . $number . ': ' . $message);
+
+        return true;
+    }
+
     private function logRejected(string $gateway, int $status, string $body): void
     {
-        Log::warning("SMS: {$gateway} did not send the code.", [
+        Log::warning("SMS: {$gateway} did not send the text.", [
             'status' => $status,
             'reply'  => Str::limit($body, 500),
         ]);

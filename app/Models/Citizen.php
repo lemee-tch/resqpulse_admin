@@ -65,4 +65,47 @@ class Citizen extends Authenticatable
     {
         return $this->email_verified_at !== null || $this->mobile_verified_at !== null;
     }
+
+    /**
+     * Signed up with "Mobile Number": no email — the mobile number is how
+     * they log in, get codes and reset their password. Residents who signed
+     * up with Email log in with the email; their mobile number is there so
+     * MDRRMO can call them.
+     */
+    public function isMobileAccount(): bool
+    {
+        return trim((string) $this->email) === '';
+    }
+
+    /**
+     * Matches a mobile number however it was typed — 09171234567,
+     * +63 917 123 4567, 639171234567 — against how it was saved.
+     * Matches nothing for something that isn't a PH mobile number.
+     */
+    public function scopeWhereMobileNumber(Builder $query, ?string $raw): Builder
+    {
+        $number = \App\Services\SmsService::normalizeNumber($raw); // 639XXXXXXXXX
+
+        if ($number === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $local = substr($number, 2); // 9XXXXXXXXX
+
+        return $query->whereIn('mobile', ['0' . $local, $number, '+' . $number, $local]);
+    }
+
+    /** The account for what was typed in "Email or Mobile Number". */
+    public static function findByLogin(?string $login): ?self
+    {
+        $login = trim((string) $login);
+
+        if ($login === '') {
+            return null;
+        }
+
+        return str_contains($login, '@')
+            ? static::where('email', $login)->first()
+            : static::whereMobileNumber($login)->first();
+    }
 }

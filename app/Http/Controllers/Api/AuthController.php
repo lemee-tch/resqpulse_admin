@@ -42,14 +42,23 @@ class AuthController extends Controller
     }
 
     /**
-     * Creates the account and sends the 6-digit code — by email, or by
-     * text when the resident picked "Mobile Number" (verify_via=sms).
+     * Creates the account and sends the 6-digit code.
      *
-     * If the text can't be sent (texting is off, no credits left, the
-     * gateway is down, this number just got a code), the code goes by
-     * email instead so the resident can still finish. The reply says
-     * where it went (verify_via) and whether it was sent (code_sent);
-     * the app shows the code entry for that.
+     * Two kinds of account, picked on Create Account step 3:
+     *   Email          email + mobile number (so MDRRMO can call). Logs in
+     *                  with the email; the code goes by email.
+     *   Mobile Number  mobile number only, no email (verify_via=sms and no
+     *                  email sent). Logs in with the mobile number; the code
+     *                  is texted. Needs texting to be on (503 otherwise).
+     *
+     * App builds from before mobile accounts send verify_via=sms together
+     * with an email: that's an email account whose code is texted, and if
+     * the text can't be sent the code goes by email instead. A mobile
+     * account has no email to fall back to — if its text fails, the reply
+     * says code_sent=false and "Resend code" tries again.
+     *
+     * The reply says where the code went (verify_via) and whether it was
+     * sent (code_sent); the app shows the code entry for that.
      *
      * Sending the form again also works when a sign-up was started but
      * never finished (the code was never entered) — e.g. the resident
@@ -59,15 +68,25 @@ class AuthController extends Controller
      *
      * Optional fields, sent by the app's Create Account screen when the
      * resident edits their details after "Send Code":
-     *   previous_email, previous_password — what that "Send Code" used.
+     *   previous_email, previous_mobile, previous_password — what that
+     *   "Send Code" used.
      */
     public function register(Request $request, SmsService $sms)
     {
+        $wantsSms      = $request->input('verify_via') === 'sms';
+        $mobileAccount = $wantsSms && $this->inputString($request, 'email') === '';
+
+        // A mobile account gets its code only by text.
+        if ($mobileAccount && ! $sms->isAvailable()) {
+            return response()->json([
+                'message' => 'Signing up with a mobile number isn\'t available right now. Please choose Email instead.',
+            ], 503);
+        }
+
         [$replaceable, $waiting] = $this->unfinishedSignups($request);
         $replaceIds = $replaceable->pluck('id')->all();
 
-        $wantsSms = $request->input('verify_via') === 'sms';
-        $useSms   = $wantsSms && $sms->isAvailable();
+        $useSms = $wantsSms && $sms->isAvailable();
 
         $validator = Validator::make($request->all(), [
             'first_name'   => ['required', 'string', 'max:255'],
@@ -82,7 +101,10 @@ class AuthController extends Controller
                 Rule::unique('citizens', 'mobile')->whereNotIn('id', $replaceIds),
                 $useSms ? $this->textableNumberRule() : null,
             ])),
-            'email'        => ['required', 'email', Rule::unique('citizens', 'email')->whereNotIn('id', $replaceIds)],
+            // Not asked for a mobile account (it logs in with the number).
+            'email'        => $mobileAccount
+                ? ['nullable']
+                : ['required', 'email', Rule::unique('citizens', 'email')->whereNotIn('id', $replaceIds)],
             // Was min:6 with no complexity requirement — now at least 8
             // characters with a mix of upper/lower case and a number.
             // Illuminate\Validation\Rules\Password ships with Laravel,
@@ -128,7 +150,7 @@ class AuthController extends Controller
         try {
             // Removing the unfinished sign-up(s) and saving the new one
             // happen together: if saving fails, the old one is kept.
-            $citizen = DB::transaction(function () use ($request, $replaceable, $fullName, $validIdPath, $otp, $via) {
+            $citizen = DB::transaction(function () use ($request, $replaceable, $fullName, $validIdPath, $otp, $via, $mobileAccount) {
                 foreach ($replaceable as $old) {
                     $old->delete();
                 }
@@ -140,7 +162,7 @@ class AuthController extends Controller
                     'suffix'        => $request->suffix,
                     'full_name'     => $fullName,
                     'mobile'        => $request->mobile,
-                    'email'         => $request->email,
+                    'email'         => $mobileAccount ? null : $request->email,
                     'password'      => Hash::make($request->password),
                     'municipality'  => $request->municipality,
                     'barangay'      => $request->barangay,
@@ -162,7 +184,7 @@ class AuthController extends Controller
             $this->deleteIdPhoto($old->valid_id_path);
         }
 
-        $delivery = $this->sendCode($citizen, $otp, $via, $sms, fallBackToEmail: true);
+        $delivery = $this->sendCode($citizen, $otp, $via, $sms, fallBackToEmail: ! $mobileAccount);
 
         // Where the code really went, and which code (see SmsService).
         $citizen->update([
@@ -171,7 +193,7 @@ class AuthController extends Controller
         ]);
 
         if ($delivery['sent']) {
-            RateLimiter::clear($this->wrongCodeKey($citizen->email));
+            $this->clearWrongCodes($citizen);
         }
 
         // Resident activity trail — same convention as login()/
@@ -233,6 +255,12 @@ class AuthController extends Controller
      */
     private function sendCode(Citizen $citizen, string $otp, string $via, SmsService $sms, bool $fallBackToEmail = false): array
     {
+        // No email on a mobile account: text only.
+        if ($citizen->isMobileAccount()) {
+            $via             = 'sms';
+            $fallBackToEmail = false;
+        }
+
         if ($via === 'sms') {
             $text = $sms->sendVerificationCode((string) $citizen->mobile, $otp, self::CODE_MINUTES);
 
@@ -268,17 +296,21 @@ class AuthController extends Controller
     {
         $wait = max(1, (int) ($delivery['retry_after'] ?? 60));
 
+        // A mobile account has no email to send the code to instead.
+        $hasEmail = ! $citizen->isMobileAccount();
+        $orEmail  = $hasEmail ? ', or send the code to your email instead.' : '.';
+
         return match ($delivery['reason'] ?? null) {
             'too_soon' => [
                 "Please wait {$wait} " . ($wait === 1 ? 'second' : 'seconds') . ' before asking for another code.',
                 429,
             ],
             'hourly_limit' => [
-                'Too many codes were sent to this number. Try again later, or send the code to your email instead.',
+                'Too many codes were sent to this number. Try again later' . $orEmail,
                 429,
             ],
             'invalid_number' => [
-                "We can't text {$citizen->mobile}. Check your mobile number, or send the code to your email instead.",
+                "We can't text {$citizen->mobile}. Check your mobile number" . $orEmail,
                 422,
             ],
             'mail_error' => [
@@ -286,12 +318,14 @@ class AuthController extends Controller
                 503,
             ],
             'gateway_error' => [
-                'We couldn\'t send the text message right now. Try again in a minute, or send the code to your email instead.',
+                'We couldn\'t send the text message right now. Try again in a minute' . $orEmail,
                 503,
             ],
             // unavailable, daily_limit
             default => [
-                'Text messages aren\'t available right now. Please send the code to your email instead.',
+                $hasEmail
+                    ? 'Text messages aren\'t available right now. Please send the code to your email instead.'
+                    : 'Text messages aren\'t available right now. Please try again later.',
                 503,
             ],
         };
@@ -307,10 +341,50 @@ class AuthController extends Controller
         };
     }
 
-    /** Counts wrong codes per email (see verifyEmail()). */
-    private function wrongCodeKey(?string $email): string
+    /** Counts wrong sign-up codes per account login (see verifyEmail()). */
+    private function wrongCodeKey(string $login): string
     {
-        return 'signup-code-wrong:' . sha1(strtolower(trim((string) $email)));
+        return 'signup-code-wrong:' . sha1($login);
+    }
+
+    /** A new code was sent or the right one entered — start counting again. */
+    private function clearWrongCodes(Citizen $citizen): void
+    {
+        foreach ($this->loginsOf($citizen) as $login) {
+            RateLimiter::clear($this->wrongCodeKey($login));
+        }
+    }
+
+    /**
+     * Which account the request is about: the "email" sent, or else the
+     * "mobile" number (a mobile account has no email).
+     */
+    private function accountFromRequest(Request $request): \Illuminate\Database\Eloquent\Builder
+    {
+        return $request->filled('email')
+            ? Citizen::where('email', $this->inputString($request, 'email'))
+            : Citizen::whereMobileNumber($this->inputString($request, 'mobile'));
+    }
+
+    /** The email (lower case) or mobile number (639XXXXXXXXX) the request names. */
+    private function loginFromRequest(Request $request): string
+    {
+        $email = $this->inputString($request, 'email');
+
+        if ($email !== '') {
+            return strtolower($email);
+        }
+
+        return (string) (SmsService::normalizeNumber($this->inputString($request, 'mobile')) ?? '');
+    }
+
+    /** The same for an account: its email and its mobile number. */
+    private function loginsOf(Citizen $citizen): array
+    {
+        return array_values(array_filter([
+            $citizen->isMobileAccount() ? null : strtolower(trim((string) $citizen->email)),
+            SmsService::normalizeNumber((string) $citizen->mobile),
+        ]));
     }
 
     /**
@@ -320,8 +394,9 @@ class AuthController extends Controller
      *
      * An unfinished sign-up may be replaced when:
      *  - it's the one the Create Account screen made and the resident is
-     *    now correcting (previous_email + previous_password), so a wrong
-     *    email, mobile number or password can be fixed;
+     *    now correcting (previous_email / previous_mobile +
+     *    previous_password), so a wrong email, mobile number or password
+     *    can be fixed;
      *  - the same password is used — the resident closed the app and
      *    signed up again;
      *  - it has the same email or mobile number and its code has expired —
@@ -334,11 +409,12 @@ class AuthController extends Controller
      */
     private function unfinishedSignups(Request $request): array
     {
-        $email         = $this->inputString($request, 'email');
-        $mobile        = $this->inputString($request, 'mobile');
-        $previousEmail = $this->inputString($request, 'previous_email');
+        $email          = $this->inputString($request, 'email');
+        $mobile         = $this->inputString($request, 'mobile');
+        $previousEmail  = $this->inputString($request, 'previous_email');
+        $previousMobile = $this->inputString($request, 'previous_mobile');
 
-        if ($email === '' && $mobile === '' && $previousEmail === '') {
+        if ($email === '' && $mobile === '' && $previousEmail === '' && $previousMobile === '') {
             return [collect(), collect()];
         }
 
@@ -348,7 +424,7 @@ class AuthController extends Controller
         ));
 
         $unfinished = Citizen::contactUnverified()
-            ->where(function ($query) use ($email, $mobile, $previousEmail) {
+            ->where(function ($query) use ($email, $mobile, $previousEmail, $previousMobile) {
                 if ($email !== '') {
                     $query->orWhere('email', $email);
                 }
@@ -357,6 +433,9 @@ class AuthController extends Controller
                 }
                 if ($previousEmail !== '') {
                     $query->orWhere('email', $previousEmail);
+                }
+                if ($previousMobile !== '') {
+                    $query->orWhere('mobile', $previousMobile);
                 }
             })
             ->get();
@@ -453,7 +532,8 @@ class AuthController extends Controller
 
     /**
      * Checks the sign-up code — the same call for a code sent by email or
-     * by text (the app always sends the email it signed up with). Marks
+     * by text. The app sends the email the resident signed up with, or for
+     * a mobile account (no email) the mobile number. Marks
      * email_verified_at or mobile_verified_at, depending on where the code
      * went, and logs the resident in.
      *
@@ -463,15 +543,16 @@ class AuthController extends Controller
     public function verifyEmail(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email' => ['required', 'email'],
-            'otp'   => ['required', 'string'],
+            'email'  => ['required_without:mobile', 'nullable', 'email'],
+            'mobile' => ['required_without:email', 'nullable', 'string'],
+            'otp'    => ['required', 'string'],
         ]);
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        $wrongCodes = $this->wrongCodeKey($request->email);
+        $wrongCodes = $this->wrongCodeKey($this->loginFromRequest($request));
 
         if (RateLimiter::tooManyAttempts($wrongCodes, self::MAX_WRONG_CODES)) {
             return response()->json([
@@ -479,7 +560,7 @@ class AuthController extends Controller
             ], 429);
         }
 
-        $citizen = Citizen::where('email', $request->email)
+        $citizen = $this->accountFromRequest($request)
             ->where('verification_otp', $request->otp)
             ->first();
 
@@ -493,7 +574,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'This code has expired. Please request a new one.'], 422);
         }
 
-        RateLimiter::clear($wrongCodes);
+        $this->clearWrongCodes($citizen);
 
         $bySms = $citizen->verification_otp_via === 'sms';
 
@@ -514,9 +595,11 @@ class AuthController extends Controller
     }
 
     /**
-     * Sends a new sign-up code. verify_via=sms texts it to the mobile
-     * number the resident signed up with; anything else emails it (the
-     * login screen's "Verify Your Email" page sends no verify_via).
+     * Sends a new sign-up code.
+     *
+     *   email given   emails it — or texts it with verify_via=sms (the login
+     *                 screen's "Verify Your Email" page sends no verify_via)
+     *   mobile given  texts it (mobile accounts have no email)
      *
      * The new code is saved only once it was sent, so a text that fails
      * leaves the previous code working.
@@ -524,17 +607,23 @@ class AuthController extends Controller
     public function resendVerificationOtp(Request $request, SmsService $sms)
     {
         $validator = Validator::make($request->all(), [
-            'email' => ['required', 'email'],
+            'email'  => ['required_without:mobile', 'nullable', 'email'],
+            'mobile' => ['required_without:email', 'nullable', 'string'],
         ]);
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        $citizen = Citizen::where('email', $request->email)->first();
+        $byEmail = $request->filled('email');
+        $citizen = $this->accountFromRequest($request)->first();
 
         if (! $citizen) {
-            return response()->json(['message' => 'If that email is registered, a new code has been sent.']);
+            return response()->json([
+                'message' => $byEmail
+                    ? 'If that email is registered, a new code has been sent.'
+                    : 'If that number is registered, a new code has been sent.',
+            ]);
         }
 
         if ($citizen->email_verified_at !== null) {
@@ -545,7 +634,10 @@ class AuthController extends Controller
             return response()->json(['message' => 'This account is already verified. You can log in.'], 422);
         }
 
-        $via = $request->input('verify_via') === 'sms' ? 'sms' : 'email';
+        // A mobile account has no email: its code is always texted.
+        $via = ($citizen->isMobileAccount() || ! $byEmail || $request->input('verify_via') === 'sms')
+            ? 'sms'
+            : 'email';
         $otp = (string) random_int(100000, 999999);
 
         $delivery = $this->sendCode($citizen, $otp, $via, $sms);
@@ -567,7 +659,7 @@ class AuthController extends Controller
             'verification_otp_via'        => $delivery['via'],
         ]);
 
-        RateLimiter::clear($this->wrongCodeKey($citizen->email));
+        $this->clearWrongCodes($citizen);
 
         return response()->json([
             'message'    => $delivery['via'] === 'sms'
@@ -578,29 +670,56 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Logs in with the email OR the mobile number (field "login"; older
+     * app builds send "email"). Mobile accounts have no email, so they
+     * always use the number.
+     */
     public function login(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'email'    => ['required', 'email'],
-            'password' => ['required', 'string'],
-        ]);
+        $login = $this->inputString($request, 'login');
+        if ($login === '') {
+            $login = $this->inputString($request, 'email');
+        }
+        if ($login === '') {
+            $login = $this->inputString($request, 'mobile');
+        }
+
+        $validator = Validator::make(
+            ['login' => $login, 'password' => $request->input('password')],
+            [
+                'login'    => ['required', 'string'],
+                'password' => ['required', 'string'],
+            ],
+            ['login.required' => 'Please enter your email or mobile number.']
+        );
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        $citizen = Citizen::where('email', $request->email)->first();
+        $citizen = Citizen::findByLogin($login);
 
         if (! $citizen || ! $citizen->password || ! Hash::check($request->password, $citizen->password)) {
-            return response()->json(['message' => 'Invalid email or password'], 401);
+            return response()->json([
+                'message' => str_contains($login, '@')
+                    ? 'Invalid email or password'
+                    : 'Invalid mobile number or password',
+            ], 401);
         }
 
         // Finished sign-up = the code was entered, by email or by text.
         if (! $citizen->hasVerifiedContact()) {
+            $mobileAccount = $citizen->isMobileAccount();
+
             return response()->json([
-                'message'            => 'Please verify your email before logging in.',
+                'message'            => $mobileAccount
+                    ? 'Please verify your mobile number before logging in.'
+                    : 'Please verify your email before logging in.',
                 'needs_verification' => true,
                 'email'              => $citizen->email,
+                'mobile'             => $mobileAccount ? $citizen->mobile : null,
+                'verify_via'         => $mobileAccount ? 'sms' : 'email',
             ], 403);
         }
 
@@ -645,6 +764,16 @@ class AuthController extends Controller
 
         if (! $citizen instanceof Citizen) {
             return response()->json(['message' => 'Not a citizen account.'], 403);
+        }
+
+        // A mobile account logs in with its number, which was confirmed with
+        // a texted code — changing it here would skip that check.
+        if ($citizen->isMobileAccount()
+            && SmsService::normalizeNumber($this->inputString($request, 'mobile'))
+                !== SmsService::normalizeNumber((string) $citizen->mobile)) {
+            $message = 'Your mobile number is how you log in, so it can\'t be changed here.';
+
+            return response()->json(['message' => $message, 'errors' => ['mobile' => [$message]]], 422);
         }
 
         $validator = Validator::make($request->all(), [
@@ -712,15 +841,16 @@ class AuthController extends Controller
      * Sends a 6-digit password-reset code.
      *
      *   via=email (default)  emails it, as before.
-     *   via=sms              texts it to the mobile number on the account.
-     *                        The resident gives the email they log in with
-     *                        AND the mobile number; the code is texted only
-     *                        when both belong to the same account. Mobile
-     *                        numbers of residents who signed up by email
-     *                        were never confirmed, so the number alone isn't
-     *                        proof — a stranger whose number was mistyped
-     *                        into someone's account doesn't know that
-     *                        account's email, and resetPassword() needs it.
+     *   via=sms + mobile     texts it to an account that logs in with that
+     *                        mobile number — one whose number was confirmed
+     *                        with a texted code (mobile_verified_at). Numbers
+     *                        of residents who signed up with Email were never
+     *                        confirmed, so the number alone doesn't reach
+     *                        those accounts: a stranger whose number was
+     *                        mistyped into someone's account would get it.
+     *   via=sms + mobile     (older app builds) texted when the email and the
+     *     + email            number belong to the same account; resetPassword()
+     *                        then needs that email.
      *
      * Either way the reply doesn't say whether an account was found. For
      * texts, the per-number limits (1 a minute, 5 an hour) count every
@@ -731,7 +861,7 @@ class AuthController extends Controller
         $bySms = $request->input('via') === 'sms';
 
         $validator = Validator::make($request->all(), [
-            'email'  => ['required', 'email'],
+            'email'  => $bySms ? ['nullable', 'email'] : ['required', 'email'],
             'mobile' => $bySms ? ['required', 'string', $this->textableNumberRule()] : ['nullable'],
         ]);
 
@@ -757,7 +887,7 @@ class AuthController extends Controller
             'reset_otp_expires_at' => now()->addMinutes(self::CODE_MINUTES),
         ]);
 
-        RateLimiter::clear($this->wrongResetCodeKey($citizen->email));
+        $this->clearWrongResetCodes($citizen);
 
         Mail::to($citizen->email)->send(new PasswordResetOtp($otp, $citizen->full_name));
 
@@ -796,15 +926,29 @@ class AuthController extends Controller
         RateLimiter::hit($cooldown, 60);
         RateLimiter::hit($hourly, 3600);
 
-        $sameReply = [
-            'message' => 'If the email and mobile number match an account, we texted a code to that number.',
-            'via'     => 'sms',
-        ];
+        if ($request->filled('email')) {
+            // Older app builds: the email and the number must match.
+            $sameReply = [
+                'message' => 'If the email and mobile number match an account, we texted a code to that number.',
+                'via'     => 'sms',
+            ];
 
-        $citizen = Citizen::where('email', $request->input('email'))->first();
+            $citizen = Citizen::where('email', $request->input('email'))->first();
 
-        if (! $citizen || SmsService::normalizeNumber((string) $citizen->mobile) !== $number) {
-            return response()->json($sameReply);
+            if (! $citizen || SmsService::normalizeNumber((string) $citizen->mobile) !== $number) {
+                return response()->json($sameReply);
+            }
+        } else {
+            $sameReply = [
+                'message' => 'If an account logs in with this mobile number, we texted it a code.',
+                'via'     => 'sms',
+            ];
+
+            $citizen = Citizen::whereMobileNumber($number)->first();
+
+            if (! $citizen || $citizen->mobile_verified_at === null) {
+                return response()->json($sameReply);
+            }
         }
 
         $otp  = (string) random_int(100000, 999999);
@@ -821,21 +965,33 @@ class AuthController extends Controller
             'reset_otp_expires_at' => now()->addMinutes(self::CODE_MINUTES),
         ]);
 
-        RateLimiter::clear($this->wrongResetCodeKey($citizen->email));
+        $this->clearWrongResetCodes($citizen);
 
         return response()->json($sameReply);
     }
 
-    /** Counts wrong reset codes per email (see resetPassword()). */
-    private function wrongResetCodeKey(?string $email): string
+    /** Counts wrong reset codes per account login (see resetPassword()). */
+    private function wrongResetCodeKey(string $login): string
     {
-        return 'reset-code-wrong:' . sha1(strtolower(trim((string) $email)));
+        return 'reset-code-wrong:' . sha1($login);
     }
 
+    private function clearWrongResetCodes(Citizen $citizen): void
+    {
+        foreach ($this->loginsOf($citizen) as $login) {
+            RateLimiter::clear($this->wrongResetCodeKey($login));
+        }
+    }
+
+    /**
+     * Sets the new password with the reset code. The account is named by
+     * its email, or by its mobile number for a mobile account.
+     */
     public function resetPassword(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email'    => ['required', 'email'],
+            'email'    => ['required_without:mobile', 'nullable', 'email'],
+            'mobile'   => ['required_without:email', 'nullable', 'string'],
             'otp'      => ['required', 'string'],
             // Same strengthened rule as register() — kept identical so a
             // citizen can't sidestep the stronger policy just by going
@@ -849,7 +1005,7 @@ class AuthController extends Controller
 
         // After MAX_WRONG_CODES wrong codes, a new code is needed, so the
         // 6 digits can't be guessed by trying them all.
-        $wrongCodes = $this->wrongResetCodeKey($request->email);
+        $wrongCodes = $this->wrongResetCodeKey($this->loginFromRequest($request));
 
         if (RateLimiter::tooManyAttempts($wrongCodes, self::MAX_WRONG_CODES)) {
             return response()->json([
@@ -857,7 +1013,7 @@ class AuthController extends Controller
             ], 429);
         }
 
-        $citizen = Citizen::where('email', $request->email)
+        $citizen = $this->accountFromRequest($request)
             ->where('reset_otp', $request->otp)
             ->first();
 
@@ -871,7 +1027,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'This code has expired. Please request a new one.'], 422);
         }
 
-        RateLimiter::clear($wrongCodes);
+        $this->clearWrongResetCodes($citizen);
 
         $citizen->update([
             'password' => Hash::make($request->password),

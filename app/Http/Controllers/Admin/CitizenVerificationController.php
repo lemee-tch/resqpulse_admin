@@ -7,6 +7,7 @@ use App\Mail\CitizenRejected;
 use App\Models\AuditLog;
 use App\Models\Citizen;
 use App\Services\AuditLogService;
+use App\Services\SmsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
@@ -52,7 +53,7 @@ class CitizenVerificationController extends Controller
         return back()->with('success', "{$citizen->full_name} has been verified.");
     }
 
-    public function reject(Request $request, Citizen $citizen)
+    public function reject(Request $request, Citizen $citizen, SmsService $sms)
     {
         $request->validate([
             'rejection_reason' => ['required', 'string', 'max:255'],
@@ -60,6 +61,7 @@ class CitizenVerificationController extends Controller
 
         $name = $citizen->full_name;
         $email = $citizen->email;
+        $mobile = $citizen->mobile;
         $reason = $request->rejection_reason;
 
         AuditLogService::log('rejected', "Rejected citizen {$name}'s ID — {$reason}.");
@@ -69,8 +71,16 @@ class CitizenVerificationController extends Controller
         $citizen->tokens()->delete();
 
         // Send the notification BEFORE deleting — once gone, there's no
-        // model left to pull the name/email from.
-        Mail::to($email)->send(new CitizenRejected($name, $reason));
+        // model left to pull the name/email from. A resident who signed up
+        // with a mobile number has no email, so they get a text instead.
+        if (! $citizen->isMobileAccount()) {
+            Mail::to($email)->send(new CitizenRejected($name, $reason));
+            $notified = "A notification was sent to {$email}.";
+        } elseif ($sms->sendMessage((string) $mobile, $this->rejectionText($reason))) {
+            $notified = "A text message was sent to {$mobile}.";
+        } else {
+            $notified = "They have no email and the text to {$mobile} couldn't be sent, so they weren't notified.";
+        }
 
         $idPhoto = $citizen->valid_id_path;
         $citizen->delete();
@@ -78,7 +88,19 @@ class CitizenVerificationController extends Controller
         // The account is gone, so its ID photo has nothing left to belong to.
         $this->deleteIdPhoto($idPhoto);
 
-        return back()->with('success', "{$name}'s account was rejected and removed. A notification was sent to {$email}.");
+        return back()->with('success', "{$name}'s account was rejected and removed. {$notified}");
+    }
+
+    /**
+     * The text for a rejected mobile-number sign-up. The reason is cut so
+     * the whole text stays within two SMS parts.
+     */
+    private function rejectionText(string $reason): string
+    {
+        $reason = rtrim(\Illuminate\Support\Str::limit(trim($reason), 120, '...'), '.');
+
+        return "ResQPulse: Your sign-up was not approved. Reason: {$reason}. "
+            . 'You may sign up again with a clear photo of a valid ID.';
     }
 
     /**
