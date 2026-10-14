@@ -339,6 +339,7 @@ class IncidentController extends Controller
             ->get()
             ->each(fn (Incident $incident) => $incident->makeHidden([
                 'admin_notes', 'report_data', 'report_return_reason', 'resolved_by',
+                'assignment_notes', 'responders_on_record', 'reviewed_by',
             ]));
 
         return response()->json($incidents);
@@ -374,6 +375,18 @@ class IncidentController extends Controller
             // not, still sees it exactly as before.
             ->whereDoesntHave('declinedBy', function ($q) use ($responder) {
                 $q->where('responders.id', $responder->id);
+            })
+            // Only the team(s) MDRRMO assigned (Admin\IncidentController::
+            // approve() / updateAssignment()) — plus anyone already on it,
+            // and incidents approved before teams were assigned. MSWD keeps
+            // seeing everything: its Incident Locations map is for
+            // awareness only (it can't accept).
+            ->when($responder->agency !== 'MSWD', function ($q) use ($responder) {
+                $q->where(function ($q) use ($responder) {
+                    $q->whereNull('assigned_teams')
+                        ->orWhereJsonContains('assigned_teams', $responder->agency)
+                        ->orWhereHas('responders', fn ($r) => $r->where('responders.id', $responder->id));
+                });
             })
             ->orderByDesc('created_at')
             ->get();
@@ -466,6 +479,16 @@ class IncidentController extends Controller
             return response()->json([
                 'message' => 'This report was declined by MDRRMO and cannot be accepted.',
             ], 409);
+        }
+
+        // MDRRMO sent it to other team(s). Joining as backup needs MDRRMO
+        // to add this team first (Incident Details → Response Assignment).
+        if (! $incident->isAssignedTo($responder->agency)
+            && ! $incident->responders()->where('responder_id', $responder->id)->exists()) {
+            $teams = implode(', ', $incident->assignedTeamCodes());
+            return response()->json([
+                'message' => "MDRRMO assigned this incident to {$teams}. Ask MDRRMO to add your team if you need to respond.",
+            ], 403);
         }
 
         // Still waiting on admin review (every new report and SOS starts

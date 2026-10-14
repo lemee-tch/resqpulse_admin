@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\PushNotificationService;
 use Illuminate\Database\Eloquent\Model;
 
 class Incident extends Model
@@ -11,6 +12,18 @@ class Incident extends Model
 
     /** How MDRRMO learned about an incident it adds by hand (Add Resolved Report). */
     public const REPORTED_VIA = ['Walk-in', 'Phone call', 'Radio', 'Barangay officials', 'Responders on patrol', 'Other'];
+
+    /**
+     * The response teams the admin can assign (panel comment #6). Each is
+     * one shared responder account (see ResponderSeeder). MSWD isn't here:
+     * it runs the evacuation centers and never responds to incidents.
+     */
+    public const TEAMS = [
+        'BFP'  => 'Bureau of Fire Protection',
+        'PNP'  => 'Philippine National Police',
+        'SARS' => 'Search and Rescue',
+        'HCU'  => 'Health Care Unit',
+    ];
 
     /** Why MDRRMO sends a Final report back to the responders (For Review → Return). */
     public const RETURN_REASONS = [
@@ -36,6 +49,8 @@ class Incident extends Model
         // add_review_and_manual_reports migration.
         'report_submitted_at', 'report_returned_at', 'report_return_reason',
         'resolved_at', 'resolved_by', 'source', 'reported_via',
+        // Assign Response Team — see the add_team_assignment migration.
+        'assigned_teams', 'assignment_notes', 'responders_on_record', 'assigned_at', 'reviewed_by',
     ];
 
     protected function casts(): array
@@ -51,6 +66,8 @@ class Incident extends Model
         'report_submitted_at' => 'datetime',
         'report_returned_at'  => 'datetime',
         'resolved_at'         => 'datetime',
+        'assigned_teams'      => 'array',
+        'assigned_at'         => 'datetime',
     ];
 
     // Includes display_type (see getDisplayTypeAttribute() below) in
@@ -103,6 +120,57 @@ class Incident extends Model
         return $this->source === 'manual';
     }
 
+    public function isSos(): bool
+    {
+        return $this->emergency_type === 'SOS Emergency';
+    }
+
+    /**
+     * The teams suggested for this kind of incident (Fire → BFP + SARS…),
+     * pre-ticked when the admin verifies it. The AI's reading of an SOS
+     * photo wins over the type the person picked, same as the push routing.
+     */
+    public function defaultTeams(): array
+    {
+        $type = $this->ai_detected_type
+            ?: ($this->isSos() ? $this->sos_emergency_type : $this->emergency_type);
+
+        $teams = array_values(array_intersect(PushNotificationService::agenciesFor($type), array_keys(self::TEAMS)));
+
+        return $teams ?: ['SARS'];
+    }
+
+    /** The assigned teams, in the order of self::TEAMS. Empty = none set. */
+    public function assignedTeamCodes(): array
+    {
+        $teams = is_array($this->assigned_teams) ? $this->assigned_teams : [];
+
+        return array_values(array_intersect(array_keys(self::TEAMS), $teams));
+    }
+
+    /**
+     * Whether this agency's responders may see and accept it. Incidents
+     * approved before teams were assigned (no teams saved) stay open to
+     * every team.
+     */
+    public function isAssignedTo(?string $agency): bool
+    {
+        $teams = $this->assignedTeamCodes();
+
+        return $teams === [] || in_array($agency, $teams, true);
+    }
+
+    /** Where the report came from, for the Source badge. */
+    public function getSourceLabelAttribute(): string
+    {
+        return match (true) {
+            $this->isManualRecord() => 'MDRRMO' . ($this->reported_via ? ' (' . strtolower($this->reported_via) . ')' : ''),
+            $this->isSos()          => $this->citizen_id ? 'SOS — Resident' : 'SOS — Guest',
+            (bool) $this->citizen_id => 'Resident',
+            default                 => 'Guest',
+        };
+    }
+
     public function isForReview(): bool
     {
         return $this->status === 'for_review';
@@ -117,6 +185,12 @@ class Incident extends Model
     public function resolvedBy()
     {
         return $this->belongsTo(User::class, 'resolved_by');
+    }
+
+    /** The admin who approved (verified) or declined it. */
+    public function reviewedBy()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
     }
 
     /**

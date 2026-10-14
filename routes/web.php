@@ -78,6 +78,8 @@ Route::middleware('auth')->group(function () {
     Route::patch('/incidents/{incident}/note', [IncidentController::class, 'updateNote'])->name('incident.note');
     Route::post('/incidents/{incident}/approve', [IncidentController::class, 'approve'])->name('incident.approve');
     Route::post('/incidents/{incident}/decline', [IncidentController::class, 'decline'])->name('incident.decline');
+    // Active: change the team(s), the notes for the team, the responders on record.
+    Route::patch('/incidents/{incident}/assignment', [IncidentController::class, 'updateAssignment'])->name('incident.assignment');
     // For Review: accept the responders' Final report, or send it back.
     Route::post('/incidents/{incident}/confirm-resolved', [IncidentController::class, 'confirmResolved'])->name('incident.confirm-resolved');
     Route::post('/incidents/{incident}/return-report', [IncidentController::class, 'returnReport'])->name('incident.return-report');

@@ -268,6 +268,12 @@
         }
         .review-banner--report { background: #f5f3ff; border-color: #ddd6fe; color: #5b21b6; }
         .review-actions form { margin: 0; }
+        /* Under Approve: which team(s) the quick Approve sends the SOS to. */
+        .dispatch-hint { font-size: .76rem; color: #6b7280; margin-top: 8px; line-height: 1.45; }
+        .dispatch-hint i { margin-right: 2px; }
+        .dispatch-hint strong { color: #374151; }
+        .dispatch-hint a { color: #1a3c8f; font-weight: 600; text-decoration: none; margin-left: 4px; }
+        .dispatch-hint a:hover { text-decoration: underline; }
         /* For Review actions: the report PDF, Return. */
         .btn-pdf {
             display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
@@ -557,6 +563,12 @@
                                     {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
                                 </a>
                             </div>
+                            @if($sos->assignedTeamCodes())
+                                <div class="sos-meta-item" title="Response team">
+                                    <i class="bi bi-people-fill"></i>
+                                    <span>Sent to {{ implode(' · ', $sos->assignedTeamCodes()) }}</span>
+                                </div>
+                            @endif
                         </div>
 
                         @if($sos->ai_analysis)
@@ -729,6 +741,17 @@
                             <button type="button" class="btn-decline" data-bs-toggle="modal" data-bs-target="#declineModal{{ $sos->id }}">
                                 <i class="bi bi-x-lg"></i> Decline
                             </button>
+                        </div>
+                        @php
+                            $sosTeams = $sos->defaultTeams();
+                            $sosTeamText = count($sosTeams) > 1
+                                ? implode(', ', array_slice($sosTeams, 0, -1)) . ' and ' . end($sosTeams)
+                                : ($sosTeams[0] ?? 'SARS');
+                        @endphp
+                        <div class="dispatch-hint">
+                            <i class="bi bi-people"></i>
+                            Approve sends it to <strong>{{ $sosTeamText }}</strong>.
+                            <a href="{{ route('sos.detail', $sos->id) }}">Choose other teams or add notes for the team</a>
                         </div>
                     </div>
                 </div>

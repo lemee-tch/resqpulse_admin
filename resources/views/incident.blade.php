@@ -216,6 +216,9 @@
         .prio-input:focus-visible + .prio-choice { outline: 3px solid #1a3c8f; outline-offset: 2px; }
         .approve-intro { font-size: .9rem; color: #374151; }
         .approve-note  { font-size: .8rem; color: #6b7280; }
+        .approve-team  { font-size: .82rem; color: #374151; background: #f3f4f6; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+        /* Active tab: the team(s) it was sent to, under the status. */
+        .row-teams { font-size: .72rem; color: #6b7280; margin-top: 4px; white-space: nowrap; font-weight: 600; }
 
         /* Note at the top of the Pending and For Review tabs. */
         .tab-note {
@@ -521,6 +524,7 @@
                                     <form action="{{ route('incident.approve', $inc->id) }}" method="POST" class="approve-form"
                                           data-type="{{ $inc->emergency_type }}"
                                           data-reporter="{{ $reporterName }}"
+                                          data-teams="{{ implode(', ', $inc->defaultTeams()) }}"
                                           data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
                                         @csrf
                                         {{-- Filled in by the Approve dialog (Critical / High / Low). --}}
@@ -687,7 +691,12 @@
                                 @endif
                             </td>
                             <td class="td-location">{{ $inc->location ?: '—' }}</td>
-                            <td><span class="{{ $statusBadge }}">{{ $statusLabel }}</span></td>
+                            <td>
+                                <span class="{{ $statusBadge }}">{{ $statusLabel }}</span>
+                                @if($inc->assignedTeamCodes())
+                                    <div class="row-teams" title="Response team"><i class="bi bi-people"></i> {{ implode(' · ', $inc->assignedTeamCodes()) }}</div>
+                                @endif
+                            </td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
                             <td class="td-action"><a href="{{ route('incident.detail', $inc->id) }}" class="btn-view" onclick="event.stopPropagation()">View <i class="bi bi-chevron-right"></i></a></td>
                         </tr>
@@ -1107,6 +1116,9 @@
             e.preventDefault();
 
             const type = form.dataset.type || 'report';
+            // The usual team(s) for this type. Other teams, notes for the
+            // team and the responders on record are on Incident Details.
+            const teams = form.dataset.teams || 'the responders';
             const priorityField = form.querySelector('input[name="priority"]');
             const current = priorityField.value;
             const notifiesCitizen = form.dataset.notifiesCitizen === '1';
@@ -1122,6 +1134,7 @@
                 title: 'Approve this report?',
                 html: `<div class="approve-intro">Choose the priority of this <strong>${escapeHtml(type)}</strong> report. The responders will see it.</div>
                        <div class="prio-choices" role="radiogroup" aria-label="Priority">${choices}</div>
+                       <div class="approve-team">Goes to <strong>${escapeHtml(teams)}</strong>. To choose other teams or add notes for the team, open <strong>View</strong>.</div>
                        <div class="approve-note">${notifyLine}</div>`,
                 showCancelButton: true,
                 confirmButtonText: 'Approve &amp; Send',

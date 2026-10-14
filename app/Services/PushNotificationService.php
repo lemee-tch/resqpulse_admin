@@ -155,23 +155,34 @@ class PushNotificationService
     }
 
     /**
-     * Entry point called right after an incident/SOS is created. Figures
-     * out which agency (or agencies) should be notified and sends the
-     * push. Best-effort — this never throws back to the caller, since a
-     * notification failure should never undo a saved report.
+     * Sends the incident to the responders — called when the admin
+     * verifies it (Admin\IncidentController::approve()), and again with
+     * $onlyAgencies when the admin adds a team later (updateAssignment()),
+     * so only the newly added team is notified.
+     *
+     * Goes to the teams the admin assigned (assigned_teams). Incidents
+     * approved before teams were assigned fall back to the usual routing
+     * by type (AGENCY_MAP). Best-effort — this never throws back to the
+     * caller, since a notification failure should never undo a saved
+     * report.
      */
-    public function dispatchToRespondersForIncident(Incident $incident): void
+    public function dispatchToRespondersForIncident(Incident $incident, ?array $onlyAgencies = null): void
     {
         try {
-            // AI-detected type (only ever set on SOS reports with a
-            // classified photo) takes priority over the raw
-            // emergency_type, so a photo that looks like a fire also
-            // notifies BFP even though the type on the record is
-            // literally "SOS Emergency". Falls back to the plain
-            // emergency_type for regular (non-SOS) reports.
-            $routingType = $incident->ai_detected_type ?? $incident->emergency_type;
-
-            $agencies = self::agenciesFor($routingType);
+            if ($onlyAgencies !== null) {
+                $agencies = $onlyAgencies;
+            } elseif (is_array($incident->assigned_teams) && $incident->assigned_teams !== []) {
+                $agencies = $incident->assigned_teams;
+            } else {
+                // AI-detected type (only ever set on SOS reports with a
+                // classified photo) takes priority over the raw
+                // emergency_type, so a photo that looks like a fire also
+                // notifies BFP even though the type on the record is
+                // literally "SOS Emergency". Falls back to the plain
+                // emergency_type for regular (non-SOS) reports.
+                $routingType = $incident->ai_detected_type ?? $incident->emergency_type;
+                $agencies = self::agenciesFor($routingType);
+            }
 
             $isSos = $incident->emergency_type === 'SOS Emergency';
             $title = $isSos ? '🆘 SOS Emergency Alert' : "🚨 New {$incident->emergency_type} Report";
@@ -181,14 +192,21 @@ class PushNotificationService
             if (! $isSos && $incident->priority) {
                 $title .= ' — ' . ucfirst($incident->priority) . ' priority';
             }
+            if ($onlyAgencies !== null) {
+                $title = ($isSos ? '🆘 SOS' : "🚨 {$incident->emergency_type}") . ' — your team was added';
+            }
 
             $bodyParts = [$incident->location];
             if ($incident->description) {
                 $bodyParts[] = Str::limit($incident->description, 80);
             }
+            // The admin's instructions for the team, if any.
+            if (filled($incident->assignment_notes)) {
+                $bodyParts[] = 'MDRRMO: ' . Str::limit($incident->assignment_notes, 80);
+            }
             $body = implode(' — ', $bodyParts);
 
-            foreach ($agencies as $agency) {
+            foreach (array_unique($agencies) as $agency) {
                 // Isolated per agency — one agency's dispatch failing
                 // (for whatever reason) should never stop the others
                 // from being notified.
@@ -203,9 +221,8 @@ class PushNotificationService
             }
         } catch (\Throwable $e) {
             // Final safety net — this method must never be able to throw
-            // back into IncidentController::store()/sos(). The incident
-            // is already saved by the time this runs; nothing here should
-            // ever be able to turn a successful report into a failed one.
+            // back into the admin's approve/assign request. The incident
+            // is already saved by the time this runs.
             Log::error('Responder dispatch failed unexpectedly', [
                 'incident_id' => $incident->id ?? null,
                 'error' => $e->getMessage(),

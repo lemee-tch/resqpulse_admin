@@ -1,16 +1,33 @@
+{{--
+    Incident Details — and SOS Details (sos-details.blade.php shows this same
+    page with $isSos = true).
+
+    Laid out like the panel's prototype ("Incident Detail — the admin
+    workspace"): what happened on the left, what the admin does on the
+    right.
+
+      left   Incident Summary & Reporter · Location · Description &
+             Attachments · Responders' Report · Activity Timeline
+      right  Administrative Actions (changes with the stage: Verify &
+             Assign / Response Assignment / Review the Final report /
+             resolved / declined) · Response Assignment · Internal Note
+--}}
+@php
+    $isSos = $isSos ?? $incident->isSos();
+@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RESQPULSE – Incident Details</title>
+    <title>RESQPULSE – {{ $isSos ? 'SOS Alert' : 'Incident Details' }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
+        body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; color: #111827; }
 
         /* ── SIDEBAR ── */
         .sidebar {
@@ -32,97 +49,230 @@
 
         /* ── MAIN ── */
         .main-wrap { margin-left: 250px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
-        .content { padding: 32px 36px; flex: 1; min-width: 0; }
+        .content { padding: 28px 36px 40px; flex: 1; min-width: 0; }
 
-        /* ── PAGE HEADER ── */
-        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-        .page-title { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1.5rem; color: #111827; }
-        .back-link { font-size: .83rem; font-weight: 600; color: #1a3c8f; text-decoration: none; display: flex; align-items: center; gap: 5px; transition: color .2s; }
+        .page-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+        .page-kicker { font-size: .78rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .08em; }
+        .back-link { font-size: .83rem; font-weight: 600; color: #1a3c8f; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
         .back-link:hover { color: #0d2e7a; }
 
-        /* ── INCIDENT BANNER ── */
-        .incident-banner {
-            border-radius: 12px; padding: 16px 22px;
-            display: flex; align-items: center; justify-content: space-between;
-            flex-wrap: wrap; gap: 10px; margin-bottom: 20px;
-            background: #6b7280; /* default: no priority */
+        /* ── HEADER: what it is, where it is in the process, who sent it ── */
+        .incident-head {
+            background: #fff; border: 1px solid #e5e7eb; border-left: 6px solid #9ca3af;
+            border-radius: 14px; padding: 18px 22px; margin-bottom: 18px;
+            display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
         }
-        .incident-banner.critical { background: #dc2626; }
-        .incident-banner.high     { background: #f97316; }
-        .incident-banner.low      { background: #3b82f6; }
+        .incident-head.prio-critical { border-left-color: #dc2626; }
+        .incident-head.prio-high     { border-left-color: #f97316; }
+        .incident-head.prio-low      { border-left-color: #3b82f6; }
+        .head-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+        .head-icon { width: 50px; height: 50px; border-radius: 12px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 1.55rem; flex-shrink: 0; }
+        .head-title { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1.55rem; line-height: 1.15; color: #111827; }
+        .head-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+        .head-meta { text-align: right; font-size: .78rem; color: #6b7280; line-height: 1.5; }
+        .head-meta strong { display: block; font-size: .92rem; color: #111827; font-weight: 700; }
 
-        .banner-left { display: flex; align-items: center; gap: 14px; }
-        .banner-icon { width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,.25); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; color: #fff; flex-shrink: 0; }
-        .banner-type { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1.15rem; color: #fff; }
-        .badge-priority { background: rgba(255,255,255,.25); color: #fff; font-size: .72rem; font-weight: 700; padding: 3px 12px; border-radius: 20px; letter-spacing: .3px; }
-        .banner-meta { display: flex; gap: 24px; flex-wrap: wrap; }
-        .banner-meta span { font-size: .78rem; color: rgba(255,255,255,.9); font-weight: 500; }
-        .banner-meta strong { color: #fff; font-weight: 700; }
+        .chip { display: inline-flex; align-items: center; gap: 5px; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap; }
+        .chip-pending  { background: #fffbeb; color: #b45309; border-color: #fcd34d; }
+        .chip-active   { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+        .chip-review   { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
+        .chip-resolved { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+        .chip-declined { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+        .chip-source   { background: #fff; color: #4b5563; border-color: #d1d5db; }
+        .chip-prio-critical { background: #dc2626; color: #fff; }
+        .chip-prio-high     { background: #f97316; color: #fff; }
+        .chip-prio-low      { background: #3b82f6; color: #fff; }
+        .chip-prio-unset    { background: #f3f4f6; color: #6b7280; border-color: #e5e7eb; }
 
-        /* ── THREE COLUMN GRID ──
-           minmax(0, ...) lets each track shrink below its content's
-           natural width instead of forcing the whole grid wider than
-           the viewport (the old bare `1fr`/`220px` tracks refused to
-           shrink past their min-content, so on laptop-width screens
-           the grid overflowed the page and the right-most panel got
-           sliced off with no scrollbar). */
-        .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 220px); gap: 16px; margin-bottom: 20px; }
-        .panel-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px 20px; min-width: 0; }
-        .panel-label { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1rem; color: #111827; margin-bottom: 12px; }
-
-        /* Location */
-        .location-addr { display: flex; align-items: center; gap: 6px; font-size: .82rem; color: #6b7280; margin-bottom: 10px; }
-        #detail-map { width: 100%; height: 160px; border-radius: 8px; overflow: hidden; }
-        .btn-gmaps { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; width: 100%; border: 1.5px solid #d1d5db; border-radius: 8px; padding: 8px; font-size: .8rem; font-weight: 600; color: #374151; background: #fff; cursor: pointer; text-decoration: none; transition: border-color .2s, color .2s; }
-        .btn-gmaps:hover { border-color: #1a3c8f; color: #1a3c8f; }
-
-        /* Details */
-        .detail-desc { font-size: .83rem; color: #4b5563; line-height: 1.6; margin-bottom: 14px; overflow-wrap: break-word; }
-        .detail-sub { font-size: .75rem; font-weight: 700; color: #111827; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .3px; }
-        .detail-val { font-size: .82rem; color: #6b7280; margin-bottom: 12px; overflow-wrap: break-word; }
-        .tag-guest {
-            display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 20px;
-            background: #fff7ed; color: #c2410c; font-size: .68rem; font-weight: 700;
-            letter-spacing: .3px; vertical-align: middle;
+        /* ── WORKSPACE: details left, actions right ── */
+        .workspace { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 18px; align-items: start; }
+        .ws-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+        .card-x { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px 20px; min-width: 0; }
+        .card-title {
+            font-size: .74rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: #374151;
+            margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
         }
+        .card-title .title-note { font-size: .72rem; font-weight: 600; letter-spacing: 0; text-transform: none; color: #9ca3af; }
+        .card-x.card-actions { border-top: 4px solid #1a3c8f; }
+
+        /* Label / value rows */
+        .kv { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px 14px; font-size: .86rem; }
+        .kv dt { color: #6b7280; font-weight: 500; }
+        .kv dd { margin: 0; color: #111827; font-weight: 500; overflow-wrap: anywhere; }
+        .kv .muted { color: #9ca3af; font-weight: 500; }
+        .ok   { color: #047857; font-weight: 700; }
+        .warn { color: #b45309; font-weight: 700; }
+        .bad  { color: #b91c1c; font-weight: 700; }
         .call-link { color: #1a3c8f; font-weight: 700; text-decoration: none; white-space: nowrap; }
         .call-link:hover { text-decoration: underline; }
+        .small-note { font-size: .78rem; color: #6b7280; line-height: 1.5; }
 
-        /* Review before dispatch: notice + Approve / Decline (same look as
-           the SOS details page). */
-        .review-banner {
-            display: flex; align-items: flex-start; gap: 10px;
-            background: #fef3c7; border: 1px solid #fde68a; color: #92400e;
-            border-radius: 10px; padding: 12px 16px; font-size: .82rem; line-height: 1.5;
-            margin-bottom: 14px;
+        /* Location */
+        #detail-map { width: 100%; height: 210px; border-radius: 10px; overflow: hidden; background: #eef1f6; margin-top: 14px; }
+        .map-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+        .btn-soft {
+            display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid #d1d5db; border-radius: 8px;
+            padding: 7px 12px; font-size: .8rem; font-weight: 600; color: #374151; background: #fff; text-decoration: none; cursor: pointer;
         }
-        .quick-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
-        .btn-quick {
-            display: flex; align-items: center; gap: 8px;
-            border: none; border-radius: 10px; padding: 12px 18px;
-            font-family: 'Barlow', sans-serif; font-weight: 700; font-size: .88rem;
-            cursor: pointer; text-decoration: none; transition: opacity .2s, box-shadow .2s;
+        .btn-soft:hover { border-color: #1a3c8f; color: #1a3c8f; }
+
+        /* Description & photos (each photo shows Loading… / the photo / Couldn't load · Retry) */
+        .desc-text { font-size: .9rem; line-height: 1.65; color: #1f2937; overflow-wrap: anywhere; white-space: pre-line; }
+        .sub-label { font-size: .74rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .05em; margin: 16px 0 8px; }
+        .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+        .photo-tile {
+            position: relative; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden;
+            background: #f3f4f6; border: 1.5px dashed #d1d5db; cursor: pointer; padding: 0;
         }
-        .btn-quick:hover { opacity: .9; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
-        .btn-approve-lg { background: #1a3c8f; color: #fff; }
-        .btn-decline-lg { background: #fff; color: #dc2626; border: 1.5px solid #dc2626; }
-        .btn-decline-lg:hover { background: #dc2626; color: #fff; }
-        /* For Review: the responders' Final report is waiting for the admin. */
-        .review-banner--report   { background: #f5f3ff; border-color: #ddd6fe; color: #5b21b6; }
-        .review-banner--returned { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
-        .review-banner--manual   { background: #eef2ff; border-color: #c7d2fe; color: #3730a3; }
-        .quick-actions form { margin: 0; }
-        .btn-report-lg  { background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; }
-        .btn-report-lg:hover { color: #991b1b; }
-        .btn-resolve-lg { background: #10b981; color: #fff; }
-        .btn-return-lg  { background: #fff; color: #b45309; border: 1.5px solid #f59e0b; }
-        .btn-return-lg:hover { background: #f59e0b; color: #fff; }
-        .tag-manual {
-            display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 20px;
-            background: #e0e7ff; color: #3730a3; font-size: .68rem; font-weight: 700;
-            letter-spacing: .3px; vertical-align: middle;
+        .photo-tile img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .25s; display: block; }
+        .photo-tile.is-loaded { border-style: solid; border-color: #e5e7eb; }
+        .photo-tile.is-loaded img { opacity: 1; }
+        .photo-tile.is-loaded:hover { box-shadow: 0 0 0 3px #c7d2fe; }
+        .photo-state {
+            position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 4px; font-size: .76rem; color: #6b7280; text-align: center; padding: 6px;
         }
-        .map-note { font-size: .72rem; color: #9ca3af; margin-top: 6px; }
+        .photo-tile.is-loaded .photo-state { display: none; }
+        .photo-state .when-failed { display: none; }
+        .photo-tile.is-failed .photo-state .when-loading { display: none; }
+        .photo-tile.is-failed .photo-state .when-failed { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .photo-retry { background: none; border: none; color: #1a3c8f; font-weight: 700; text-decoration: underline; font-size: .76rem; cursor: pointer; }
+        .ai-note { margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; background: #eef2ff; color: #3730a3; border-radius: 8px; padding: 9px 12px; font-size: .8rem; line-height: 1.5; }
+
+        /* Responders' report */
+        .report-box { border: 1.5px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .report-box .pdf-icon { font-size: 1.7rem; color: #dc2626; line-height: 1; }
+        .report-box .meta { flex: 1; min-width: 160px; }
+        .report-box .name { font-size: .88rem; font-weight: 700; color: #111827; }
+        .report-box .sub { font-size: .76rem; color: #6b7280; margin-top: 2px; }
+        .tag { display: inline-block; margin-left: 6px; font-size: .66rem; font-weight: 800; padding: 2px 8px; border-radius: 10px; vertical-align: middle; }
+        .tag-initial { background: #fef3c7; color: #92400e; }
+        .tag-final   { background: #d1fae5; color: #065f46; }
+        .narrative { margin-top: 12px; background: #f9fafb; border-left: 3px solid #10b981; border-radius: 8px; padding: 10px 12px; font-size: .85rem; line-height: 1.6; color: #1f2937; white-space: pre-line; overflow-wrap: anywhere; }
+        .count-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+        .count-pill { font-size: .75rem; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: #f3f4f6; color: #374151; }
+        .count-pill.has { background: #fee2e2; color: #991b1b; }
+        .res-photo { width: 120px; height: 90px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; cursor: pointer; margin-top: 12px; }
+
+        /* Notices inside cards */
+        .notice { display: flex; gap: 9px; align-items: flex-start; border-radius: 10px; padding: 10px 12px; font-size: .8rem; line-height: 1.5; margin-bottom: 14px; }
+        .notice i { margin-top: 1px; }
+        .notice-info     { background: #eff6ff; color: #1e40af; }
+        .notice-pending  { background: #fffbeb; color: #92400e; }
+        .notice-review   { background: #f5f3ff; color: #5b21b6; }
+        .notice-returned { background: #fff7ed; color: #9a3412; }
+        .notice-ok       { background: #ecfdf5; color: #065f46; }
+        .notice-bad      { background: #fef2f2; color: #991b1b; }
+
+        /* ── ADMINISTRATIVE ACTIONS ── */
+        .field { margin-bottom: 15px; }
+        .field-label { display: block; font-size: .8rem; font-weight: 700; color: #374151; margin-bottom: 6px; }
+        .field-label .req { color: #dc2626; font-weight: 700; }
+        .field-label .opt { color: #9ca3af; font-weight: 500; }
+        .field-help { font-size: .74rem; color: #9ca3af; margin-top: 5px; line-height: 1.45; }
+        .f-input {
+            width: 100%; border: 1.5px solid #d1d5db; border-radius: 8px; padding: 8px 11px;
+            font-size: .85rem; font-family: 'Inter', sans-serif; color: #111827; background: #fafafa; resize: vertical;
+        }
+        .f-input:focus { outline: none; border-color: #1a3c8f; background: #fff; }
+        .fixed-value { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; font-weight: 700; color: #b91c1c; background: #fef2f2; border-radius: 8px; padding: 7px 11px; }
+
+        /* Priority — pick one */
+        .choice-row { display: flex; gap: 6px; flex-wrap: wrap; }
+        .choice-input { position: absolute; opacity: 0; pointer-events: none; }
+        .prio-choice {
+            flex: 1; min-width: 72px; display: flex; align-items: center; justify-content: center; gap: 5px;
+            margin: 0; padding: 8px 6px; border-radius: 9px; border: 2px solid currentColor; background: #fff;
+            cursor: pointer; user-select: none; font-family: 'Barlow', sans-serif; font-weight: 800; font-size: .9rem;
+            transition: background .15s, color .15s;
+        }
+        .prio-choice i { display: none; }
+        .prio-choice.prio-critical { color: #dc2626; }
+        .prio-choice.prio-high     { color: #f97316; }
+        .prio-choice.prio-low      { color: #3b82f6; }
+        .choice-input:checked + .prio-choice { color: #fff; }
+        .choice-input:checked + .prio-choice i { display: inline; }
+        .choice-input:checked + .prio-choice.prio-critical { background: #dc2626; border-color: #dc2626; }
+        .choice-input:checked + .prio-choice.prio-high     { background: #f97316; border-color: #f97316; }
+        .choice-input:checked + .prio-choice.prio-low      { background: #3b82f6; border-color: #3b82f6; }
+        .choice-input:focus-visible + label { outline: 3px solid #1a3c8f; outline-offset: 2px; }
+
+        /* Response team — pick one or more */
+        .team-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+        .team-choice {
+            position: relative;
+            display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 10px;
+            border: 1.5px solid #d1d5db; border-radius: 9px; background: #fff; cursor: pointer; user-select: none;
+            transition: border-color .15s, background .15s;
+        }
+        .team-choice .tick {
+            width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid #9ca3af; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center; color: #fff; font-size: .75rem;
+        }
+        .team-choice .code { font-weight: 800; font-size: .85rem; color: #111827; }
+        .team-choice .full { display: block; font-size: .68rem; color: #6b7280; line-height: 1.2; }
+        .choice-input:checked + .team-choice { border-color: #1a3c8f; background: #eef2ff; }
+        .choice-input:checked + .team-choice .tick { background: #1a3c8f; border-color: #1a3c8f; }
+        .team-choice .new-tag {
+            display: none; position: absolute; top: -9px; right: 8px;
+            font-size: .6rem; font-weight: 800; color: #047857; background: #d1fae5; border: 1px solid #a7f3d0;
+            border-radius: 8px; padding: 1px 6px; white-space: nowrap;
+        }
+        .team-choice.is-new .new-tag { display: inline-block; }
+
+        .action-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+        .btn-x {
+            display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+            border-radius: 9px; padding: 10px 16px; font-family: 'Barlow', sans-serif; font-weight: 800; font-size: .92rem;
+            cursor: pointer; text-decoration: none; border: 1.5px solid transparent; transition: background .15s, box-shadow .15s, opacity .15s;
+        }
+        .btn-x:disabled { opacity: .45; cursor: not-allowed; }
+        .btn-primary-x { background: #1a3c8f; color: #fff; flex: 1; }
+        .btn-primary-x:hover:not(:disabled) { background: #0d2e7a; color: #fff; box-shadow: 0 4px 12px rgba(26,60,143,.25); }
+        .btn-green-x { background: #10b981; color: #fff; }
+        .btn-green-x:hover { background: #059669; color: #fff; }
+        .btn-outline-x { background: #fff; color: #1a3c8f; border-color: #1a3c8f; }
+        .btn-outline-x:hover { background: #eef2ff; color: #1a3c8f; }
+        .btn-danger-x { background: #fff; color: #dc2626; border-color: #dc2626; }
+        .btn-danger-x:hover { background: #dc2626; color: #fff; }
+        .btn-amber-x { background: #fff; color: #b45309; border-color: #f59e0b; }
+        .btn-amber-x:hover { background: #f59e0b; color: #fff; }
+        .btn-block { width: 100%; }
+        .stack { display: flex; flex-direction: column; gap: 8px; }
+        .stack form { margin: 0; }
+        .action-help { font-size: .75rem; color: #6b7280; line-height: 1.5; margin-top: 10px; }
+        .action-help i { color: #9ca3af; }
+        .why-disabled { font-size: .74rem; color: #b45309; margin-top: 6px; }
+
+        /* Response assignment — who's on it */
+        .team-member { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .team-member + .team-member { margin-top: 6px; }
+        .role-tag { font-size: .62rem; font-weight: 800; padding: 1px 7px; border-radius: 8px; background: #e0e7ff; color: #3730a3; }
+        .role-tag.backup { background: #f3f4f6; color: #4b5563; }
+
+        /* Internal note */
+        .note-box { background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 8px; padding: 10px 12px; font-size: .84rem; line-height: 1.55; color: #374151; white-space: pre-line; overflow-wrap: anywhere; }
+
+        /* ── ACTIVITY TIMELINE ── */
+        .tl { list-style: none; margin: 0; padding: 2px 0 0 0; }
+        .tl li { position: relative; padding: 0 0 16px 26px; }
+        .tl li:last-child { padding-bottom: 0; }
+        .tl li::before { content: ''; position: absolute; left: 7px; top: 16px; bottom: -2px; width: 2px; background: #e5e7eb; }
+        .tl li:last-child::before { display: none; }
+        .tl .dot {
+            position: absolute; left: 0; top: 2px; width: 16px; height: 16px; border-radius: 50%;
+            background: #fff; border: 2px solid #d1d5db; display: flex; align-items: center; justify-content: center; font-size: .6rem; color: #fff;
+        }
+        .tl li.done .dot    { background: #10b981; border-color: #10b981; }
+        .tl li.current .dot { background: #fff; border-color: #f59e0b; box-shadow: 0 0 0 3px #fef3c7; }
+        .tl li.bad .dot     { background: #dc2626; border-color: #dc2626; }
+        .tl li.back .dot    { background: #f97316; border-color: #f97316; }
+        .tl .tl-label { font-size: .86rem; font-weight: 700; color: #111827; }
+        .tl .tl-time { font-weight: 500; color: #6b7280; font-size: .8rem; margin-left: 4px; }
+        .tl .tl-sub { font-size: .8rem; color: #6b7280; margin-top: 1px; line-height: 1.45; overflow-wrap: anywhere; }
+        .tl li.todo .tl-label { color: #9ca3af; font-weight: 600; }
+
+        /* Modal forms (decline) */
         .form-label-m { font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 5px; display: block; }
         .form-control-m {
             width: 100%; border: 1.5px solid #d1d5db; border-radius: 8px;
@@ -137,217 +287,68 @@
         }
         .btn-decline-confirm:hover { background: #b91c1c; }
 
-        /* Approve dialog — the admin chooses the priority (same look as
-           the Approve dialog on the Incidents page). */
-        .prio-choices { display: flex; gap: 8px; margin: 2px 0 12px; }
-        .prio-input { position: absolute; opacity: 0; pointer-events: none; }
-        .prio-choice {
-            flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
-            margin: 0; padding: 11px 6px; border-radius: 10px; border: 2px solid currentColor;
-            background: #fff; cursor: pointer; user-select: none;
-            font-family: 'Barlow', sans-serif; font-weight: 800; font-size: .95rem;
-            transition: background .15s, color .15s;
-        }
-        .prio-choice i { display: none; }
-        .prio-choice.prio-critical { color: #dc2626; }
-        .prio-choice.prio-high     { color: #f97316; }
-        .prio-choice.prio-low      { color: #3b82f6; }
-        .prio-choice.prio-critical:hover { background: #fef2f2; }
-        .prio-choice.prio-high:hover     { background: #fff7ed; }
-        .prio-choice.prio-low:hover      { background: #eff6ff; }
-        .prio-input:checked + .prio-choice { color: #fff; }
-        .prio-input:checked + .prio-choice i { display: inline; }
-        .prio-input:checked + .prio-choice.prio-critical { background: #dc2626; border-color: #dc2626; }
-        .prio-input:checked + .prio-choice.prio-high     { background: #f97316; border-color: #f97316; }
-        .prio-input:checked + .prio-choice.prio-low      { background: #3b82f6; border-color: #3b82f6; }
-        .prio-input:focus-visible + .prio-choice { outline: 3px solid #1a3c8f; outline-offset: 2px; }
-        .btn-approve-confirm {
-            background: #10b981; color: #fff; border: none; border-radius: 8px;
-            padding: 9px 22px; font-family: 'Barlow', sans-serif; font-weight: 700;
-            font-size: .88rem; cursor: pointer; transition: background .2s;
-        }
-        .btn-approve-confirm:hover { background: #059669; }
-        .btn-approve-confirm:disabled { background: #a7f3d0; cursor: not-allowed; }
-        .prio-hint { font-size: .78rem; color: #9ca3af; margin-right: auto; }
-
-        /* Photos */
-        .photos-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
-        .photo-thumb { width: 68px; height: 52px; border-radius: 6px; object-fit: cover; cursor: pointer; border: 2px solid transparent; transition: border-color .2s; }
-        .photo-thumb:hover { border-color: #1a3c8f; }
-
-        /* Action panel */
-        .action-panel { display: flex; flex-direction: column; gap: 8px; }
-        .btn-action { width: 100%; border: none; border-radius: 8px; padding: 10px 14px; font-family: 'Barlow', sans-serif; font-weight: 700; font-size: .85rem; cursor: pointer; transition: opacity .2s, box-shadow .2s; }
-        .btn-action:hover { opacity: .88; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
-        .btn-responding   { background: #f97316; color: #fff; }
-        .btn-resolved     { background: #10b981; color: #fff; }
-        .btn-note { width: 100%; background: #fff; color: #374151; border: 1.5px solid #d1d5db; border-radius: 8px; padding: 10px 14px; font-family: 'Barlow', sans-serif; font-weight: 700; font-size: .85rem; cursor: pointer; transition: border-color .2s; }
-        .btn-note:hover { border-color: #1a3c8f; color: #1a3c8f; }
-        .current-status { font-size: .75rem; color: #6b7280; text-align: center; margin-top: 2px; }
-        .dispatch-note { display: flex; align-items: flex-start; gap: 8px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 12px; font-size: .74rem; color: #1e40af; line-height: 1.5; margin-bottom: 4px; }
-        .dispatch-note i { margin-top: 1px; flex-shrink: 0; }
-
-        /* Timeline */
-        .timeline-title { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1rem; color: #111827; margin-bottom: 14px; }
-        .timeline { display: flex; flex-direction: column; gap: 0; }
-        .tl-row { display: flex; align-items: flex-start; gap: 12px; padding-bottom: 16px; position: relative; }
-        .tl-row:not(:last-child)::before { content: ''; position: absolute; left: 52px; top: 20px; bottom: 0; width: 2px; background: #e5e7eb; }
-        .tl-time { font-size: .75rem; color: #9ca3af; font-weight: 600; width: 42px; flex-shrink: 0; padding-top: 2px; }
-        .tl-dot { width: 12px; height: 12px; border-radius: 50%; background: #d1d5db; flex-shrink: 0; margin-top: 4px; }
-        .tl-dot.success { background: #10b981; }
-        .tl-dot.warning { background: #f97316; }
-        .tl-dot.danger  { background: #dc2626; }
-        .tl-dot.info    { background: #3b82f6; }
-        .tl-text { font-size: .82rem; color: #4b5563; line-height: 1.5; }
-
-        /* Admin notes */
-        .admin-notes-box { background: #f9fafb; border: 1.5px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #4b5563; line-height: 1.6; min-height: 60px; overflow-wrap: break-word; }
-
-        /* Resolution (submitted by the responder from the field) */
-        .resolution-notes-box { background: #ecfdf5; border: 1.5px solid #a7f3d0; border-left: 3px solid #10b981; border-radius: 8px; padding: 12px 14px; font-size: .82rem; color: #065f46; line-height: 1.6; min-height: 44px; overflow-wrap: break-word; }
-        .resolution-empty { font-size: .8rem; color: #9ca3af; font-style: italic; }
-        /* Responder-filed MDRRMC incident report (PDF) */
-        .report-pdf-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; margin-top: 6px; flex-wrap: wrap; }
-        .report-pdf-icon { font-size: 1.6rem; color: #dc2626; line-height: 1; }
-        .report-pdf-meta { flex: 1; min-width: 140px; }
-        .report-pdf-name { font-size: .82rem; font-weight: 700; color: #111827; }
-        .report-pdf-sub { font-size: .72rem; color: #6b7280; }
-        .report-pdf-btn { display: inline-flex; align-items: center; gap: 5px; border: 1.5px solid #d1d5db; border-radius: 8px; padding: 6px 11px; font-size: .78rem; font-weight: 600; color: #374151; background: #fff; text-decoration: none; }
-        .report-pdf-btn:hover { border-color: #1a3c8f; color: #1a3c8f; }
-        .report-type-tag { display: inline-block; margin-left: 6px; font-size: .65rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; vertical-align: middle; }
-        .report-type-tag.is-initial { background: #fef3c7; color: #92400e; }
-        .report-type-tag.is-final { background: #d1fae5; color: #065f46; }
-
         /* ── RESPONSIVE (mobile / tablet) ── */
-        .mobile-menu-btn {
-            display: none;
-            position: fixed;
-            top: 14px; left: 14px;
-            z-index: 300;
-            width: 42px; height: 42px;
-            border-radius: 10px;
-            border: none;
-            background: #1a3c8f;
-            color: #fff;
-            font-size: 1.2rem;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,.25);
-            cursor: pointer;
-        }
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,.45);
-            z-index: 150;
-        }
+        .mobile-menu-btn { display: none; }
+        .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 150; }
         .sidebar-overlay.show { display: block; }
 
-        /* ── Grid: ease from 3 columns down to 2, then 1, before the
-           sidebar itself collapses at 900px — this is what actually
-           keeps the "Details" / "Responding Team" / "Status" panels
-           from being squeezed off-screen on laptop-width windows. */
+        /* One column (tablets and phones): the summary first, then what to
+           do, then the rest — instead of the actions at the very bottom. */
         @media (max-width: 1150px) {
-            .detail-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+            .workspace { display: flex; flex-direction: column; gap: 16px; }
+            .ws-col { display: contents; }
+            .o-summary { order: 1; } .o-actions { order: 2; } .o-location { order: 3; }
+            .o-description { order: 4; } .o-report { order: 5; } .o-assignment { order: 6; }
+            .o-timeline { order: 7; } .o-note { order: 8; }
         }
-        @media (max-width: 700px) {
-            .detail-grid { grid-template-columns: minmax(0, 1fr); }
-        }
-
         @media (max-width: 900px) {
-            .mobile-menu-btn { display: flex; }
             .sidebar {
                 transform: translateX(-100%) !important;
                 transition: transform .25s ease;
                 z-index: 200;
-                width: 230px !important;
-                min-width: 230px !important;
-                max-width: 230px !important;
+                width: 230px !important; min-width: 230px !important; max-width: 230px !important;
             }
             .sidebar.open { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,.3); }
             .sidebar-nav a { white-space: normal !important; }
-            .main-wrap {
-                margin-left: 0 !important;
-                padding: 20px 16px 32px !important;
-                padding-bottom: 88px !important;
-            }
-            /* .main-wrap already supplies the horizontal gutter above —
-               drop .content's own left/right padding so the two don't
-               stack and eat extra width on a narrow screen. */
-            .content { padding: 32px 0; }
-            table { display: block; overflow-x: auto; white-space: nowrap; }
+            .main-wrap { margin-left: 0 !important; padding: 20px 16px 32px !important; padding-bottom: 88px !important; }
+            .content { padding: 8px 0 24px; }
             img, svg, canvas, iframe { max-width: 100%; }
         }
-
         @media (max-width: 560px) {
-            .main-wrap {
-                padding: 16px 12px 28px !important;
-                padding-bottom: 88px !important;
-            }
-            .content { padding: 32px 0; }
-            /* Shrink the location preview a bit further on small phones —
-               160px is fine at tablet/desktop widths but takes more
-               vertical room than it needs once the 3-column grid has
-               collapsed to a single column here. */
-            #detail-map { height: 130px; }
+            .main-wrap { padding: 16px 12px 28px !important; padding-bottom: 88px !important; }
+            .incident-head { padding: 14px 16px; }
+            .head-title { font-size: 1.3rem; }
+            .head-meta { text-align: left; }
+            .kv { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
+            .kv dd { margin-bottom: 8px; }
+            .team-grid { grid-template-columns: minmax(0, 1fr); }
+            #detail-map { height: 170px; }
         }
 
         /* ── App-style nav polish ── */
-        .sidebar-nav a {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 2px 10px;
-            border-radius: 10px;
-            border-left: none !important;
-        }
+        .sidebar-nav a { display: flex; align-items: center; gap: 10px; margin: 2px 10px; border-radius: 10px; border-left: none !important; }
         .sidebar-nav a i { font-size: 1rem; width: 18px; text-align: center; flex-shrink: 0; }
         .sidebar-nav a.active { border-left: none !important; background: rgba(255,255,255,.16) !important; }
 
         /* ── Bottom app tab bar (mobile only) ── */
         .bottom-tab-bar {
-            display: none;
-            position: fixed;
-            left: 0; right: 0; bottom: 0;
-            background: #fff;
-            border-top: 1px solid #e5e7eb;
-            box-shadow: 0 -2px 14px rgba(0,0,0,.08);
-            z-index: 250;
-            padding-bottom: env(safe-area-inset-bottom, 0);
+            display: none; position: fixed; left: 0; right: 0; bottom: 0;
+            background: #fff; border-top: 1px solid #e5e7eb; box-shadow: 0 -2px 14px rgba(0,0,0,.08);
+            z-index: 250; padding-bottom: env(safe-area-inset-bottom, 0);
         }
         .bottom-tab-bar a {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 2px;
-            padding: 8px 2px 7px;
-            color: #8a93a6;
-            text-decoration: none;
-            font-size: .62rem;
-            font-weight: 700;
-            letter-spacing: .2px;
-            position: relative;
+            flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 2px; padding: 8px 2px 7px; color: #8a93a6; text-decoration: none;
+            font-size: .62rem; font-weight: 700; letter-spacing: .2px; position: relative;
         }
         .bottom-tab-bar a i { font-size: 1.15rem; }
         .bottom-tab-bar a.active { color: #1a3c8f; }
         .bottom-tab-bar .tab-badge {
-            position: absolute;
-            top: 3px; right: calc(50% - 20px);
-            background: #dc2626;
-            color: #fff;
-            font-size: .58rem;
-            font-weight: 800;
-            line-height: 1;
-            padding: 2px 5px;
-            border-radius: 20px;
+            position: absolute; top: 3px; right: calc(50% - 20px);
+            background: #dc2626; color: #fff; font-size: .58rem; font-weight: 800; line-height: 1;
+            padding: 2px 5px; border-radius: 20px;
         }
-
-        @media (max-width: 900px) {
-            .bottom-tab-bar { display: flex; }
-        }
+        @media (max-width: 900px) { .bottom-tab-bar { display: flex; } }
     </style>
 </head>
 <body>
@@ -356,11 +357,11 @@
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 <nav class="bottom-tab-bar">
     <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i><span>Home</span></a>
-    <a href="{{ route('incident') }}" class="active"><i class="bi bi-clipboard2-pulse"></i><span>Incidents</span>
+    <a href="{{ route('incident') }}" class="{{ $isSos ? '' : 'active' }}"><i class="bi bi-clipboard2-pulse"></i><span>Incidents</span>
         @if(($pendingIncidentsCount ?? 0) > 0)
             <span class="tab-badge">{{ $pendingIncidentsCount }}</span>
         @endif</a>
-    <a href="{{ route('sos-alerts') }}"><i class="bi bi-exclamation-octagon-fill"></i><span>SOS</span>
+    <a href="{{ route('sos-alerts') }}" class="{{ $isSos ? 'active' : '' }}"><i class="bi bi-exclamation-octagon-fill"></i><span>SOS</span>
         @if(($pendingSosCount ?? 0) > 0)
             <span class="tab-badge">{{ $pendingSosCount }}</span>
         @endif</a>
@@ -369,77 +370,127 @@
 </nav>
 @include('partials.sidebar')
 
+@php
+    $stage      = $incident->stage;                 // pending | active | for_review | resolved
+    $isDeclined = (bool) $incident->declined_at;
+    $isManual   = $incident->isManualRecord();
+    $isGuest    = ! $incident->citizen_id && ! $isManual;
+    $reporter   = $incident->reporter_name;         // a guest's typed name too
+    $mobile     = $incident->reporter_mobile;
+    $priority   = $incident->priority;
+
+    $typeIcons = [
+        'Fire' => '🔥', 'Flood' => '🌊', 'Earthquake' => '🏚️', 'Accident' => '🚗',
+        'Medical Emergency' => '🚑', 'Landslide' => '⛰️', 'Other' => '⚠️',
+    ];
+    $icon = $isSos ? '🆘' : ($typeIcons[$incident->emergency_type] ?? '⚠️');
+
+    // Where it is in MDRRMO's process (same as the tabs).
+    [$stageText, $stageClass] = match (true) {
+        (bool) $incident->needs_review => ['Pending', 'chip-pending'],
+        $isDeclined                    => ['Declined', 'chip-declined'],
+        $stage === 'for_review'        => ['For Review', 'chip-review'],
+        $stage === 'resolved'          => ['Resolved', 'chip-resolved'],
+        default                        => ['Active · ' . $incident->status_label, 'chip-active'],
+    };
+
+    // Which tab "Back" opens.
+    $backTab = ($isDeclined && $isSos) ? 'declined'
+        : (['pending' => 'pending', 'active' => 'active', 'for_review' => 'for-review', 'resolved' => 'resolved'][$stage] ?? null);
+    $backUrl = $isSos
+        ? route('sos-alerts', $backTab ? ['tab' => $backTab] : [])
+        : route('incident', $backTab ? ['tab' => $backTab] : []);
+
+    // Resident account status.
+    $account = null;
+    if ($incident->citizen) {
+        $account = match ($incident->citizen->verification_status) {
+            'verified' => ['Verified ✓', 'ok'],
+            'rejected' => ['ID rejected', 'bad'],
+            default    => ['Not verified yet (ID under review)', 'warn'],
+        };
+    }
+
+    // Location: barangay, GPS pin, map.
+    $barangay = app(\App\Services\BarangayLocationService::class)->barangayFromText($incident->location);
+    $hasPin = $incident->latitude && $incident->longitude;
+    $approxPoint = (! $hasPin && $barangay) ? (\App\Services\BarangayLocationService::allCoordinates()[$barangay] ?? null) : null;
+    $lat = $incident->latitude  ?? ($approxPoint[0] ?? 15.8952);
+    $lng = $incident->longitude ?? ($approxPoint[1] ?? 120.6263);
+
+    // Photos the reporter sent: a JSON list (very old rows hold one plain path).
+    $photos = collect();
+    if ($incident->photo_path) {
+        $decoded = json_decode($incident->photo_path, true);
+        $photos = is_array($decoded) ? collect($decoded) : collect([$incident->photo_path]);
+    }
+    $photos = $photos->filter(fn ($p) => is_string($p) && $p !== '')->values();
+
+    // The responders' MDRRMC report (Initial or Final), or the one MDRRMO
+    // typed in for an incident handled outside the app.
+    $report = is_array($incident->report_data) ? $incident->report_data : null;
+    $reportIsInitial = $report && ($report['report_type'] ?? 'final') === 'initial';
+    $reportUpdatedAt = null;
+    if ($report && ! empty($report['updated_at'])) {
+        try {
+            $reportUpdatedAt = \Carbon\Carbon::parse($report['updated_at'])->setTimezone(config('app.timezone'));
+        } catch (\Throwable $e) {
+            $reportUpdatedAt = null;
+        }
+    }
+    $casualtyCounts = [];
+    foreach (['dead' => 'Dead', 'injured' => 'Injured', 'missing' => 'Missing'] as $key => $label) {
+        $casualtyCounts[$label] = count(array_filter((array) ($report['casualties'][$key] ?? []), 'is_array'));
+    }
+    $isReturned = $incident->status === 'responding' && $incident->report_returned_at && $incident->report_return_reason;
+
+    // Response team.
+    $teamOnIt     = $incident->responders->sortBy(fn ($r) => (string) $r->pivot->accepted_at)->values();
+    $assigned     = $incident->assignedTeamCodes();
+    $suggested    = $incident->defaultTeams();
+    $checkedTeams = (array) old('teams', $assigned ?: $suggested);
+    $teamList = function (array $teams) {
+        if (count($teams) <= 1) return $teams[0] ?? '';
+        return implode(', ', array_slice($teams, 0, -1)) . ' and ' . end($teams);
+    };
+    $firstAccepted = $teamOnIt->first()?->pivot?->accepted_at;
+@endphp
+
 <!-- ════ MAIN ════ -->
 <div class="main-wrap">
     <div class="content">
 
-        @php
-            $priority = $incident->priority ?? 'unset';
-            $priorityLabel = $incident->priority ? ucfirst($incident->priority) : 'No Priority Set';
-            // A guest's typed name and number — see Incident::getReporterNameAttribute().
-            $reporter = $incident->reporter_name;
-            $mobile = $incident->reporter_mobile;
-            $isManual = $incident->isManualRecord();
-            $isGuestReport = ! $incident->citizen_id && ! $isManual;
-            // An incident MDRRMO added by hand has no GPS pin — the map shows
-            // the middle of its barangay instead.
-            $hasPin = $incident->latitude && $incident->longitude;
-            $approxBarangay = null;
-            if (! $hasPin) {
-                $approxBarangay = app(\App\Services\BarangayLocationService::class)->barangayFromText($incident->location);
-            }
-            $approxPoint = $approxBarangay ? (\App\Services\BarangayLocationService::allCoordinates()[$approxBarangay] ?? null) : null;
-            $lat = $incident->latitude  ?? ($approxPoint[0] ?? 15.8952);
-            $lng = $incident->longitude ?? ($approxPoint[1] ?? 120.6263);
-            // Which Incidents tab this one is on, for "Back to Incidents".
-            $backTab = ['pending' => 'pending', 'active' => 'active', 'for_review' => 'for-review', 'resolved' => 'resolved'][$incident->stage] ?? null;
+        <div class="page-top">
+            <span class="page-kicker">{{ $isSos ? 'SOS Alert Details' : 'Incident Details' }}</span>
+            <a href="{{ $backUrl }}" class="back-link"><i class="bi bi-arrow-left"></i> Back to {{ $isSos ? 'SOS Alerts' : 'Incidents' }}</a>
+        </div>
 
-            // The responders' MDRRMC report (Initial or Final) — see
-            // Api\IncidentController::resolve() — or the one MDRRMO typed in
-            // for an incident handled outside the app.
-            $report = is_array($incident->report_data) ? $incident->report_data : null;
-            $reportIsInitial = $report && ($report['report_type'] ?? 'final') === 'initial';
-            $reportUpdatedAt = null;
-            if ($report && !empty($report['updated_at'])) {
-                try {
-                    $reportUpdatedAt = \Carbon\Carbon::parse($report['updated_at'])->setTimezone(config('app.timezone'));
-                } catch (\Throwable $e) {
-                    $reportUpdatedAt = null;
-                }
-            }
-            $isReturned = $incident->status === 'responding' && $incident->report_returned_at && $incident->report_return_reason;
-            $typeIcons = [
-                'Fire'              => '🔥',
-                'Flood'             => '🌊',
-                'Earthquake'        => '🏚️',
-                'Accident'          => '🚗',
-                'Medical Emergency' => '🚑',
-                'Landslide'         => '⛰️',
-                'Other'             => '⚠️',
-            ];
-            $icon = $typeIcons[$incident->emergency_type] ?? '⚠️';
-
-            // `photo_path` stores a JSON-encoded array of paths (e.g. '["a.jpg","b.jpg"]').
-            // Some very old rows may still have a single plain path string instead — handle both.
-            $detailPhotos = collect();
-            if ($incident->photo_path) {
-                $decodedPhotos = json_decode($incident->photo_path, true);
-                $detailPhotos = is_array($decodedPhotos) ? collect($decodedPhotos) : collect([$incident->photo_path]);
-            }
-        @endphp
-
-        <div class="page-header">
-            <div class="page-title">
-                Incident Details
+        <!-- HEADER -->
+        <div class="incident-head prio-{{ $priority ?: 'unset' }}">
+            <div class="head-left">
+                <div class="head-icon">{{ $icon }}</div>
+                <div style="min-width:0;">
+                    <h1 class="head-title">{{ $incident->display_type ?: 'Incident' }}</h1>
+                    <div class="head-badges">
+                        <span class="chip {{ $stageClass }}">{{ $stageText }}</span>
+                        <span class="chip chip-source">Source: {{ $incident->source_label }}</span>
+                        @if($priority)
+                            <span class="chip chip-prio-{{ $priority }}">{{ ucfirst($priority) }} priority</span>
+                        @else
+                            <span class="chip chip-prio-unset">No priority yet</span>
+                        @endif
+                    </div>
+                </div>
             </div>
-            <a href="{{ route('incident', $backTab ? ['tab' => $backTab] : []) }}" class="back-link">
-                <i class="bi bi-arrow-left"></i> Back to Incidents
-            </a>
+            <div class="head-meta">
+                <strong>{{ $incident->created_at->format('M d, Y — g:i A') }}</strong>
+                {{ $isManual ? 'when it happened' : 'reported ' . $incident->created_at->diffForHumans() }}
+            </div>
         </div>
 
         @if(session('success'))
             <div class="alert alert-success" style="border-radius:10px;font-size:.85rem;margin-bottom:16px;">
-                {{ session('success') }}
+                <i class="bi bi-check-circle-fill me-1"></i> {{ session('success') }}
             </div>
         @endif
         @if($errors->any())
@@ -448,442 +499,638 @@
             </div>
         @endif
 
-        <!-- INCIDENT BANNER -->
-        <div class="incident-banner {{ $priority }}">
-            <div class="banner-left">
-                <div class="banner-icon">{{ $icon }}</div>
-                <div class="banner-type">{{ $incident->emergency_type }}</div>
-                <span class="badge-priority">{{ $priorityLabel }}</span>
-            </div>
-            <div class="banner-meta">
-                <span><strong>Status</strong> {{ $incident->status_label }}</span>
-                <span><strong>{{ $isManual ? 'Happened' : 'Reported' }}</strong> {{ $incident->created_at->format('M d, Y g:i A') }}</span>
-                <span><strong>Reporter</strong> {{ $reporter }}</span>
-            </div>
-        </div>
+        <div class="workspace">
 
-        {{-- Every new report waits for an admin before responders are
-             notified (Api\IncidentController::store sets needs_review). --}}
-        @if($incident->needs_review)
-            <div class="review-banner">
-                <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>
-                    This report is waiting for your review. Check the photos, description and reporter below.
-                    @if($mobile)
-                        You can call {{ $reporter }} at <a href="tel:{{ $mobile }}" class="call-link">{{ $mobile }}</a> to confirm.
-                    @endif
-                    Responders are <strong>not</strong> notified until you approve it and choose its priority.
-                </span>
-            </div>
+            <!-- ═══════════ LEFT: what happened ═══════════ -->
+            <div class="ws-col">
 
-            <div class="quick-actions">
-                {{-- Opens the Approve dialog, where the admin picks the priority. --}}
-                <button type="button" class="btn-quick btn-approve-lg" data-bs-toggle="modal" data-bs-target="#approveModal">
-                    <i class="bi bi-check-circle-fill"></i> Approve &amp; Send to Responders
-                </button>
-                <button type="button" class="btn-quick btn-decline-lg" data-bs-toggle="modal" data-bs-target="#declineModal">
-                    <i class="bi bi-x-circle-fill"></i> Decline
-                </button>
-            </div>
-        @endif
+                <!-- INCIDENT SUMMARY & REPORTER -->
+                <section class="card-x o-summary">
+                    <div class="card-title">Incident Summary &amp; Reporter</div>
+                    <dl class="kv">
+                        <dt>Type</dt>
+                        <dd>{{ $icon }} {{ $incident->display_type }}</dd>
 
-        {{-- For Review: the responders sent their Final report. The admin
-             accepts it (Mark as Resolved) or sends it back with what needs
-             fixing — Admin\IncidentController::confirmResolved() / returnReport(). --}}
-        @if($incident->isForReview())
-            <div class="review-banner review-banner--report">
-                <i class="bi bi-clipboard2-check" style="margin-top:1px;"></i>
-                <span>
-                    The responding team sent their <strong>Final report</strong>@if($incident->report_submitted_at) on {{ $incident->report_submitted_at->format('M d, Y g:i A') }}@endif.
-                    Check it — narrative, casualties, actions taken and photo — then mark the incident as resolved,
-                    or return the report to the responders with what needs fixing.
-                </span>
-            </div>
+                        <dt>{{ $isManual ? 'Happened' : 'Date / time' }}</dt>
+                        <dd>{{ $incident->created_at->format('M d, Y — g:i A') }}</dd>
 
-            <div class="quick-actions">
-                @if($report)
-                    <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="btn-quick btn-report-lg">
-                        <i class="bi bi-file-earmark-pdf-fill"></i> Open Final Report
-                    </a>
-                @endif
-                <form action="{{ route('incident.confirm-resolved', $incident->id) }}" method="POST" class="resolve-form"
-                      data-type="{{ $incident->emergency_type }}"
-                      data-notifies-citizen="{{ $incident->citizen_id ? '1' : '0' }}">
-                    @csrf
-                    <button type="submit" class="btn-quick btn-resolve-lg">
-                        <i class="bi bi-check2-circle"></i> Mark as Resolved
-                    </button>
-                </form>
-                <button type="button" class="btn-quick btn-return-lg" data-bs-toggle="modal" data-bs-target="#returnModal">
-                    <i class="bi bi-arrow-return-left"></i> Return to Responders
-                </button>
-            </div>
-        @elseif($isReturned)
-            <div class="review-banner review-banner--returned">
-                <i class="bi bi-arrow-return-left" style="margin-top:1px;"></i>
-                <span>
-                    You sent the report back to the responders on {{ $incident->report_returned_at->format('M d, Y g:i A') }}:
-                    <strong>{{ rtrim($incident->report_return_reason, '. ') }}</strong>.
-                    It comes back to <strong>For Review</strong> when they send it again.
-                </span>
-            </div>
-        @elseif($isManual)
-            <div class="review-banner review-banner--manual">
-                <i class="bi bi-pencil-square" style="margin-top:1px;"></i>
-                <span>
-                    This incident was handled outside the app and added by MDRRMO{{ $incident->resolvedBy ? ' (' . $incident->resolvedBy->name . ')' : '' }}
-                    @if($incident->reported_via) — reported to MDRRMO via <strong>{{ strtolower($incident->reported_via) }}</strong>@endif.
-                </span>
-            </div>
-        @endif
+                        <dt>Reporter</dt>
+                        <dd>
+                            {{ $reporter }}
+                            @if($mobile)
+                                · <a href="tel:{{ $mobile }}" class="call-link"><i class="bi bi-telephone-fill"></i> {{ $mobile }}</a>
+                            @endif
+                        </dd>
 
-        <!-- THREE COLUMN GRID -->
-        <div class="detail-grid">
+                        <dt>Account</dt>
+                        <dd>
+                            @if($account)
+                                <span class="{{ $account[1] }}">{{ $account[0] }}</span>
+                            @elseif($isManual)
+                                <span class="muted">None — added by MDRRMO{{ $incident->resolvedBy ? ' (' . $incident->resolvedBy->name . ')' : '' }}</span>
+                            @elseif($incident->citizen_id)
+                                <span class="muted">Account removed</span>
+                            @else
+                                <span class="warn">Guest — no account</span>
+                                <div class="small-note">The name and number were typed in before sending. Call to confirm.</div>
+                            @endif
+                        </dd>
 
-            <!-- LOCATION -->
-            <div class="panel-card">
-                <div class="panel-label">Location</div>
-                <div class="location-addr">
-                    <i class="bi bi-geo-alt-fill" style="color:#dc2626;"></i>
-                    {{ $incident->location }}
-                </div>
-                <div id="detail-map"></div>
-                @unless($hasPin)
-                    <div class="map-note">
-                        <i class="bi bi-info-circle"></i>
-                        {{ $approxBarangay ? "No GPS pin — the map shows the middle of Brgy. {$approxBarangay}." : 'No GPS pin for this incident.' }}
-                    </div>
-                @endunless
-                <a href="https://www.google.com/maps?q={{ $lat }},{{ $lng }}" target="_blank" class="btn-gmaps">
-                    <i class="bi bi-map"></i> Open in Google Maps
-                </a>
-            </div>
+                        <dt>Source</dt>
+                        <dd>
+                            @if($isManual)
+                                Handled outside the app — reported to MDRRMO via {{ strtolower($incident->reported_via ?: 'other') }}
+                            @elseif($isSos)
+                                SOS button in the residents app
+                            @else
+                                Report Emergency in the residents app
+                            @endif
+                        </dd>
 
-            <!-- DETAILS -->
-            <div class="panel-card">
-                <div class="panel-label">Details</div>
-                <p class="detail-desc">{{ $incident->description }}</p>
+                        <dt>Priority</dt>
+                        <dd>
+                            @if($priority)
+                                <span class="chip chip-prio-{{ $priority }}">{{ ucfirst($priority) }}</span>
+                                @if($isSos) <span class="small-note">every SOS is Critical</span> @endif
+                            @else
+                                <span class="muted">Not set — you choose it when you verify the report.</span>
+                            @endif
+                        </dd>
+                    </dl>
+                </section>
 
-                <div class="detail-sub">Reported by</div>
-                <div class="detail-val">
-                    {{ $reporter }}
-                    @if($isGuestReport) <span class="tag-guest">Guest</span> @endif
-                    @if($isManual) <span class="tag-manual">Added by MDRRMO</span> @endif<br>
-                    @if($mobile)
-                        <a href="tel:{{ $mobile }}" class="call-link"><i class="bi bi-telephone-fill"></i> {{ $mobile }}</a><br>
-                    @endif
-                    @if($isManual && $incident->reported_via)
-                        Reported via {{ strtolower($incident->reported_via) }}<br>
-                    @endif
-                    {{ $incident->created_at->format('m/d/y, g:i A') }}
-                </div>
+                <!-- LOCATION -->
+                <section class="card-x o-location">
+                    <div class="card-title">Location</div>
+                    <dl class="kv">
+                        <dt>Barangay</dt>
+                        <dd>{!! $barangay ? e($barangay) : '<span class="muted">Not identified</span>' !!}</dd>
 
-                @if($detailPhotos->count())
-                    <div class="detail-sub">Photos ({{ $detailPhotos->count() }})</div>
-                    <div class="photos-row">
-                        @foreach($detailPhotos as $index => $photoPath)
-                            <img src="{{ Storage::url($photoPath) }}"
-                                 class="photo-thumb"
-                                 data-bs-toggle="modal"
-                                 data-bs-target="#photoModal"
-                                 onclick="showPhotoSlide({{ $index }})"
-                                 alt="Incident photo {{ $index + 1 }}">
-                        @endforeach
-                    </div>
-                @endif
+                        <dt>Address</dt>
+                        <dd>{{ $incident->location ?: '—' }}</dd>
 
-                @if($incident->ai_detected_type)
-                    <div class="detail-sub" style="margin-top:14px;">AI Photo Analysis</div>
-                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-                        <span style="background:#eef2ff;color:#4338ca;font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;">
-                            <i></i> Likely: {{ $incident->ai_detected_type }}
-                        </span>
-                        <span style="font-size:.72rem;color:#9ca3af;text-transform:capitalize;">
-                            {{ $incident->ai_confidence }} confidence
-                        </span>
-                    </div>
-                    @if($incident->ai_analysis)
-                        <div class="detail-val" style="font-style:italic;">{{ $incident->ai_analysis }}</div>
-                    @endif
-                @endif
-
-                @if($incident->admin_notes)
-                    <div class="detail-sub" style="margin-top:14px;">Admin Notes</div>
-                    <div class="admin-notes-box">{{ $incident->admin_notes }}</div>
-                @endif
-
-                @if(in_array($incident->status, ['resolved', 'for_review'], true) || $report)
-                    <div class="detail-sub" style="margin-top:14px;">
-                        @if($isManual)
-                            <i class="bi bi-check-circle-fill" style="color:#10b981;"></i> Resolution (added by MDRRMO)
-                        @elseif($incident->status === 'resolved')
-                            <i class="bi bi-check-circle-fill" style="color:#10b981;"></i> Resolution (from responder)
-                        @elseif($incident->isForReview())
-                            <i class="bi bi-clipboard2-check" style="color:#7c3aed;"></i> Final report (from responder) — waiting for your review
-                        @elseif($isReturned)
-                            <i class="bi bi-arrow-return-left" style="color:#c2410c;"></i> Report sent back to the responders
-                        @else
-                            <i class="bi bi-hourglass-split" style="color:#d97706;"></i> Initial report (from responder)
+                        <dt>GPS</dt>
+                        <dd>
+                            @if($hasPin)
+                                {{ number_format((float) $incident->latitude, 5) }}, {{ number_format((float) $incident->longitude, 5) }}
+                            @else
+                                <span class="muted">No GPS pin{{ $approxPoint ? " — the map shows the middle of Brgy. {$barangay}" : '' }}</span>
+                            @endif
+                        </dd>
+                    </dl>
+                    <div id="detail-map" aria-label="Map of the incident location"></div>
+                    <div class="map-actions">
+                        <a href="https://www.google.com/maps?q={{ $lat }},{{ $lng }}" target="_blank" rel="noopener" class="btn-soft">
+                            <i class="bi bi-map"></i> Open in Google Maps
+                        </a>
+                        @if($hasPin)
+                            <a href="https://www.google.com/maps/dir/?api=1&destination={{ $lat }},{{ $lng }}" target="_blank" rel="noopener" class="btn-soft">
+                                <i class="bi bi-sign-turn-right"></i> Directions
+                            </a>
                         @endif
                     </div>
-                    @if($incident->resolution_notes)
-                        <div class="resolution-notes-box">{{ $incident->resolution_notes }}</div>
-                    @else
-                        <div class="resolution-empty">No notes were submitted with the resolution.</div>
-                    @endif
+                </section>
 
-                    @if($incident->resolution_photo_path)
-                        <div class="detail-sub" style="margin-top:10px;">Resolution Photo</div>
-                        <div class="photos-row">
-                            <img src="{{ Storage::url($incident->resolution_photo_path) }}"
-                                 class="photo-thumb"
-                                 data-bs-toggle="modal"
-                                 data-bs-target="#resolutionPhotoModal"
-                                 alt="Resolution photo">
-                        </div>
-                    @endif
-
-                    @if($report)
-                        <div class="detail-sub" style="margin-top:12px;">Incident Report (PDF)</div>
-                        <div class="report-pdf-row">
-                            <div class="report-pdf-icon"><i class="bi bi-file-earmark-pdf-fill"></i></div>
-                            <div class="report-pdf-meta">
-                                <div class="report-pdf-name">
-                                    MDRRMC Incident Report
-                                    <span class="report-type-tag {{ $reportIsInitial ? 'is-initial' : 'is-final' }}">{{ $reportIsInitial ? 'Initial' : 'Final' }}</span>
-                                </div>
-                                <div class="report-pdf-sub">
-                                    @if($isReturned)
-                                        Sent back for changes — the team updates it and submits it as Final again.
-                                    @elseif($reportIsInitial)
-                                        The responding team can still update it until they submit the Final report.
-                                    @elseif($isManual)
-                                        Added by MDRRMO
-                                    @elseif($incident->isForReview())
-                                        Filed by the responding team — waiting for your review
-                                    @else
-                                        Filed by the responding team{{ !empty($report['reviewed_by']) ? ' · reviewed by ' . $report['reviewed_by'] : '' }}
-                                    @endif
-                                    @if($reportUpdatedAt)
-                                        · {{ ($report['revision'] ?? 1) > 1 ? 'Last updated' : 'Filed' }} {{ $reportUpdatedAt->format('m/d/y, g:i A') }}
-                                    @endif
-                                </div>
-                            </div>
-                            <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="report-pdf-btn" title="View">
-                                <i class="bi bi-eye"></i> View
-                            </a>
-                            <a href="{{ route('incident.report-pdf', [$incident, 'download' => 1]) }}" class="report-pdf-btn" title="Download">
-                                <i class="bi bi-download"></i>
-                            </a>
-                        </div>
-                    @endif
-                @endif
-            </div>
-
-            <div class="panel-card">
-                <div class="panel-label">
-                    Responding Team
-                    @if($incident->responders->isNotEmpty())
-                        <span style="font-size:.72rem;font-weight:700;color:#1a3c8f;background:#eef2ff;padding:2px 9px;border-radius:20px;margin-left:6px;vertical-align:middle;">
-                            {{ $incident->responders->count() }}
-                        </span>
-                    @endif
-                </div>
-                @forelse($incident->responders as $teamMember)
-                    <div style="display:flex;align-items:center;gap:10px;{{ !$loop->last ? 'margin-bottom:12px;' : '' }}">
-                        <div style="width:38px;height:38px;border-radius:50%;background:#e0f2fe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                            <i class="bi bi-person-badge-fill" style="color:#1e40af;"></i>
-                        </div>
-                        <div>
-                            <div style="font-weight:700;font-size:.85rem;color:#111827;">{{ $teamMember->full_name }}</div>
-                            <div style="font-size:.75rem;color:#6b7280;">
-                                {{ $teamMember->agency }} · Badge #{{ $teamMember->badge_number }}
-                            </div>
-                            @if($teamMember->pivot->accepted_at)
-                                <div style="font-size:.72rem;color:#9ca3af;">
-                                    Joined {{ \Illuminate\Support\Carbon::parse($teamMember->pivot->accepted_at)->format('M d, g:i A') }}
-                                </div>
-                            @endif
-                        </div>
+                <!-- DESCRIPTION & ATTACHMENTS -->
+                <section class="card-x o-description">
+                    <div class="card-title">
+                        Description &amp; Attachments
+                        @if($photos->count())
+                            <span class="title-note">{{ $photos->count() }} {{ \Illuminate\Support\Str::plural('photo', $photos->count()) }}</span>
+                        @endif
                     </div>
-                @empty
-                    @if($isManual && !empty($report['team']))
-                        @foreach($report['team'] as $member)
-                            <div style="display:flex;align-items:center;gap:10px;{{ !$loop->last ? 'margin-bottom:12px;' : '' }}">
-                                <div style="width:38px;height:38px;border-radius:50%;background:#e0e7ff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                                    <i class="bi bi-person-badge-fill" style="color:#3730a3;"></i>
-                                </div>
-                                <div>
-                                    <div style="font-weight:700;font-size:.85rem;color:#111827;">{{ $member['name'] ?: '—' }}</div>
-                                    <div style="font-size:.75rem;color:#6b7280;">
-                                        {{ $member['agency'] ?: '—' }} · {{ $member['role'] ?? '' }}
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-                        <div style="font-size:.72rem;color:#9ca3af;margin-top:10px;">Typed in by MDRRMO — no responder accounts were used.</div>
-                    @elseif($isManual)
-                        <div style="font-size:.82rem;color:#9ca3af;font-style:italic;">
-                            No responding team was written down.
+                    <div class="desc-text">{{ $incident->description ?: 'No description was sent.' }}</div>
+
+                    @if($photos->count())
+                        <div class="sub-label">Photos from the reporter</div>
+                        <div class="photo-grid">
+                            @foreach($photos as $index => $photoPath)
+                                <button type="button" class="photo-tile" data-index="{{ $index }}" aria-label="Open photo {{ $index + 1 }}">
+                                    <img src="{{ Storage::url($photoPath) }}" alt="Photo {{ $index + 1 }}" loading="lazy">
+                                    <span class="photo-state">
+                                        <span class="when-loading"><span class="spinner-border spinner-border-sm text-secondary"></span> Loading…</span>
+                                        <span class="when-failed">
+                                            <i class="bi bi-image" style="font-size:1.2rem;color:#9ca3af;"></i>
+                                            Couldn't load the image.
+                                            <span class="photo-retry" role="button" tabindex="0">Retry</span>
+                                        </span>
+                                    </span>
+                                </button>
+                            @endforeach
                         </div>
-                    @else
-                        <div style="font-size:.82rem;color:#9ca3af;font-style:italic;">
-                            Not yet accepted by a responder.
-                        </div>
+                    @elseif(! $isManual)
+                        <div class="sub-label">Photos from the reporter</div>
+                        <div class="small-note">No photos were sent.</div>
                     @endif
-                @endforelse
-            </div>
 
-            <!-- STATUS (read-only) -->
-            <div class="panel-card">
-                <div class="panel-label">Status</div>
-                <div class="action-panel">
-                    @php
-                        $statusMeta = match(true) {
-                            (bool) $incident->needs_review      => ['bg' => '#fef3c7', 'border' => '#fde68a', 'text' => '#92400e', 'icon' => 'bi-hourglass-split'],
-                            (bool) $incident->declined_at       => ['bg' => '#fee2e2', 'border' => '#fecaca', 'text' => '#991b1b', 'icon' => 'bi-x-circle-fill'],
-                            $incident->status === 'responding'  => ['bg' => '#e0f2fe', 'border' => '#bae6fd', 'text' => '#0369a1', 'icon' => 'bi-lightning-charge-fill'],
-                            $incident->status === 'for_review'  => ['bg' => '#f5f3ff', 'border' => '#ddd6fe', 'text' => '#5b21b6', 'icon' => 'bi-clipboard2-check'],
-                            $incident->status === 'resolved'    => ['bg' => '#ecfdf5', 'border' => '#a7f3d0', 'text' => '#065f46', 'icon' => 'bi-check-circle-fill'],
-                            default                             => ['bg' => '#fef3c7', 'border' => '#fde68a', 'text' => '#92400e', 'icon' => 'bi-broadcast'],
-                        };
-                        $statusMeta['label'] = $incident->status_label;
-                    @endphp
-
-                    <div style="display:flex; align-items:center; gap:8px; background:{{ $statusMeta['bg'] }}; border:1px solid {{ $statusMeta['border'] }}; border-radius:8px; padding:12px 14px;">
-                        <i class="bi {{ $statusMeta['icon'] }}" style="color:{{ $statusMeta['text'] }}; font-size:1.1rem;"></i>
-                        <span style="font-size:.85rem; font-weight:700; color:{{ $statusMeta['text'] }};">{{ $statusMeta['label'] }}</span>
-                    </div>
-
-                    {{-- Responders are notified only when an admin approves the
-                         report (Admin\IncidentController::approve()). Status is
-                         informational — responders update it as they act. --}}
-                    @if($incident->needs_review)
-                        <div class="dispatch-note">
-                            <i class="bi bi-hourglass-split"></i>
-                            <span>Waiting for your review. Responders haven't been notified yet.</span>
-                        </div>
-                    @elseif($incident->declined_at)
-                        <div class="dispatch-note">
-                            <i class="bi bi-x-circle"></i>
-                            <span>Declined{{ $incident->decline_reason ? ': ' . $incident->decline_reason : '' }}. Responders were not notified.</span>
-                        </div>
-                    @elseif($incident->isForReview())
-                        <div class="dispatch-note">
-                            <i class="bi bi-clipboard2-check"></i>
-                            <span>The responders' Final report is waiting for your review. Mark it as resolved, or return it to them.</span>
-                        </div>
-                    @elseif($incident->status === 'resolved')
-                        <div class="dispatch-note">
-                            <i class="bi bi-check2-circle"></i>
+                    @if($incident->ai_detected_type)
+                        <div class="ai-note">
+                            <i class="bi bi-stars"></i>
                             <span>
-                                Resolved{{ $incident->resolved_at ? ' ' . $incident->resolved_at->format('M d, Y g:i A') : '' }}{{ $incident->resolvedBy ? ($isManual ? ' — added by ' : ' — reviewed by ') . $incident->resolvedBy->name : '' }}.
+                                The photo looks like <strong>{{ $incident->ai_detected_type }}</strong>@if($incident->ai_confidence) ({{ $incident->ai_confidence }} confidence)@endif.
+                                @if($incident->ai_analysis) <em>{{ $incident->ai_analysis }}</em> @endif
+                                Only a hint — check the photo yourself.
                             </span>
                         </div>
-                    @else
-                        <div class="dispatch-note">
-                            <i class="bi bi-broadcast"></i>
-                            <span>Approved and sent to the responders for this emergency type. Status updates as they act on it.</span>
-                        </div>
                     @endif
+                </section>
 
-                    {{-- Add Note (unrelated to status — stays available regardless) --}}
-                    <button class="btn-note" data-bs-toggle="modal" data-bs-target="#noteModal">
-                        <i class="bi bi-pencil-square me-1"></i> Add Note
-                    </button>
-                </div>
-            </div>
+                <!-- RESPONDERS' REPORT -->
+                @if($report || in_array($incident->status, ['for_review', 'resolved'], true))
+                    <section class="card-x o-report">
+                        <div class="card-title">
+                            {{ $isManual ? 'MDRRMC Incident Report' : "Responders' Report" }}
+                            @if($reportUpdatedAt)
+                                <span class="title-note">{{ ($report['revision'] ?? 1) > 1 ? 'Last updated' : 'Filed' }} {{ $reportUpdatedAt->format('M d, g:i A') }}</span>
+                            @endif
+                        </div>
 
-        </div>
-
-        <!-- TIMELINE -->
-        <div class="panel-card">
-            <div class="timeline-title">Timeline / Activity</div>
-            <div class="timeline">
-                <div class="tl-row">
-                    <div class="tl-time">{{ $incident->created_at->format('g:i A') }}</div>
-                    <div class="tl-dot info"></div>
-                    <div class="tl-text">
-                        @if($isManual)
-                            Incident happened — {{ $incident->emergency_type }} at {{ $incident->location }}
-                            @if($incident->reported_via) (reported to MDRRMO via {{ strtolower($incident->reported_via) }}) @endif
-                        @else
-                            Incident reported by <strong>{{ $reporter }}</strong>
-                            — {{ $incident->emergency_type }} at {{ $incident->location }}
+                        @if($isReturned)
+                            <div class="notice notice-returned">
+                                <i class="bi bi-arrow-return-left"></i>
+                                <span>You sent this report back on {{ $incident->report_returned_at->format('M d, g:i A') }}: <strong>{{ rtrim($incident->report_return_reason, '. ') }}</strong>. It comes back to For Review when they send it again.</span>
+                            </div>
                         @endif
+
+                        @if($report)
+                            <div class="report-box">
+                                <div class="pdf-icon"><i class="bi bi-file-earmark-pdf-fill"></i></div>
+                                <div class="meta">
+                                    <div class="name">
+                                        MDRRMC Incident Report
+                                        <span class="tag {{ $reportIsInitial ? 'tag-initial' : 'tag-final' }}">{{ $reportIsInitial ? 'Initial' : 'Final' }}</span>
+                                    </div>
+                                    <div class="sub">
+                                        @if($isReturned)
+                                            Sent back — the team updates it and sends it as Final again.
+                                        @elseif($reportIsInitial)
+                                            The team can keep updating it until they send it as Final.
+                                        @elseif($isManual)
+                                            Added by MDRRMO.
+                                        @elseif($incident->isForReview())
+                                            Final — waiting for your review.
+                                        @else
+                                            Final{{ ! empty($report['reviewed_by']) ? ' · reviewed by ' . $report['reviewed_by'] : '' }}.
+                                        @endif
+                                    </div>
+                                </div>
+                                <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="btn-soft"><i class="bi bi-eye"></i> View</a>
+                                <a href="{{ route('incident.report-pdf', [$incident, 'download' => 1]) }}" class="btn-soft" title="Download"><i class="bi bi-download"></i></a>
+                            </div>
+
+                            <div class="count-row">
+                                @foreach($casualtyCounts as $label => $count)
+                                    <span class="count-pill {{ $count ? 'has' : '' }}">{{ $label }}: {{ $count }}</span>
+                                @endforeach
+                            </div>
+                        @endif
+
+                        @if($incident->resolution_notes)
+                            <div class="narrative">{{ $incident->resolution_notes }}</div>
+                        @elseif(! $report)
+                            <div class="small-note">No report or notes were sent.</div>
+                        @endif
+
+                        @if($incident->resolution_photo_path)
+                            <img src="{{ Storage::url($incident->resolution_photo_path) }}" class="res-photo"
+                                 data-bs-toggle="modal" data-bs-target="#resolutionPhotoModal" alt="Photo from the scene">
+                        @endif
+                    </section>
+                @endif
+
+                <!-- ACTIVITY TIMELINE -->
+                <section class="card-x o-timeline">
+                    <div class="card-title">Activity Timeline</div>
+                    <ol class="tl">
+                        @if($isManual)
+                            <li class="done">
+                                <span class="dot"><i class="bi bi-check"></i></span>
+                                <div class="tl-label">Happened <span class="tl-time">{{ $incident->created_at->format('M d, g:i A') }}</span></div>
+                                <div class="tl-sub">Reported to MDRRMO via {{ strtolower($incident->reported_via ?: 'other') }}{{ $incident->guest_name ? ' by ' . $incident->guest_name : '' }}.</div>
+                            </li>
+                            <li class="done">
+                                <span class="dot"><i class="bi bi-check"></i></span>
+                                <div class="tl-label">Resolved <span class="tl-time">{{ $incident->resolved_at?->format('M d, g:i A') }}</span></div>
+                                <div class="tl-sub">Handled outside the app{{ ! empty($report['team']) ? ' by ' . collect($report['team'])->pluck('name')->filter()->join(', ') : '' }}.</div>
+                            </li>
+                            <li class="done">
+                                <span class="dot"><i class="bi bi-check"></i></span>
+                                <div class="tl-label">Added to ResQPulse <span class="tl-time">{{ $report['recorded_at'] ?? '' }}</span></div>
+                                <div class="tl-sub">By {{ $incident->resolvedBy?->name ?? 'MDRRMO' }}{{ $report ? ', with its MDRRMC Incident Report' : '' }}.</div>
+                            </li>
+                        @else
+                            {{-- 1. Submitted --}}
+                            <li class="done">
+                                <span class="dot"><i class="bi bi-check"></i></span>
+                                <div class="tl-label">Submitted <span class="tl-time">{{ $incident->created_at->format('M d, g:i A') }}</span></div>
+                                <div class="tl-sub">{{ $isSos ? 'SOS' : 'Report' }} from {{ $reporter === 'Guest' ? 'a guest' : $reporter . ($isGuest ? ' (guest)' : '') }}.</div>
+                            </li>
+
+                            {{-- 2. Reviewed --}}
+                            @if($incident->needs_review)
+                                <li class="current">
+                                    <span class="dot"></span>
+                                    <div class="tl-label">Reviewed — waiting for you</div>
+                                    <div class="tl-sub">Verify it and assign a team, or decline it.</div>
+                                </li>
+                            @elseif($isDeclined)
+                                <li class="bad">
+                                    <span class="dot"><i class="bi bi-x"></i></span>
+                                    <div class="tl-label">Declined <span class="tl-time">{{ $incident->declined_at->format('M d, g:i A') }}</span></div>
+                                    <div class="tl-sub">{{ $incident->reviewedBy ? 'By ' . $incident->reviewedBy->name . ' — ' : '' }}{{ $incident->decline_reason }}</div>
+                                </li>
+                            @else
+                                <li class="done">
+                                    <span class="dot"><i class="bi bi-check"></i></span>
+                                    <div class="tl-label">Verified <span class="tl-time">{{ $incident->reviewed_at?->format('M d, g:i A') }}</span></div>
+                                    <div class="tl-sub">{{ $incident->reviewedBy ? 'By ' . $incident->reviewedBy->name : 'Approved by MDRRMO' }}{{ $priority ? ' · ' . ucfirst($priority) . ' priority' : '' }}.</div>
+                                </li>
+                            @endif
+
+                            @unless($isDeclined)
+                                @if($incident->needs_review)
+                                    <li class="todo"><span class="dot"></span><div class="tl-label">Assigned · Accepted · Report · Resolved — not yet</div></li>
+                                @else
+                                    {{-- 3. Assigned — when it was verified; a later team change
+                                         (Response Assignment) is mentioned, so the times stay in order. --}}
+                                    @php
+                                        $assignedAt    = $incident->reviewed_at ?? $incident->assigned_at;
+                                        $teamChangedAt = ($assignedAt && $incident->assigned_at && $incident->assigned_at->gt($assignedAt->copy()->addMinute()))
+                                            ? $incident->assigned_at : null;
+                                    @endphp
+                                    <li class="done">
+                                        <span class="dot"><i class="bi bi-check"></i></span>
+                                        <div class="tl-label">Assigned <span class="tl-time">{{ $assignedAt?->format('M d, g:i A') }}</span></div>
+                                        <div class="tl-sub">
+                                            {{ $assigned ? 'Sent to ' . $teamList($assigned) . '.' : 'Sent to the responders (before teams were assigned).' }}
+                                            @if($teamChangedAt) Team changed {{ $teamChangedAt->format('M d, g:i A') }}. @endif
+                                        </div>
+                                    </li>
+
+                                    {{-- 4. Accepted --}}
+                                    @if($teamOnIt->isNotEmpty())
+                                        <li class="done">
+                                            <span class="dot"><i class="bi bi-check"></i></span>
+                                            <div class="tl-label">Accepted <span class="tl-time">{{ $firstAccepted ? \Illuminate\Support\Carbon::parse($firstAccepted)->format('M d, g:i A') : '' }}</span></div>
+                                            <div class="tl-sub">{{ $teamOnIt->pluck('full_name')->join(', ') }} — responding.</div>
+                                        </li>
+                                    @else
+                                        <li class="current">
+                                            <span class="dot"></span>
+                                            <div class="tl-label">Accepted — waiting for the team</div>
+                                            <div class="tl-sub">No responder has accepted it yet.</div>
+                                        </li>
+                                    @endif
+
+                                    {{-- 5. Report --}}
+                                    @if($incident->report_returned_at)
+                                        <li class="back">
+                                            <span class="dot"><i class="bi bi-arrow-return-left"></i></span>
+                                            <div class="tl-label">Report sent back <span class="tl-time">{{ $incident->report_returned_at->format('M d, g:i A') }}</span></div>
+                                            <div class="tl-sub">{{ $incident->report_return_reason }}</div>
+                                        </li>
+                                    @endif
+                                    @if($incident->report_submitted_at || $incident->status === 'resolved')
+                                        <li class="done">
+                                            <span class="dot"><i class="bi bi-check"></i></span>
+                                            <div class="tl-label">Final report sent <span class="tl-time">{{ $incident->report_submitted_at?->format('M d, g:i A') }}</span></div>
+                                            <div class="tl-sub">{{ $incident->isForReview() ? 'Waiting for your review.' : 'Reviewed by MDRRMO.' }}</div>
+                                        </li>
+                                    @elseif($report && $reportIsInitial)
+                                        <li class="current">
+                                            <span class="dot"></span>
+                                            <div class="tl-label">Report — Initial {{ $isReturned ? '(sent back)' : 'filed' }}</div>
+                                            <div class="tl-sub">The team sends the Final report when they're done.</div>
+                                        </li>
+                                    @elseif($teamOnIt->isNotEmpty())
+                                        <li class="todo"><span class="dot"></span><div class="tl-label">Final report — not yet</div></li>
+                                    @endif
+
+                                    {{-- 6. Resolved --}}
+                                    @if($incident->status === 'resolved')
+                                        <li class="done">
+                                            <span class="dot"><i class="bi bi-check"></i></span>
+                                            <div class="tl-label">Resolved <span class="tl-time">{{ $incident->resolved_at?->format('M d, g:i A') }}</span></div>
+                                            <div class="tl-sub">{{ $incident->resolvedBy ? 'Reviewed by ' . $incident->resolvedBy->name . '.' : 'Closed.' }}</div>
+                                        </li>
+                                    @elseif($incident->isForReview())
+                                        <li class="current">
+                                            <span class="dot"></span>
+                                            <div class="tl-label">Resolved — waiting for your review</div>
+                                        </li>
+                                    @else
+                                        <li class="todo"><span class="dot"></span><div class="tl-label">Resolved — not yet</div></li>
+                                    @endif
+                                @endif
+                            @endunless
+                        @endif
+                    </ol>
+                </section>
+            </div>
+
+            <!-- ═══════════ RIGHT: what the admin does ═══════════ -->
+            <div class="ws-col">
+
+                <!-- ADMINISTRATIVE ACTIONS -->
+                <section class="card-x card-actions o-actions" id="actions">
+                    <div class="card-title">Administrative Actions</div>
+
+                    @if($incident->needs_review)
+                        {{-- ── PENDING: Verify & Assign, or Decline ── --}}
+                        <div class="notice notice-pending">
+                            <i class="bi bi-hourglass-split"></i>
+                            <span>
+                                Check the details, photos and location first.
+                                @if($mobile) Call <a href="tel:{{ $mobile }}" class="call-link">{{ $mobile }}</a> to confirm. @endif
+                                The team is <strong>not</strong> notified until you verify it.
+                            </span>
+                        </div>
+
+                        <form action="{{ route('incident.approve', $incident->id) }}" method="POST" id="approveForm">
+                            @csrf
+                            <input type="hidden" name="choose_teams" value="1">
+
+                            <div class="field">
+                                <span class="field-label">Priority level @unless($isSos)<span class="req">(required)</span>@endunless</span>
+                                @if($isSos)
+                                    <span class="fixed-value"><i class="bi bi-exclamation-octagon-fill"></i> Critical — every SOS</span>
+                                @else
+                                    <div class="choice-row" role="radiogroup" aria-label="Priority">
+                                        @foreach(['critical' => 'Critical', 'high' => 'High', 'low' => 'Low'] as $value => $label)
+                                            <input class="choice-input" type="radio" name="priority" id="prio-{{ $value }}" value="{{ $value }}"
+                                                   {{ old('priority', $priority) === $value ? 'checked' : '' }}>
+                                            <label class="prio-choice prio-{{ $value }}" for="prio-{{ $value }}"><i class="bi bi-check-lg"></i>{{ $label }}</label>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+
+                            <div class="field">
+                                <span class="field-label">Assign response team <span class="req">(required)</span></span>
+                                @include('partials.team-choices', ['checked' => $checkedTeams, 'previous' => null])
+                                <div class="field-help">Suggested for {{ $isSos ? ($incident->sos_emergency_type ?: 'an SOS') : $incident->emergency_type }}: {{ $teamList($suggested) }}. Only the teams you tick are notified and can accept it.</div>
+                            </div>
+
+                            <div class="field">
+                                <label class="field-label" for="assignment_notes">Notes for the team <span class="opt">(optional)</span></label>
+                                <textarea name="assignment_notes" id="assignment_notes" rows="2" maxlength="500" class="f-input"
+                                          placeholder="e.g. Proceed via the market road.">{{ old('assignment_notes', $incident->assignment_notes) }}</textarea>
+                                <div class="field-help">The team sees this in the app.</div>
+                            </div>
+
+                            <div class="field">
+                                <label class="field-label" for="responders_on_record">Responders on record <span class="opt">(optional)</span></label>
+                                <input type="text" name="responders_on_record" id="responders_on_record" maxlength="500" class="f-input"
+                                       value="{{ old('responders_on_record', $incident->responders_on_record) }}"
+                                       placeholder="e.g. SFO2 Juan Dela Cruz, FO1 Pedro Reyes">
+                                <div class="field-help">Who was sent, for the record. You can add it later too.</div>
+                            </div>
+
+                            <div class="action-buttons">
+                                <button type="submit" class="btn-x btn-primary-x" id="approveSubmit">
+                                    <i class="bi bi-check2-circle"></i> Verify &amp; Assign
+                                </button>
+                                <button type="button" class="btn-x btn-danger-x" data-bs-toggle="modal" data-bs-target="#declineModal">
+                                    <i class="bi bi-x-circle"></i> Decline
+                                </button>
+                            </div>
+                            <div class="why-disabled" id="approveHint" hidden></div>
+                            <div class="action-help">
+                                <i class="bi bi-info-circle"></i>
+                                <strong>Verify &amp; Assign</strong> → the {{ $isSos ? 'SOS' : 'report' }} moves to <strong>Active</strong>, the team(s) you ticked are notified, and it's written in the Audit Log.
+                                {{ $incident->citizen_id ? 'The resident is told it was approved.' : '' }}
+                            </div>
+                        </form>
+
+                    @elseif($isDeclined)
+                        {{-- ── DECLINED ── --}}
+                        <div class="notice notice-bad">
+                            <i class="bi bi-x-circle-fill"></i>
+                            <span>
+                                Declined {{ $incident->declined_at->format('M d, Y g:i A') }}{{ $incident->reviewedBy ? ' by ' . $incident->reviewedBy->name : '' }}:
+                                <strong>{{ $incident->decline_reason ?: 'no reason given' }}</strong>. The responders were never notified.
+                            </span>
+                        </div>
+                        <form method="POST" action="{{ route('incident.destroy', $incident->id) }}" id="deleteForm"
+                              data-what="{{ $incident->display_type }} from {{ $reporter }}">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="btn-x btn-danger-x btn-block"><i class="bi bi-trash3"></i> Delete this {{ $isSos ? 'SOS alert' : 'report' }}</button>
+                        </form>
+                        <div class="action-help"><i class="bi bi-info-circle"></i> Deleting removes it for good, with its photos. The Audit Log keeps a line about it.</div>
+
+                    @elseif($incident->isForReview())
+                        {{-- ── FOR REVIEW: the responders' Final report ── --}}
+                        <div class="notice notice-review">
+                            <i class="bi bi-clipboard2-check"></i>
+                            <span>
+                                The team sent their <strong>Final report</strong>{{ $incident->report_submitted_at ? ' on ' . $incident->report_submitted_at->format('M d, g:i A') : '' }}.
+                                Open it and check the narrative, casualties, actions taken and photo.
+                            </span>
+                        </div>
+                        <div class="stack">
+                            @if($report)
+                                <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="btn-x btn-outline-x btn-block">
+                                    <i class="bi bi-file-earmark-pdf"></i> Open Final Report
+                                </a>
+                            @endif
+                            <form action="{{ route('incident.confirm-resolved', $incident->id) }}" method="POST" class="resolve-form"
+                                  data-type="{{ $isSos ? 'SOS' : $incident->emergency_type }}"
+                                  data-notifies-citizen="{{ $incident->citizen_id ? '1' : '0' }}">
+                                @csrf
+                                <button type="submit" class="btn-x btn-green-x btn-block"><i class="bi bi-check2-circle"></i> Mark as Resolved</button>
+                            </form>
+                            <button type="button" class="btn-x btn-amber-x btn-block" data-bs-toggle="modal" data-bs-target="#returnModal">
+                                <i class="bi bi-arrow-return-left"></i> Return to Responders
+                            </button>
+                        </div>
+                        <div class="action-help">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Mark as Resolved</strong> closes it and adds "Reviewed by" with your name to the PDF.
+                            <strong>Return</strong> sends the report back with what to fix — it goes back to Active.
+                        </div>
+
+                    @elseif($incident->status === 'resolved')
+                        {{-- ── RESOLVED ── --}}
+                        <div class="notice notice-ok">
+                            <i class="bi bi-check-circle-fill"></i>
+                            <span>
+                                Resolved{{ $incident->resolved_at ? ' ' . $incident->resolved_at->format('M d, Y g:i A') : '' }}{{ $incident->resolvedBy ? ($isManual ? ' — added by ' : ' — reviewed by ') . $incident->resolvedBy->name : '' }}.
+                                Nothing left to do.
+                            </span>
+                        </div>
+                        @if($report)
+                            <div class="stack">
+                                <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="btn-x btn-outline-x btn-block"><i class="bi bi-file-earmark-pdf"></i> Open Report</a>
+                                <a href="{{ route('incident.report-pdf', [$incident, 'download' => 1]) }}" class="btn-x btn-outline-x btn-block"><i class="bi bi-download"></i> Download PDF</a>
+                            </div>
+                        @endif
+
+                    @else
+                        {{-- ── ACTIVE: change the team, notes, people on record ── --}}
+                        @if($isReturned)
+                            <div class="notice notice-returned">
+                                <i class="bi bi-arrow-return-left"></i>
+                                <span>Report sent back: <strong>{{ rtrim($incident->report_return_reason, '. ') }}</strong>. Waiting for the team to send it again.</span>
+                            </div>
+                        @elseif($teamOnIt->isEmpty())
+                            <div class="notice notice-info">
+                                <i class="bi bi-broadcast"></i>
+                                <span>Sent to {{ $assigned ? $teamList($assigned) : 'the responders' }}. Waiting for a responder to accept.</span>
+                            </div>
+                        @else
+                            <div class="notice notice-info">
+                                <i class="bi bi-lightning-charge-fill"></i>
+                                <span>{{ $teamOnIt->first()->full_name }} {{ $teamOnIt->count() > 1 ? 'and ' . ($teamOnIt->count() - 1) . ' more are' : 'is' }} responding. You'll see their report here when they send it.</span>
+                            </div>
+                        @endif
+
+                        <form action="{{ route('incident.assignment', $incident->id) }}" method="POST" id="assignmentForm">
+                            @csrf
+                            @method('PATCH')
+
+                            <div class="field">
+                                <span class="field-label">Priority level</span>
+                                @if($isSos)
+                                    <span class="fixed-value"><i class="bi bi-exclamation-octagon-fill"></i> Critical — every SOS</span>
+                                @else
+                                    <div class="choice-row" role="radiogroup" aria-label="Priority">
+                                        @foreach(['critical' => 'Critical', 'high' => 'High', 'low' => 'Low'] as $value => $label)
+                                            <input class="choice-input" type="radio" name="priority" id="prio-{{ $value }}" value="{{ $value }}"
+                                                   {{ old('priority', $priority) === $value ? 'checked' : '' }}>
+                                            <label class="prio-choice prio-{{ $value }}" for="prio-{{ $value }}"><i class="bi bi-check-lg"></i>{{ $label }}</label>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+
+                            <div class="field">
+                                <span class="field-label">Response team</span>
+                                @include('partials.team-choices', ['checked' => $checkedTeams, 'previous' => $assigned ?: $suggested])
+                                <div class="field-help">Tick another team to send it as backup — it's notified right away.</div>
+                            </div>
+
+                            <div class="field">
+                                <label class="field-label" for="assignment_notes">Notes for the team <span class="opt">(optional)</span></label>
+                                <textarea name="assignment_notes" id="assignment_notes" rows="2" maxlength="500" class="f-input"
+                                          placeholder="e.g. Proceed via the market road.">{{ old('assignment_notes', $incident->assignment_notes) }}</textarea>
+                            </div>
+
+                            <div class="field">
+                                <label class="field-label" for="responders_on_record">Responders on record <span class="opt">(optional)</span></label>
+                                <input type="text" name="responders_on_record" id="responders_on_record" maxlength="500" class="f-input"
+                                       value="{{ old('responders_on_record', $incident->responders_on_record) }}"
+                                       placeholder="e.g. SFO2 Juan Dela Cruz, FO1 Pedro Reyes">
+                            </div>
+
+                            <button type="submit" class="btn-x btn-primary-x btn-block" id="assignmentSubmit">
+                                <i class="bi bi-save"></i> Save Assignment
+                            </button>
+                            <div class="why-disabled" id="assignmentHint" hidden></div>
+                        </form>
+                    @endif
+                </section>
+
+                <!-- RESPONSE ASSIGNMENT -->
+                <section class="card-x o-assignment">
+                    <div class="card-title">Response Assignment</div>
+                    <dl class="kv">
+                        <dt>Team</dt>
+                        <dd>
+                            @if($isManual)
+                                @php $typedTeam = collect($report['team'] ?? [])->filter(fn ($m) => ! empty($m['name']) || ! empty($m['agency'])); @endphp
+                                @forelse($typedTeam as $member)
+                                    <div class="team-member">
+                                        <span>{{ $member['name'] ?: '—' }}{{ ! empty($member['agency']) ? ' — ' . $member['agency'] : '' }}</span>
+                                        <span class="role-tag {{ ($member['role'] ?? '') === 'Lead' ? '' : 'backup' }}">{{ $member['role'] ?? '' }}</span>
+                                    </div>
+                                @empty
+                                    <span class="muted">Not written down</span>
+                                @endforelse
+                            @elseif($incident->needs_review || $isDeclined)
+                                <span class="muted">—</span>
+                            @elseif($assigned)
+                                {{ $teamList($assigned) }}
+                            @else
+                                <span class="muted">All teams (approved before teams were assigned)</span>
+                            @endif
+                        </dd>
+
+                        @unless($isManual)
+                            <dt>Accepted by</dt>
+                            <dd>
+                                @forelse($teamOnIt as $member)
+                                    <div class="team-member">
+                                        <span>{{ $member->full_name }}{{ $member->agency ? ' · ' . $member->agency : '' }}</span>
+                                        <span class="role-tag {{ $loop->first ? '' : 'backup' }}">{{ $loop->first ? 'Lead' : 'Backup' }}</span>
+                                        @if($member->pivot->accepted_at)
+                                            <span class="small-note">{{ \Illuminate\Support\Carbon::parse($member->pivot->accepted_at)->format('g:i A') }}</span>
+                                        @endif
+                                    </div>
+                                @empty
+                                    <span class="muted">—</span>
+                                @endforelse
+                            </dd>
+
+                            <dt>On record</dt>
+                            <dd>{!! $incident->responders_on_record ? e($incident->responders_on_record) : '<span class="muted">—</span>' !!}</dd>
+
+                            <dt>Notes</dt>
+                            <dd>{!! $incident->assignment_notes ? e($incident->assignment_notes) : '<span class="muted">—</span>' !!}</dd>
+                        @endunless
+
+                        <dt>Status</dt>
+                        <dd>
+                            @if($incident->needs_review)
+                                <span class="warn">Not assigned yet</span>
+                            @else
+                                <span class="chip {{ $stageClass }}">{{ $incident->status_label }}</span>
+                            @endif
+                        </dd>
+                    </dl>
+                </section>
+
+                <!-- INTERNAL NOTE -->
+                <section class="card-x o-note">
+                    <div class="card-title">
+                        Internal Note
+                        <span class="title-note">admins only</span>
                     </div>
-                </div>
-                @if($incident->priority)
-                <div class="tl-row">
-                    <div class="tl-time">—</div>
-                    <div class="tl-dot {{ $incident->priority === 'critical' ? 'danger' : ($incident->priority === 'high' ? 'warning' : 'info') }}"></div>
-                    <div class="tl-text">Priority set to <strong>{{ ucfirst($incident->priority) }}</strong></div>
-                </div>
-                @endif
-                @if(! $isManual && $incident->responders->isNotEmpty())
-                <div class="tl-row">
-                    <div class="tl-time">{{ $incident->responders->min(fn ($r) => $r->pivot->accepted_at) ? \Illuminate\Support\Carbon::parse($incident->responders->min(fn ($r) => $r->pivot->accepted_at))->format('g:i A') : '—' }}</div>
-                    <div class="tl-dot warning"></div>
-                    <div class="tl-text">Accepted by the responders — status <strong>Responding</strong></div>
-                </div>
-                @endif
-                @if($incident->report_returned_at)
-                <div class="tl-row">
-                    <div class="tl-time">{{ $incident->report_returned_at->format('g:i A') }}</div>
-                    <div class="tl-dot danger"></div>
-                    <div class="tl-text">
-                        Final report <strong>sent back</strong> to the responders
-                        @if($incident->report_return_reason) — "{{ \Illuminate\Support\Str::limit($incident->report_return_reason, 80) }}" @endif
-                    </div>
-                </div>
-                @endif
-                @if($incident->report_submitted_at)
-                <div class="tl-row">
-                    <div class="tl-time">{{ $incident->report_submitted_at->format('g:i A') }}</div>
-                    <div class="tl-dot" style="background:#7c3aed;"></div>
-                    <div class="tl-text">Final report sent — <strong>For Review</strong></div>
-                </div>
-                @endif
-                @if($incident->status === 'resolved')
-                <div class="tl-row">
-                    <div class="tl-time">{{ $incident->resolved_at ? $incident->resolved_at->format('g:i A') : '—' }}</div>
-                    <div class="tl-dot success"></div>
-                    <div class="tl-text">
-                        Incident <strong>resolved</strong>
-                        @if($incident->resolvedBy) {{ $isManual ? '— added by' : '— reviewed by' }} {{ $incident->resolvedBy->name }} @endif
-                        @if($incident->resolution_notes) — "{{ \Illuminate\Support\Str::limit($incident->resolution_notes, 60) }}" @endif
-                    </div>
-                </div>
-                @endif
+                    @if($incident->admin_notes)
+                        <div class="note-box">{{ $incident->admin_notes }}</div>
+                    @else
+                        <div class="small-note">No note yet.</div>
+                    @endif
+                    <button type="button" class="btn-soft" style="margin-top:10px;" data-bs-toggle="modal" data-bs-target="#noteModal">
+                        <i class="bi bi-pencil-square"></i> {{ $incident->admin_notes ? 'Edit note' : 'Add note' }}
+                    </button>
+                </section>
             </div>
         </div>
-
     </div>
 </div>
 
-{{-- Photo Modal (carousel — supports 3 or many photos, plus legacy single photo) --}}
-@if($detailPhotos->count())
+{{-- Photo viewer --}}
+@if($photos->count())
 <div class="modal fade" id="photoModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content" style="border-radius:14px;border:none;">
             <div class="modal-header border-0 pb-0">
-                <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
-                    Incident Photos ({{ $detailPhotos->count() }})
-                </h5>
+                <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">Photos ({{ $photos->count() }})</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body pt-2">
                 <div id="photoCarousel" class="carousel slide" data-bs-ride="false">
                     <div class="carousel-inner">
-                        @foreach($detailPhotos as $index => $photoPath)
+                        @foreach($photos as $index => $photoPath)
                             <div class="carousel-item {{ $index === 0 ? 'active' : '' }}">
                                 <img src="{{ Storage::url($photoPath) }}"
-                                     style="width:100%;max-height:480px;object-fit:contain;border-radius:10px;border:1px solid #e5e7eb;"
-                                     alt="Incident photo {{ $index + 1 }}">
+                                     style="width:100%;max-height:520px;object-fit:contain;border-radius:10px;border:1px solid #e5e7eb;background:#f9fafb;"
+                                     alt="Photo {{ $index + 1 }}">
                             </div>
                         @endforeach
                     </div>
-                    @if($detailPhotos->count() > 1)
+                    @if($photos->count() > 1)
                         <button class="carousel-control-prev" type="button" data-bs-target="#photoCarousel" data-bs-slide="prev">
                             <span class="carousel-control-prev-icon" style="filter:invert(1) grayscale(100);"></span>
                         </button>
@@ -898,21 +1145,19 @@
 </div>
 @endif
 
-{{-- Resolution Photo Modal — separate from the citizen report's photo carousel above --}}
+{{-- Photo from the responders' report --}}
 @if($incident->resolution_photo_path)
 <div class="modal fade" id="resolutionPhotoModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content" style="border-radius:14px;border:none;">
             <div class="modal-header border-0 pb-0">
-                <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">
-                    Resolution Photo
-                </h5>
+                <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1rem;">Photo from the scene</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body pt-2">
                 <img src="{{ Storage::url($incident->resolution_photo_path) }}"
-                     style="width:100%;max-height:480px;object-fit:contain;border-radius:10px;border:1px solid #e5e7eb;"
-                     alt="Resolution photo">
+                     style="width:100%;max-height:520px;object-fit:contain;border-radius:10px;border:1px solid #e5e7eb;"
+                     alt="Photo from the scene">
             </div>
         </div>
     </div>
@@ -920,58 +1165,23 @@
 @endif
 
 @if($incident->needs_review)
-{{-- Approve Modal — the admin chooses the priority, then the report is
-     sent to the responders. Nothing sets priority automatically. --}}
-<div class="modal fade" id="approveModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content" style="border-radius:14px;border:none;">
-            <form action="{{ route('incident.approve', $incident->id) }}" method="POST" id="approveForm">
-                @csrf
-                <div class="modal-header border-0 pb-0">
-                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1.1rem;">Approve and send to responders?</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body pt-3">
-                    <label class="form-label-m">Priority of this {{ $incident->emergency_type }} report</label>
-                    <div class="prio-choices" role="radiogroup" aria-label="Priority">
-                        @foreach(['critical' => 'Critical', 'high' => 'High', 'low' => 'Low'] as $value => $label)
-                            <input class="prio-input" type="radio" name="priority" id="prio-{{ $value }}" value="{{ $value }}"
-                                   required {{ old('priority', $incident->priority) === $value ? 'checked' : '' }}>
-                            <label class="prio-choice prio-{{ $value }}" for="prio-{{ $value }}"><i class="bi bi-check-lg"></i>{{ $label }}</label>
-                        @endforeach
-                    </div>
-                    <p style="font-size:.8rem;color:#6b7280;margin:0;">
-                        The responders will see this priority.
-                        {{ $incident->citizen_id ? 'The reporter will also get a notification that their report was approved.' : 'This report was sent by a guest, so there is no account to notify.' }}
-                    </p>
-                </div>
-                <div class="modal-footer border-0 pt-0">
-                    <span class="prio-hint" id="prioHint">Choose a priority first.</span>
-                    <button type="submit" class="btn-approve-confirm" id="approveSubmit">Approve &amp; Send</button>
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-{{-- Decline Modal — opened by the Decline button under the banner. --}}
+{{-- Decline — opened from Administrative Actions. --}}
 <div class="modal fade" id="declineModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border-radius:14px;border:none;">
-            <form action="{{ route('incident.decline', $incident->id) }}" method="POST">
+            <form action="{{ route('incident.decline', $incident->id) }}" method="POST" id="declineForm">
                 @csrf
                 <div class="modal-header border-0 pb-0">
-                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1.1rem;">Decline this report?</h5>
+                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1.1rem;">Decline this {{ $isSos ? 'SOS alert' : 'report' }}?</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body pt-3">
                     <p style="font-size:.82rem;color:#6b7280;margin-bottom:12px;">
-                        Responders will NOT be dispatched.
-                        {{ $incident->citizen_id ? 'The reporter will get a notification with this reason.' : 'This report was sent by a guest, so there is no account to notify.' }}
+                        The responders will NOT be notified.
+                        {{ $incident->citizen_id ? 'The reporter gets a notification with this reason.' : 'It was sent by a guest, so there is no account to notify.' }}
                     </p>
-                    <label class="form-label-m">Reason for declining</label>
-                    <select name="decline_reason" class="form-control-m" required>
+                    <label class="form-label-m" for="declineReason">Reason for declining</label>
+                    <select name="decline_reason" id="declineReason" class="form-control-m" required>
                         <option value="" disabled selected>Select a reason...</option>
                         <option value="Duplicate of another report already received">Duplicate of another report already received</option>
                         <option value="Spam, prank, or test submission">Spam, prank, or test submission</option>
@@ -982,7 +1192,7 @@
                     </select>
                 </div>
                 <div class="modal-footer border-0 pt-0">
-                    <button type="submit" class="btn-decline-confirm">Decline Report</button>
+                    <button type="submit" class="btn-decline-confirm">Decline</button>
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
                 </div>
             </form>
@@ -995,19 +1205,20 @@
     @include('partials.return-report-modal', ['incident' => $incident, 'modalId' => 'returnModal'])
 @endif
 
-{{-- Add Note Modal --}}
+{{-- Internal note --}}
 <div class="modal fade" id="noteModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border-radius:14px;border:none;">
             <form method="POST" action="{{ route('incident.note', $incident->id) }}">
                 @csrf @method('PATCH')
                 <div class="modal-header border-0 pb-0">
-                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;">Add Note</h5>
+                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;">Internal note</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <textarea name="admin_notes" rows="4" placeholder="Type your note here..."
-                        style="width:100%;border:1.5px solid #d1d5db;border-radius:8px;padding:10px 13px;font-size:.85rem;font-family:'Inter',sans-serif;resize:none;background:#fafafa;">{{ $incident->admin_notes }}</textarea>
+                    <p style="font-size:.8rem;color:#6b7280;margin-bottom:8px;">Only admins see this. The responders and the reporter don't.</p>
+                    <textarea name="admin_notes" rows="4" maxlength="2000" placeholder="Type your note here..."
+                        style="width:100%;border:1.5px solid #d1d5db;border-radius:8px;padding:10px 13px;font-size:.85rem;font-family:'Inter',sans-serif;resize:vertical;background:#fafafa;">{{ $incident->admin_notes }}</textarea>
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button type="submit"
@@ -1023,44 +1234,141 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    // Map: the GPS pin, or the middle of the barangay (faded) when there's no pin.
     function initDetailMap() {
-        const map = new google.maps.Map(document.getElementById('detail-map'), {
-            center: { lat: {{ $lat }}, lng: {{ $lng }} },
-            zoom: 15,
+        const el = document.getElementById('detail-map');
+        if (!el || !window.google) return;
+        const position = { lat: {{ (float) $lat }}, lng: {{ (float) $lng }} };
+        const map = new google.maps.Map(el, {
+            center: position,
+            zoom: {{ $hasPin ? 16 : 14 }},
             disableDefaultUI: true,
-            gestureHandling: 'none',
-            keyboardShortcuts: false,
+            zoomControl: true,
+            gestureHandling: 'cooperative',
             clickableIcons: false,
         });
         @if($hasPin || $approxPoint)
         new google.maps.Marker({
-            position: { lat: {{ $lat }}, lng: {{ $lng }} },
+            position,
             map,
-            @if(! $hasPin) opacity: 0.6, title: 'Barangay center (approximate)', @endif
+            @if(! $hasPin) opacity: 0.6, title: 'Middle of the barangay (no GPS pin)', @endif
         });
         @endif
     }
 
-    function showPhotoSlide(index) {
-        const carouselEl = document.getElementById('photoCarousel');
-        if (!carouselEl) return;
-        const carousel = bootstrap.Carousel.getOrCreateInstance(carouselEl);
-        carousel.to(index);
-    }
+    // Photos: "Loading…" until each one arrives; "Couldn't load · Retry" if it fails.
+    document.querySelectorAll('.photo-tile').forEach(tile => {
+        const img = tile.querySelector('img');
+        const original = img.getAttribute('src');
+        const loaded = () => { tile.classList.add('is-loaded'); tile.classList.remove('is-failed'); };
+        const failed = () => { tile.classList.add('is-failed'); tile.classList.remove('is-loaded'); };
+        img.addEventListener('load', loaded);
+        img.addEventListener('error', failed);
+        if (img.complete) { img.naturalWidth > 0 ? loaded() : failed(); }
 
-    // Approve dialog: "Approve & Send" stays off until a priority is picked.
-    (function () {
-        const form = document.getElementById('approveForm');
+        const retry = tile.querySelector('.photo-retry');
+        const doRetry = (e) => {
+            e.stopPropagation();
+            tile.classList.remove('is-failed');
+            img.src = original + (original.includes('?') ? '&' : '?') + 'retry=' + Date.now();
+        };
+        retry.addEventListener('click', doRetry);
+        retry.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') doRetry(e); });
+
+        tile.addEventListener('click', () => {
+            if (!tile.classList.contains('is-loaded')) return;
+            const modalEl = document.getElementById('photoModal');
+            const carouselEl = document.getElementById('photoCarousel');
+            if (!modalEl || !carouselEl) return;
+            bootstrap.Carousel.getOrCreateInstance(carouselEl).to(parseInt(tile.dataset.index, 10) || 0);
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        });
+    });
+
+    // Verify & Assign: stays off until the priority (reports) and a team are chosen.
+    // Save Assignment: needs a team; marks the teams that will be notified as "new".
+    function wireAssignmentForm(formId, submitId, hintId, needsPriority) {
+        const form = document.getElementById(formId);
         if (!form) return;
-        const submit = document.getElementById('approveSubmit');
-        const hint = document.getElementById('prioHint');
+        const submit = document.getElementById(submitId);
+        const hint = document.getElementById(hintId);
         const sync = () => {
-            const picked = !!form.querySelector('input[name="priority"]:checked');
-            submit.disabled = !picked;
-            hint.style.visibility = picked ? 'hidden' : 'visible';
+            const missing = [];
+            if (needsPriority && form.querySelector('input[name="priority"]') && !form.querySelector('input[name="priority"]:checked')) {
+                missing.push('a priority');
+            }
+            if (!form.querySelector('input[name="teams[]"]:checked')) {
+                missing.push('at least one team');
+            }
+            submit.disabled = missing.length > 0;
+            hint.hidden = missing.length === 0;
+            hint.textContent = missing.length ? 'Choose ' + missing.join(' and ') + ' first.' : '';
+
+            form.querySelectorAll('.team-choice[data-previous]').forEach(label => {
+                const input = document.getElementById(label.getAttribute('for'));
+                label.classList.toggle('is-new', input.checked && label.dataset.previous === '0');
+            });
         };
         form.addEventListener('change', sync);
+        form.addEventListener('submit', e => {
+            if (submit.disabled) { e.preventDefault(); return; }
+            submit.disabled = true;
+        });
         sync();
+    }
+    wireAssignmentForm('approveForm', 'approveSubmit', 'approveHint', {{ $isSos ? 'false' : 'true' }});
+    wireAssignmentForm('assignmentForm', 'assignmentSubmit', 'assignmentHint', {{ $isSos ? 'false' : 'true' }});
+
+    // Decline: a reason is required, then one last confirmation.
+    (function () {
+        const form = document.getElementById('declineForm');
+        if (!form) return;
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const reason = form.elements['decline_reason'];
+            if (!reason.value) {
+                reason.focus();
+                reason.style.borderColor = '#dc2626';
+                return;
+            }
+            const modalEl = form.closest('.modal');
+            const confirmIt = () => Swal.fire({
+                icon: 'warning',
+                title: 'Decline this {{ $isSos ? 'SOS alert' : 'report' }}?',
+                html: '<div style="font-size:.9em;color:#4b5563;">The responders will NOT be notified.</div>',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, decline',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc2626',
+            }).then(r => { if (r.isConfirmed) form.submit(); });
+            if (modalEl && modalEl.classList.contains('show')) {
+                modalEl.addEventListener('hidden.bs.modal', confirmIt, { once: true });
+                bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+            } else {
+                confirmIt();
+            }
+        });
+    })();
+
+    // Delete (declined only) — asks first, since it can't be undone.
+    (function () {
+        const form = document.getElementById('deleteForm');
+        if (!form) return;
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const what = document.createElement('div');
+            what.textContent = form.dataset.what || '';
+            Swal.fire({
+                icon: 'warning',
+                title: 'Delete it for good?',
+                html: `<div style="font-size:.9em;color:#4b5563;">${what.innerHTML}<br>It's removed with its photos. This can't be undone.</div>`,
+                showCancelButton: true,
+                confirmButtonText: 'Yes, delete',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc2626',
+                focusCancel: true,
+            }).then(r => { if (r.isConfirmed) form.submit(); });
+        });
     })();
 </script>
 <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google.maps_key') }}&callback=initDetailMap&v=weekly" async defer></script>
