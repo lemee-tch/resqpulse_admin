@@ -10,7 +10,13 @@ use Illuminate\Support\Facades\Storage;
  * Builds the official "MDRRMC Incident Report" PDF that a responder files
  * from the field (see Api\IncidentController::resolve()). An Initial
  * report can be updated as often as needed — the PDF is rebuilt each time;
- * a Final report closes the incident and can't be changed.
+ * a Final report goes to MDRRMO's For Review tab and can't be changed
+ * unless MDRRMO sends it back. When MDRRMO marks the incident resolved,
+ * the PDF is rebuilt once more with who reviewed it.
+ *
+ * MDRRMO can also add the report of an incident handled outside the app
+ * (Add Resolved Report, Admin\IncidentController::storeManual()) — same
+ * PDF, with the team typed in by the admin.
  *
  * Needs barryvdh/laravel-dompdf (`composer require barryvdh/laravel-dompdf`).
  * If the package isn't installed the resolution itself still succeeds — the
@@ -107,6 +113,33 @@ class IncidentReportService
     }
 
     /**
+     * The responding team as the admin typed it on Add Resolved Report
+     * (incidents handled outside the app have no responder accounts on
+     * them). Blank rows are dropped; the first person is the lead.
+     */
+    public function teamFromInput(array $rows): array
+    {
+        $clean = fn($v, $max) => mb_substr(trim((string) ($v ?? '')), 0, $max);
+
+        $team = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) continue;
+            $name   = $clean($row['name'] ?? '', 120);
+            $agency = $clean($row['agency'] ?? '', 160);
+            if ($name === '' && $agency === '') continue;
+
+            $team[] = [
+                'name'   => $name,
+                'agency' => $agency,
+                'role'   => $team === [] ? 'Lead' : 'Backup',
+                'joined' => '',
+            ];
+        }
+
+        return array_slice($team, 0, 20);
+    }
+
+    /**
      * Everyone who responded: the first to accept is the lead, anyone who
      * joined after is listed as backup (incident_responder pivot order).
      */
@@ -141,10 +174,12 @@ class IncidentReportService
             return null;
         }
 
-        // The team is always read live, so reports filed before this field
-        // existed (and late backups) still print the full responding team.
+        // The team is read live, so reports filed before this field existed
+        // (and late backups) still print the full responding team. An
+        // incident MDRRMO added by hand has no responder accounts on it,
+        // so the team typed on Add Resolved Report is kept.
         $report = $incident->report_data;
-        $report['team'] = $this->team($incident);
+        $report['team'] = $this->team($incident) ?: ($report['team'] ?? []);
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('incident-report-pdf', [
             'incident' => $incident,

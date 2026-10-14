@@ -69,12 +69,14 @@
         }
         .tab-btn.active { color: #1a3c8f; border-bottom-color: #1a3c8f; }
         .tab-btn:hover { color: #1a3c8f; }
-        .tab-btn .pill-count {
-            background: #fef3c7; color: #92400e; font-size: .68rem; font-weight: 800;
-            padding: 1px 7px; border-radius: 20px; margin-left: 6px;
-        }
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
+        /* Phones: the tabs scroll sideways instead of pushing the page wider. */
+        .tab-bar { overflow-x: auto; scrollbar-width: none; }
+        .tab-bar::-webkit-scrollbar { display: none; }
+        .tab-btn { white-space: nowrap; flex-shrink: 0; }
+        .main-wrap, .content { min-width: 0; }
+        @media (max-width: 560px) { .tab-btn { padding: 10px 12px; } }
 
         /* ── FILTERS ── */
         .filter-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -118,6 +120,8 @@
         .badge-responding   { background: #e0f2fe; color: #0369a1; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
         .badge-resolved     { background: #d1fae5; color: #065f46; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
         .badge-review       { background: #fef3c7; color: #92400e; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+        .badge-forreview    { background: #ede9fe; color: #5b21b6; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+        .badge-pending      { white-space: nowrap; }
 
         /* Inline dropdowns */
         .inline-select {
@@ -212,6 +216,52 @@
         .prio-input:focus-visible + .prio-choice { outline: 3px solid #1a3c8f; outline-offset: 2px; }
         .approve-intro { font-size: .9rem; color: #374151; }
         .approve-note  { font-size: .8rem; color: #6b7280; }
+
+        /* Note at the top of the Pending and For Review tabs. */
+        .tab-note {
+            display: flex; gap: 10px; align-items: flex-start;
+            border-radius: 10px; padding: 12px 16px; font-size: .82rem; line-height: 1.5;
+            margin-bottom: 16px;
+        }
+        .tab-note i { margin-top: 1px; }
+        .tab-note--pending { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+        .tab-note--review  { background: #f5f3ff; border: 1px solid #ddd6fe; color: #5b21b6; }
+
+        /* For Review actions: the report PDF, Return. */
+        .btn-pdf {
+            display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+            background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; border-radius: 6px;
+            padding: 5px 11px; font-size: .78rem; font-weight: 700; text-decoration: none;
+            transition: background .2s, color .2s, border-color .2s;
+        }
+        .btn-pdf:hover { background: #fef2f2; border-color: #f87171; color: #991b1b; }
+        .btn-return {
+            background: #fff; color: #b45309; border: 1.5px solid #f59e0b; border-radius: 6px;
+            padding: 5px 13px; font-size: .78rem; font-weight: 700; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+            transition: background .2s, color .2s;
+        }
+        .btn-return:hover { background: #f59e0b; color: #fff; }
+        .review-actions form { margin: 0; }
+
+        /* Resolved tab: add an incident handled outside the app. */
+        .btn-add-report {
+            margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+            background: #1a3c8f; color: #fff; border: none; border-radius: 8px;
+            padding: 9px 16px; font-size: .82rem; font-weight: 700; text-decoration: none;
+            white-space: nowrap; transition: background .2s, box-shadow .2s;
+        }
+        .btn-add-report:hover { background: #0d2e7a; color: #fff; box-shadow: 0 4px 12px rgba(26,60,143,.25); }
+
+        /* Small tags next to the type. */
+        .tag-manual, .tag-resent, .tag-returned {
+            display: inline-flex; align-items: center; gap: 3px; margin-left: 6px;
+            padding: 1px 8px; border-radius: 20px; font-size: .66rem; font-weight: 700;
+            vertical-align: middle; white-space: nowrap;
+        }
+        .tag-manual   { background: #e0e7ff; color: #3730a3; }
+        .tag-resent   { background: #f5f3ff; color: #6d28d9; }
+        .tag-returned { background: #fff7ed; color: #c2410c; }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn {
@@ -362,65 +412,189 @@
         @endif
 
         @php
-            // Pending Review — every new report waits here until an admin
-            // approves it; only then are responders notified (see
-            // Admin\IncidentController::approve()). Excluded from Active
-            // so nothing unreviewed looks like it was already dispatched.
-            $pendingReviewIncidents = $incidents->where('needs_review', true)->values();
-            // Active excludes anything still pending review AND anything
-            // declined — a declined report was never dispatched, so it
-            // doesn't belong alongside genuinely active ones. It still
-            // shows up under Resolved History below, badged "Declined".
-            $activeIncidents = $incidents
-                ->where('needs_review', false)
-                ->where('status', '!=', 'resolved')
-                ->whereNull('declined_at')
-                ->values();
-            $resolvedIncidents = $incidents
-                ->filter(fn ($inc) => $inc->status === 'resolved' || $inc->declined_at)
-                ->values();
+            // One list per tab — see Incident::getStageAttribute():
+            //   Pending     every new report waits here until an admin
+            //               approves it (only then are responders notified,
+            //               Admin\IncidentController::approve()) or declines it
+            //   Active      approved and sent to the responders: waiting for
+            //               one to accept, or being responded to
+            //   For Review  the responders sent their Final report; the admin
+            //               marks it resolved or sends it back
+            //   Resolved    resolved, declined (badged "Declined"), and
+            //               incidents handled outside the app that MDRRMO
+            //               added with "Add Resolved Report"
+            $pendingIncidents   = $incidents->filter(fn ($inc) => $inc->stage === 'pending')->values();
+            $activeIncidents    = $incidents->filter(fn ($inc) => $inc->stage === 'active')->values();
+            $forReviewIncidents = $incidents->filter(fn ($inc) => $inc->stage === 'for_review')->values();
+            $resolvedIncidents  = $incidents->filter(fn ($inc) => $inc->stage === 'resolved')->values();
+
+            $barangayList = [
+                'Acop','Bakitbakit','Balingcanaway','Cabalaoangan Norte','Cabalaoangan Sur',
+                'Calanutan','Camangaan','Capitan Tomas','Carmay East','Carmay West',
+                'Carmen East','Carmen West','Casanicolasan','Coliling','Don Antonio Village',
+                'Guiling','Palakipak','Pangaoan','Rabago','Rizal','Salvacion','San Angel',
+                'San Antonio','San Bartolome','San Isidro','San Luis','San Pedro East',
+                'San Pedro West','San Vicente','Station District','Tomana East','Tomana West',
+                'Zone I (Poblacion)','Zone II (Poblacion)','Zone III (Poblacion)',
+                'Zone IV (Poblacion)','Zone V (Poblacion)',
+            ];
 
             // Shared row-rendering data, computed once per incident.
             $rowData = function ($inc) {
                 $priorityVal   = $inc->priority ?? 'unset';
                 $priorityClass = 'priority-'.$priorityVal;
                 $priorityLabel = $inc->priority ? ucfirst($inc->priority) : 'Not Set';
-                $isResolved    = $inc->status === 'resolved';
                 $isDeclined    = (bool) $inc->declined_at;
-                $statusBadge   = match(true) {
-                    $isDeclined              => 'badge-declined',
-                    $inc->status === 'responding' => 'badge-responding',
-                    $inc->status === 'resolved'   => 'badge-resolved',
-                    default                        => 'badge-pending',
-                };
-                $statusLabel = match(true) {
-                    $isDeclined              => 'Declined',
-                    $inc->status === 'responding' => 'Responding',
-                    $inc->status === 'resolved'   => 'Resolved',
-                    default                        => 'Pending',
+                $isManual      = $inc->isManualRecord();
+                $statusLabel   = $inc->status_label;
+                $statusBadge   = match ($statusLabel) {
+                    'Pending Review' => 'badge-review',
+                    'Declined'       => 'badge-declined',
+                    'For Review'     => 'badge-forreview',
+                    'Resolved'       => 'badge-resolved',
+                    'Responding'     => 'badge-responding',
+                    default          => 'badge-pending',
                 };
                 // Not shown in the tables (it's on the Incident Details page),
                 // but still searchable from the search box.
-                $reporterName = $inc->citizen?->full_name ?? ($inc->citizen_id ? 'Unknown' : 'Guest');
+                $reporterName = $inc->reporter_name;
 
-                return compact('priorityVal', 'priorityClass', 'priorityLabel', 'isResolved', 'isDeclined', 'statusBadge', 'statusLabel', 'reporterName');
+                return compact('priorityVal', 'priorityClass', 'priorityLabel', 'isDeclined', 'isManual', 'statusBadge', 'statusLabel', 'reporterName');
+            };
+
+            // "Juan Dela Cruz (BFP)" / "Juan Dela Cruz (BFP) +2"
+            $teamSummary = function ($inc) {
+                $team = $inc->responders->sortBy(fn ($r) => $r->pivot->accepted_at)->values();
+                if ($team->isEmpty()) {
+                    return '—';
+                }
+                $lead = $team->first();
+                $name = trim($lead->full_name . ($lead->agency ? " ({$lead->agency})" : ''));
+
+                return $team->count() > 1 ? $name . ' +' . ($team->count() - 1) : $name;
             };
         @endphp
 
-        <!-- TABS — Pending Review comes first: every new report lands there
-             for the admin to verify before responders are notified. -->
+        <!-- TABS — Pending → Active → For Review → Resolved, the order an
+             incident moves through them. -->
         <div class="tab-bar">
-            <button class="tab-btn active" data-tab="review" onclick="switchTab('review', this)">
-                Pending Review ({{ $pendingReviewIncidents->count() }})
-                @if($pendingReviewIncidents->count() > 0)
-                    <span class="pill-count">{{ $pendingReviewIncidents->count() }}</span>
-                @endif
-            </button>
-            <button class="tab-btn" data-tab="active" onclick="switchTab('active', this)">Active Incidents ({{ $activeIncidents->count() }})</button>
-            <button class="tab-btn" data-tab="history" onclick="switchTab('history', this)">Resolved History ({{ $resolvedIncidents->count() }})</button>
+            <button class="tab-btn active" data-tab="pending" onclick="switchTab('pending', this)">Pending ({{ $pendingIncidents->count() }})</button>
+            <button class="tab-btn" data-tab="active" onclick="switchTab('active', this)">Active ({{ $activeIncidents->count() }})</button>
+            <button class="tab-btn" data-tab="for-review" onclick="switchTab('for-review', this)">For Review ({{ $forReviewIncidents->count() }})</button>
+            <button class="tab-btn" data-tab="resolved" onclick="switchTab('resolved', this)">Resolved ({{ $resolvedIncidents->count() }})</button>
         </div>
 
-        <!-- ══ TAB: ACTIVE INCIDENTS (approved and sent to responders) ══ -->
+        <!-- ══ TAB: PENDING (every new report, waiting for review before dispatch) ══ -->
+        <div id="tab-pending" class="tab-panel active">
+            <div class="tab-note tab-note--pending">
+                <i class="bi bi-info-circle"></i>
+                <span>Every new report waits here for your review. When you approve it, you choose its priority (Critical, High or Low) and the responders are notified. Open <strong>View</strong> to check the photos, description and reporter first.</span>
+            </div>
+
+            <div class="table-card">
+                <table class="incidents-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Submitted</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($pendingIncidents as $inc)
+                        @php extract($rowData($inc)); @endphp
+                        <tr class="incident-row" data-href="{{ route('incident.detail', $inc->id) }}">
+                            <td>{{ $inc->emergency_type }}</td>
+                            <td class="td-location">
+                                {{ $inc->location ?: '—' }}
+                                @if($inc->latitude && $inc->longitude)
+                                    <a href="https://www.google.com/maps?q={{ $inc->latitude }},{{ $inc->longitude }}" target="_blank"
+                                       class="map-link" title="Open the pin in Google Maps" onclick="event.stopPropagation()">
+                                        <i class="bi bi-geo-alt-fill"></i> Map
+                                    </a>
+                                @endif
+                            </td>
+                            <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
+                            <td onclick="event.stopPropagation()">
+                                <div class="review-actions">
+                                    <form action="{{ route('incident.approve', $inc->id) }}" method="POST" class="approve-form"
+                                          data-type="{{ $inc->emergency_type }}"
+                                          data-reporter="{{ $reporterName }}"
+                                          data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
+                                        @csrf
+                                        {{-- Filled in by the Approve dialog (Critical / High / Low). --}}
+                                        <input type="hidden" name="priority" value="{{ $inc->priority }}">
+                                        <button type="submit" class="btn-approve" title="Set priority and notify responders">
+                                            <i class="bi bi-check-lg"></i> Approve
+                                        </button>
+                                    </form>
+                                    <button type="button" class="btn-decline" title="Decline this report"
+                                            data-bs-toggle="modal" data-bs-target="#declineModal{{ $inc->id }}">
+                                        <i class="bi bi-x-lg"></i> Decline
+                                    </button>
+                                    <a href="{{ route('incident.detail', $inc->id) }}" class="btn-view" onclick="event.stopPropagation()">View <i class="bi bi-chevron-right"></i></a>
+                                </div>
+                            </td>
+                        </tr>
+
+                        @empty
+                        <tr>
+                            <td colspan="4">
+                                <div class="no-results">
+                                    <i class="bi bi-check2-circle"></i>
+                                    No reports waiting for review.
+                                </div>
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+
+            {{-- Decline dialogs. Kept outside the table: a <form> inside a
+                 table row ends up empty in the browser (its fields are
+                 left outside it), so the reason could never be read. --}}
+            @foreach($pendingIncidents as $inc)
+                <div class="modal fade" id="declineModal{{ $inc->id }}" tabindex="-1">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content" style="border-radius:14px;border:none;">
+                            <form action="{{ route('incident.decline', $inc->id) }}" method="POST" class="decline-form"
+                                  data-type="{{ $inc->emergency_type }}"
+                                  data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
+                                @csrf
+                                <div class="modal-header border-0 pb-0">
+                                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1.1rem;">Decline this report?</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body pt-3">
+                                    <p style="font-size:.82rem;color:#6b7280;margin-bottom:12px;">
+                                        Declining the <strong>{{ $inc->emergency_type }}</strong> report — responders will NOT be dispatched.
+                                        {{ $inc->citizen_id ? 'The reporter will get a notification with this reason.' : 'This report was submitted by a guest, so there is no account to notify.' }}
+                                    </p>
+                                    <label class="form-label-m">Reason for declining</label>
+                                    <select name="decline_reason" class="form-control-m" required>
+                                        <option value="" disabled selected>Select a reason...</option>
+                                        <option value="Duplicate of another report already received">Duplicate of another report already received</option>
+                                        <option value="Spam, prank, or test submission">Spam, prank, or test submission</option>
+                                        <option value="Insufficient details to dispatch responders">Insufficient details to dispatch responders</option>
+                                        <option value="Location is outside Rosales / MDRRMO service area">Location is outside Rosales / MDRRMO service area</option>
+                                        <option value="Unable to verify — no credible evidence of an emergency">Unable to verify — no credible evidence of an emergency</option>
+                                        <option value="Reported by mistake (accidental submission)">Reported by mistake (accidental submission)</option>
+                                    </select>
+                                </div>
+                                <div class="modal-footer border-0 pt-0">
+                                    <button type="submit" class="btn-decline-confirm">Decline Report</button>
+                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+
+        <!-- ══ TAB: ACTIVE (approved — for the responders to accept and respond) ══ -->
         <div id="tab-active" class="tab-panel">
 
             <!-- FILTER BAR -->
@@ -435,33 +609,20 @@
 
                 <select class="filter-select" id="filterStatus">
                     <option value="">All Status</option>
-                    <option value="pending">Pending</option>
+                    <option value="pending">Awaiting Responder</option>
                     <option value="responding">Responding</option>
                 </select>
 
                 <select class="filter-select" id="filterType">
                     <option value="">All Types</option>
-                    <option value="Fire">Fire</option>
-                    <option value="Flood">Flood</option>
-                    <option value="Earthquake">Earthquake</option>
-                    <option value="Accident">Accident</option>
-                    <option value="Medical Emergency">Medical Emergency</option>
-                    <option value="Landslide">Landslide</option>
-                    <option value="Other">Other</option>
+                    @foreach(\App\Models\Incident::TYPES as $typeOption)
+                        <option value="{{ $typeOption }}">{{ $typeOption }}</option>
+                    @endforeach
                 </select>
 
                 <select class="filter-select" id="filterBarangay">
                     <option value="">All Barangays</option>
-                    @foreach ([
-                        'Acop','Bakitbakit','Balingcanaway','Cabalaoangan Norte','Cabalaoangan Sur',
-                        'Calanutan','Camangaan','Capitan Tomas','Carmay East','Carmay West',
-                        'Carmen East','Carmen West','Casanicolasan','Coliling','Don Antonio Village',
-                        'Guiling','Palakipak','Pangaoan','Rabago','Rizal','Salvacion','San Angel',
-                        'San Antonio','San Bartolome','San Isidro','San Luis','San Pedro East',
-                        'San Pedro West','San Vicente','Station District','Tomana East','Tomana West',
-                        'Zone I (Poblacion)','Zone II (Poblacion)','Zone III (Poblacion)',
-                        'Zone IV (Poblacion)','Zone V (Poblacion)',
-                    ] as $brgy)
+                    @foreach ($barangayList as $brgy)
                         <option value="{{ strtolower($brgy) }}">{{ $brgy }}</option>
                     @endforeach
                 </select>
@@ -519,7 +680,12 @@
                                     </select>
                                 </form>
                             </td>
-                            <td>{{ $inc->emergency_type }}</td>
+                            <td>
+                                {{ $inc->emergency_type }}
+                                @if($inc->report_returned_at && $inc->report_return_reason)
+                                    <span class="tag-returned" title="{{ $inc->report_return_reason }}"><i class="bi bi-arrow-return-left"></i> Report sent back</span>
+                                @endif
+                            </td>
                             <td class="td-location">{{ $inc->location ?: '—' }}</td>
                             <td><span class="{{ $statusBadge }}">{{ $statusLabel }}</span></td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
@@ -540,102 +706,73 @@
             </div>
         </div>
 
-        <!-- ══ TAB: PENDING REVIEW (every new report) ══ -->
-        <div id="tab-review" class="tab-panel active">
-            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;">
-                <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>Every new report waits here for your review. When you approve it, you choose its priority (Critical, High or Low) and the responders are notified. Open <strong>View</strong> to check the photos, description and reporter first.</span>
+        <!-- ══ TAB: FOR REVIEW (the responders' Final report, waiting for the admin) ══ -->
+        <div id="tab-for-review" class="tab-panel">
+            <div class="tab-note tab-note--review">
+                <i class="bi bi-clipboard2-check"></i>
+                <span>The responding team sent their <strong>Final report</strong> for these incidents. Open the report and check it, then <strong>Mark as Resolved</strong> — or <strong>Return</strong> it to the responders with what needs fixing. A returned report goes back to Active until they send it again.</span>
             </div>
 
             <div class="table-card">
                 <table class="incidents-table">
                     <thead>
                         <tr>
+                            <th>Priority</th>
                             <th>Type</th>
                             <th>Location</th>
-                            <th>Submitted</th>
+                            <th>Responding Team</th>
+                            <th>Report Sent</th>
                             <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @forelse($pendingReviewIncidents as $inc)
-                        @php extract($rowData($inc)); @endphp
+                        @forelse($forReviewIncidents as $inc)
+                        @php
+                            extract($rowData($inc));
+                            $sentAt = $inc->report_submitted_at ?? $inc->updated_at;
+                        @endphp
                         <tr class="incident-row" data-href="{{ route('incident.detail', $inc->id) }}">
-                            <td>{{ $inc->emergency_type }}</td>
-                            <td class="td-location">
-                                {{ $inc->location ?: '—' }}
-                                @if($inc->latitude && $inc->longitude)
-                                    <a href="https://www.google.com/maps?q={{ $inc->latitude }},{{ $inc->longitude }}" target="_blank"
-                                       class="map-link" title="Open the pin in Google Maps" onclick="event.stopPropagation()">
-                                        <i class="bi bi-geo-alt-fill"></i> Map
-                                    </a>
+                            <td><span class="{{ $priorityClass }}">{{ $priorityLabel }}</span></td>
+                            <td>
+                                {{ $inc->emergency_type }}
+                                @if($inc->report_returned_at)
+                                    <span class="tag-resent" title="Sent again after you returned it"><i class="bi bi-arrow-repeat"></i> Sent again</span>
                                 @endif
                             </td>
-                            <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
+                            <td class="td-location">{{ $inc->location ?: '—' }}</td>
+                            <td>{{ $teamSummary($inc) }}</td>
+                            <td style="white-space:nowrap;">{{ $sentAt->format('M d, Y g:i A') }}</td>
                             <td onclick="event.stopPropagation()">
                                 <div class="review-actions">
-                                    <form action="{{ route('incident.approve', $inc->id) }}" method="POST" class="approve-form"
+                                    @if($inc->report_data)
+                                        <a href="{{ route('incident.report-pdf', $inc) }}" target="_blank" class="btn-pdf" title="Open the Final report (PDF)">
+                                            <i class="bi bi-file-earmark-pdf"></i> Report
+                                        </a>
+                                    @endif
+                                    <form action="{{ route('incident.confirm-resolved', $inc->id) }}" method="POST" class="resolve-form"
                                           data-type="{{ $inc->emergency_type }}"
-                                          data-reporter="{{ $reporterName }}"
                                           data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
                                         @csrf
-                                        {{-- Filled in by the Approve dialog (Critical / High / Low). --}}
-                                        <input type="hidden" name="priority" value="{{ $inc->priority }}">
-                                        <button type="submit" class="btn-approve" title="Set priority and notify responders">
-                                            <i class="bi bi-check-lg"></i> Approve
+                                        <button type="submit" class="btn-approve" title="Accept the report and mark the incident resolved">
+                                            <i class="bi bi-check2-circle"></i> Mark as Resolved
                                         </button>
                                     </form>
-                                    <button type="button" class="btn-decline" title="Decline this report"
-                                            data-bs-toggle="modal" data-bs-target="#declineModal{{ $inc->id }}">
-                                        <i class="bi bi-x-lg"></i> Decline
+                                    <button type="button" class="btn-return" title="Send the report back to the responders"
+                                            data-bs-toggle="modal" data-bs-target="#returnModal{{ $inc->id }}">
+                                        <i class="bi bi-arrow-return-left"></i> Return
                                     </button>
-                                    <a href="{{ route('incident.detail', $inc->id) }}" class="btn-view" onclick="event.stopPropagation()">View <i class="bi bi-chevron-right"></i></a>
+                                    <a href="{{ route('incident.detail', $inc->id) }}" class="btn-view">View <i class="bi bi-chevron-right"></i></a>
                                 </div>
                             </td>
                         </tr>
 
-                        <div class="modal fade" id="declineModal{{ $inc->id }}" tabindex="-1">
-                            <div class="modal-dialog modal-dialog-centered">
-                                <div class="modal-content" style="border-radius:14px;border:none;">
-                                    <form action="{{ route('incident.decline', $inc->id) }}" method="POST" class="decline-form"
-                                          data-type="{{ $inc->emergency_type }}"
-                                          data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
-                                        @csrf
-                                        <div class="modal-header border-0 pb-0">
-                                            <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1.1rem;">Decline this report?</h5>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                        </div>
-                                        <div class="modal-body pt-3">
-                                            <p style="font-size:.82rem;color:#6b7280;margin-bottom:12px;">
-                                                Declining the <strong>{{ $inc->emergency_type }}</strong> report — responders will NOT be dispatched.
-                                                {{ $inc->citizen_id ? 'The reporter will get a notification with this reason.' : 'This report was submitted by a guest, so there is no account to notify.' }}
-                                            </p>
-                                            <label class="form-label-m">Reason for declining</label>
-                                            <select name="decline_reason" class="form-control-m" required>
-                                                <option value="" disabled selected>Select a reason...</option>
-                                                <option value="Duplicate of another report already received">Duplicate of another report already received</option>
-                                                <option value="Spam, prank, or test submission">Spam, prank, or test submission</option>
-                                                <option value="Insufficient details to dispatch responders">Insufficient details to dispatch responders</option>
-                                                <option value="Location is outside Rosales / MDRRMO service area">Location is outside Rosales / MDRRMO service area</option>
-                                                <option value="Unable to verify — no credible evidence of an emergency">Unable to verify — no credible evidence of an emergency</option>
-                                                <option value="Reported by mistake (accidental submission)">Reported by mistake (accidental submission)</option>
-                                            </select>
-                                        </div>
-                                        <div class="modal-footer border-0 pt-0">
-                                            <button type="submit" class="btn-decline-confirm">Decline Report</button>
-                                            <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
 
                         @empty
                         <tr>
-                            <td colspan="4">
+                            <td colspan="6">
                                 <div class="no-results">
-                                    <i class="bi bi-check2-circle"></i>
-                                    No reports waiting for review.
+                                    <i class="bi bi-clipboard2-check"></i>
+                                    No reports waiting for your review.
                                 </div>
                             </td>
                         </tr>
@@ -643,10 +780,15 @@
                     </tbody>
                 </table>
             </div>
+
+            {{-- Return dialogs — outside the table, like the Decline dialogs above. --}}
+            @foreach($forReviewIncidents as $inc)
+                @include('partials.return-report-modal', ['incident' => $inc, 'modalId' => 'returnModal' . $inc->id])
+            @endforeach
         </div>
 
-        <!-- ══ TAB: RESOLVED HISTORY ══ -->
-        <div id="tab-history" class="tab-panel">
+        <!-- ══ TAB: RESOLVED (plus declined, and incidents added by MDRRMO) ══ -->
+        <div id="tab-resolved" class="tab-panel">
 
             <!-- FILTER BAR -->
             <div class="filter-bar">
@@ -660,29 +802,23 @@
 
                 <select class="filter-select" id="filterTypeH">
                     <option value="">All Types</option>
-                    <option value="Fire">Fire</option>
-                    <option value="Flood">Flood</option>
-                    <option value="Earthquake">Earthquake</option>
-                    <option value="Accident">Accident</option>
-                    <option value="Medical Emergency">Medical Emergency</option>
-                    <option value="Landslide">Landslide</option>
-                    <option value="Other">Other</option>
+                    @foreach(\App\Models\Incident::TYPES as $typeOption)
+                        <option value="{{ $typeOption }}">{{ $typeOption }}</option>
+                    @endforeach
                 </select>
 
                 <select class="filter-select" id="filterBarangayH">
                     <option value="">All Barangays</option>
-                    @foreach ([
-                        'Acop','Bakitbakit','Balingcanaway','Cabalaoangan Norte','Cabalaoangan Sur',
-                        'Calanutan','Camangaan','Capitan Tomas','Carmay East','Carmay West',
-                        'Carmen East','Carmen West','Casanicolasan','Coliling','Don Antonio Village',
-                        'Guiling','Palakipak','Pangaoan','Rabago','Rizal','Salvacion','San Angel',
-                        'San Antonio','San Bartolome','San Isidro','San Luis','San Pedro East',
-                        'San Pedro West','San Vicente','Station District','Tomana East','Tomana West',
-                        'Zone I (Poblacion)','Zone II (Poblacion)','Zone III (Poblacion)',
-                        'Zone IV (Poblacion)','Zone V (Poblacion)',
-                    ] as $brgy)
+                    @foreach ($barangayList as $brgy)
                         <option value="{{ strtolower($brgy) }}">{{ $brgy }}</option>
                     @endforeach
+                </select>
+
+                <select class="filter-select" id="filterResultH">
+                    <option value="">All Results</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="manual">Added by MDRRMO</option>
+                    <option value="declined">Declined</option>
                 </select>
 
                 <input type="date" class="filter-date" id="filterDateH" title="Filter by date">
@@ -693,6 +829,11 @@
                 </div>
 
                 <button class="btn-clear" id="btnClearH">Clear Filters</button>
+
+                {{-- An incident MDRRMO handled outside the app (walk-in, phone call, radio…). --}}
+                <a href="{{ route('incident.manual.create') }}" class="btn-add-report" title="Add an incident that was handled outside the app">
+                    <i class="bi bi-plus-lg"></i> Add Resolved Report
+                </a>
             </div>
 
             <div class="results-count" id="resultsCountH"></div>
@@ -715,11 +856,17 @@
                         <tr class="incident-row history-row"
                             data-priority="{{ $priorityVal }}"
                             data-type="{{ $inc->emergency_type }}"
+                            data-result="{{ $isDeclined ? 'declined' : ($isManual ? 'manual' : 'resolved') }}"
                             data-date="{{ $inc->created_at->format('Y-m-d') }}"
                             data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
                             data-href="{{ route('incident.detail', $inc->id) }}">
                             <td><span class="{{ $priorityClass }}">{{ $priorityLabel }}</span></td>
-                            <td>{{ $inc->emergency_type }}</td>
+                            <td>
+                                {{ $inc->emergency_type }}
+                                @if($isManual)
+                                    <span class="tag-manual" title="Handled outside the app — added by MDRRMO{{ $inc->reported_via ? ' (' . strtolower($inc->reported_via) . ')' : '' }}"><i class="bi bi-pencil-square"></i> Added by MDRRMO</span>
+                                @endif
+                            </td>
                             <td class="td-location">{{ $inc->location ?: '—' }}</td>
                             <td><span class="{{ $statusBadge }}">{{ $statusLabel }}</span></td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
@@ -772,6 +919,17 @@
         btn.classList.add('active');
     }
 
+    // Opens a tab by name. The tabs were called "review" (now Pending) and
+    // "history" (now Resolved) before, so old links still land right.
+    function openTab(name) {
+        const renamed = { review: 'pending', history: 'resolved', forreview: 'for-review', for_review: 'for-review' };
+        const tab = renamed[name] || name;
+        const btn = tab && document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+        if (btn) switchTab(tab, btn);
+        return !!btn;
+    }
+
+    // Active tab filters (priority / status / type / barangay / date / search)
     (function () {
         const priorityFilter = document.getElementById('filterPriority');
         const statusFilter   = document.getElementById('filterStatus');
@@ -828,35 +986,26 @@
         });
 
         // Landing here from the Dashboard's "Critical" card (?priority=critical)
-        // pre-applies the filter on the Active Incidents tab — which is
-        // already "not resolved yet" by definition (see $activeIncidents
-        // above: needs_review=false AND status != resolved) — so the
-        // combination is exactly "all unresolved critical incidents, one
-        // page, no extra clicks."
+        // pre-applies the filter on the Active tab — which is already "not
+        // resolved yet" by definition — so the combination is exactly "all
+        // unresolved critical incidents, one page, no extra clicks."
         const urlParams = new URLSearchParams(window.location.search);
         const priorityParam = urlParams.get('priority');
         if (priorityParam && ['critical', 'high', 'low', 'unset'].includes(priorityParam)) {
             priorityFilter.value = priorityParam;
-            // Pending Review is the first tab, so open Active Incidents
-            // where this filter lives.
-            switchTab('active', document.querySelector('.tab-btn[data-tab="active"]'));
+            // Pending is the first tab, so open Active where this filter lives.
+            openTab('active');
         }
-
-        rows.forEach(row => {
-            row.addEventListener('click', () => {
-                const href = row.dataset.href;
-                if (href) window.location.href = href;
-            });
-        });
 
         applyFilters();
     })();
 
-    // Pending Review is the first tab, so after changing something on
-    // another tab (e.g. a priority on Active Incidents) the reload would
-    // jump back to it. Remember the tab the change came from and reopen
-    // it once. (The priority dropdown sends its form with form.submit(),
-    // which doesn't fire "submit", so listen for "change" too.)
+    // Pending is the first tab, so after changing something on another tab
+    // (a priority on Active, Mark as Resolved on For Review…) the reload
+    // would jump back to it. Remember the tab the change came from and
+    // reopen it once. (The priority dropdown sends its form with
+    // form.submit(), which doesn't fire "submit", so listen for "change"
+    // too.)
     (function () {
         const KEY = 'resqpulse_incidents_return_tab';
         const remember = form => {
@@ -871,25 +1020,26 @@
 
         let tab = null;
         try { tab = sessionStorage.getItem(KEY); sessionStorage.removeItem(KEY); } catch (e) {}
-        const btn = tab && document.querySelector('.tab-btn[data-tab="' + tab + '"]');
-        if (btn) switchTab(tab, btn);
+        if (tab) openTab(tab);
     })();
 
-    // Pending Review rows are also clickable through to the detail page
-    // (Approve/Decline buttons stop propagation on their own).
-    document.querySelectorAll('#tab-review tr.incident-row').forEach(row => {
+    // Every row opens the Incident Details page (the buttons in a row stop
+    // the click on their own).
+    document.querySelectorAll('tr.incident-row').forEach(row => {
         row.addEventListener('click', () => {
             const href = row.dataset.href;
             if (href) window.location.href = href;
         });
     });
 
-    // Resolved History tab filters (priority / type / date / search)
+    // Resolved tab filters (priority / type / barangay / result / date / search)
     (function () {
         const priorityFilter = document.getElementById('filterPriorityH');
         if (!priorityFilter) return;
 
-        const typeFilter    = document.getElementById('filterTypeH');
+        const typeFilter     = document.getElementById('filterTypeH');
+        const barangayFilter = document.getElementById('filterBarangayH');
+        const resultFilter   = document.getElementById('filterResultH');
         const dateFilter     = document.getElementById('filterDateH');
         const searchInput    = document.getElementById('searchInputH');
         const btnClear       = document.getElementById('btnClearH');
@@ -901,13 +1051,21 @@
         function applyFilters() {
             const priority = priorityFilter.value;
             const type     = typeFilter.value;
+            const barangay = barangayFilter.value;
+            const result   = resultFilter.value;
             const date     = dateFilter.value;
             const search   = searchInput.value.trim().toLowerCase();
             let visible    = 0;
 
             rows.forEach(row => {
+                // "Resolved" includes the ones MDRRMO added by hand.
+                const resultOk = !result
+                    || row.dataset.result === result
+                    || (result === 'resolved' && row.dataset.result === 'manual');
                 const ok = (!priority || row.dataset.priority === priority)
                         && (!type     || row.dataset.type     === type)
+                        && (!barangay || row.dataset.search.includes(barangay))
+                        && resultOk
                         && (!date     || row.dataset.date     === date)
                         && (!search   || row.dataset.search.includes(search));
                 row.style.display = ok ? '' : 'none';
@@ -918,21 +1076,12 @@
             noMatch.style.display = (visible === 0 && totalCount > 0) ? 'block' : 'none';
         }
 
-        priorityFilter.addEventListener('change', applyFilters);
-        typeFilter.addEventListener('change', applyFilters);
-        dateFilter.addEventListener('change', applyFilters);
+        [priorityFilter, typeFilter, barangayFilter, resultFilter, dateFilter].forEach(s => s.addEventListener('change', applyFilters));
         searchInput.addEventListener('input', applyFilters);
         btnClear.addEventListener('click', () => {
-            [priorityFilter, typeFilter].forEach(s => s.value = '');
+            [priorityFilter, typeFilter, barangayFilter, resultFilter].forEach(s => s.value = '');
             dateFilter.value = searchInput.value = '';
             applyFilters();
-        });
-
-        rows.forEach(row => {
-            row.addEventListener('click', () => {
-                const href = row.dataset.href;
-                if (href) window.location.href = href;
-            });
         });
 
         applyFilters();
@@ -1011,7 +1160,7 @@
         form.addEventListener('submit', function (e) {
             e.preventDefault();
 
-            const reasonSelect = form.querySelector('select[name="decline_reason"]');
+            const reasonSelect = form.elements['decline_reason'];
             if (!reasonSelect.value) {
                 Swal.fire({
                     icon: 'warning',
@@ -1074,11 +1223,11 @@
         });
     });
 
-    // ?tab=history (e.g. after deleting a declined report) opens that tab.
+    // ?tab=resolved (e.g. after deleting a declined report) or
+    // ?tab=for-review opens that tab.
     (function () {
         const tab = new URLSearchParams(window.location.search).get('tab');
-        const btn = tab && document.querySelector('.tab-btn[data-tab="' + tab + '"]');
-        if (btn) switchTab(tab, btn);
+        if (tab) openTab(tab);
     })();
 </script>
 @include('partials.sos-alert-overlay')

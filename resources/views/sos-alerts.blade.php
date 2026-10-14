@@ -146,12 +146,14 @@
         }
         .tab-btn.active { color: #1a3c8f; border-bottom-color: #1a3c8f; }
         .tab-btn:hover { color: #1a3c8f; }
-        .tab-btn .pill-count {
-            background: #fef3c7; color: #92400e; font-size: .68rem; font-weight: 800;
-            padding: 1px 7px; border-radius: 20px; margin-left: 6px;
-        }
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
+        /* Phones: the tabs scroll sideways instead of pushing the page wider. */
+        .tab-bar { overflow-x: auto; scrollbar-width: none; }
+        .tab-bar::-webkit-scrollbar { display: none; }
+        .tab-btn { white-space: nowrap; flex-shrink: 0; }
+        .main-wrap, .content { min-width: 0; }
+        @media (max-width: 560px) { .tab-btn { padding: 10px 12px; } }
 
         /* ── SOS CARD ── */
         .sos-card {
@@ -197,6 +199,9 @@
             border-left-color: #991b1b;
             opacity: .8;
         }
+        .sos-card--for_review {
+            border-left-color: #7c3aed;
+        }
 
         .sos-photo {
             width: 92px; height: 92px; border-radius: 12px; object-fit: cover;
@@ -224,6 +229,7 @@
         .badge-resolved     { background: #d1fae5; color: #065f46; }
         .badge-review       { background: #fef3c7; color: #92400e; }
         .badge-declined     { background: #fee2e2; color: #991b1b; }
+        .badge-forreview    { background: #ede9fe; color: #5b21b6; }
 
         .badge-ai { background: #eef2ff; color: #4338ca; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 
@@ -259,6 +265,32 @@
         .review-banner {
             background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;
             font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;
+        }
+        .review-banner--report { background: #f5f3ff; border-color: #ddd6fe; color: #5b21b6; }
+        .review-actions form { margin: 0; }
+        /* For Review actions: the report PDF, Return. */
+        .btn-pdf {
+            display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+            background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; border-radius: 8px;
+            padding: 7px 14px; font-size: .8rem; font-weight: 700; text-decoration: none;
+            transition: background .2s, border-color .2s;
+        }
+        .btn-pdf:hover { background: #fef2f2; border-color: #f87171; color: #991b1b; }
+        .btn-return {
+            background: #fff; color: #b45309; border: 1.5px solid #f59e0b; border-radius: 8px;
+            padding: 8px 16px; font-size: .8rem; font-weight: 700; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px; transition: background .2s, color .2s;
+        }
+        .btn-return:hover { background: #f59e0b; color: #fff; }
+        .tag-returned {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 1px 8px; border-radius: 20px; font-size: .66rem; font-weight: 700;
+            background: #fff7ed; color: #c2410c;
+        }
+        .tag-resent {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 1px 8px; border-radius: 20px; font-size: .66rem; font-weight: 700;
+            background: #f5f3ff; color: #6d28d9;
         }
         /* Decline-reason modal — same dropdown pattern as the Residents
            Verification rejection modal. */
@@ -433,9 +465,12 @@
             // doesn't belong alongside genuinely active ones. Declined
             // alerts have their own tab; Resolved History is only the
             // ones responders actually resolved.
-            $activeSos   = $sosAlerts->where('needs_review', false)->where('status', '!=', 'resolved')->whereNull('declined_at')->values();
-            $resolvedSos = $sosAlerts->filter(fn ($s) => $s->status === 'resolved' && ! $s->declined_at)->values();
-            $declinedSos = $sosAlerts->filter(fn ($s) => (bool) $s->declined_at)->sortByDesc('declined_at')->values();
+            // For Review: the responders sent their Final report — the
+            // admin marks it resolved or sends it back (same as Incidents).
+            $activeSos    = $sosAlerts->filter(fn ($s) => $s->stage === 'active')->values();
+            $forReviewSos = $sosAlerts->filter(fn ($s) => $s->stage === 'for_review')->values();
+            $resolvedSos  = $sosAlerts->filter(fn ($s) => $s->status === 'resolved' && ! $s->declined_at)->values();
+            $declinedSos  = $sosAlerts->filter(fn ($s) => (bool) $s->declined_at)->sortByDesc('declined_at')->values();
         @endphp
 
         <div class="page-header">
@@ -457,17 +492,14 @@
             </div>
         @endif
 
-        <!-- TABS — Pending Review comes first: every new SOS lands there
-             for the admin to verify before responders are notified. -->
+        <!-- TABS — same order as Incidents: Pending → Active → For Review →
+             Resolved, plus Declined. Every new SOS lands in Pending for the
+             admin to verify before responders are notified. -->
         <div class="tab-bar">
-            <button class="tab-btn active" data-tab="review" onclick="switchTab('review', this)">
-                Pending Review ({{ $pendingReviewSos->count() }})
-                @if($pendingReviewSos->count() > 0)
-                    <span class="pill-count">{{ $pendingReviewSos->count() }}</span>
-                @endif
-            </button>
-            <button class="tab-btn" data-tab="active" onclick="switchTab('active', this)">Active SOS ({{ $activeSos->count() }})</button>
-            <button class="tab-btn" data-tab="history" onclick="switchTab('history', this)">Resolved History ({{ $resolvedSos->count() }})</button>
+            <button class="tab-btn active" data-tab="pending" onclick="switchTab('pending', this)">Pending ({{ $pendingReviewSos->count() }})</button>
+            <button class="tab-btn" data-tab="active" onclick="switchTab('active', this)">Active ({{ $activeSos->count() }})</button>
+            <button class="tab-btn" data-tab="for-review" onclick="switchTab('for-review', this)">For Review ({{ $forReviewSos->count() }})</button>
+            <button class="tab-btn" data-tab="resolved" onclick="switchTab('resolved', this)">Resolved ({{ $resolvedSos->count() }})</button>
             <button class="tab-btn" data-tab="declined" onclick="switchTab('declined', this)">Declined ({{ $declinedSos->count() }})</button>
         </div>
 
@@ -476,7 +508,7 @@
             @forelse($activeSos as $sos)
                 @php
                     $statusClass = 'badge-' . $sos->status;
-                    $statusLabel = ucfirst($sos->status);
+                    $statusLabel = $sos->status_label; // "Awaiting Responder" / "Responding"
                     $reporter = $sos->reporter_name; // a guest's typed name, see Incident::getReporterNameAttribute()
                     $mobile = $sos->reporter_mobile;
                     $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
@@ -504,6 +536,9 @@
                                 <span class="badge-status {{ $statusClass }}">{{ $statusLabel }}</span>
                                 @if($sos->ai_detected_type)
                                     <span class="badge-ai text-danger">{{ $sos->ai_detected_type }}</span>
+                                @endif
+                                @if($sos->report_returned_at && $sos->report_return_reason)
+                                    <span class="tag-returned" title="{{ $sos->report_return_reason }}"><i class="bi bi-arrow-return-left"></i> Report sent back</span>
                                 @endif
                             </div>
                             <div class="sos-time">{{ $sos->created_at->diffForHumans() }} · {{ $sos->created_at->format('M d, g:i A') }}</div>
@@ -539,8 +574,100 @@
             @endforelse
         </div>
 
-        <!-- ══ TAB: PENDING REVIEW (every new SOS) ══ -->
-        <div id="tab-review" class="tab-panel active">
+        <!-- ══ TAB: FOR REVIEW (the responders' Final report, waiting for the admin) ══ -->
+        <div id="tab-for-review" class="tab-panel">
+            <div class="review-banner review-banner--report">
+                <i class="bi bi-clipboard2-check" style="margin-top:1px;"></i>
+                <span>The responding team sent their <strong>Final report</strong> for these SOS alerts. Open the report and check it, then <strong>Mark as Resolved</strong> — or <strong>Return</strong> it to the responders with what needs fixing. A returned report goes back to Active until they send it again.</span>
+            </div>
+
+            @forelse($forReviewSos as $sos)
+                @php
+                    $reporter = $sos->reporter_name;
+                    $mobile = $sos->reporter_mobile;
+                    $mapsUrl = "https://www.google.com/maps?q={$sos->latitude},{$sos->longitude}";
+                    $sentAt = $sos->report_submitted_at ?? $sos->updated_at;
+                    $team = $sos->responders->sortBy(fn ($r) => $r->pivot->accepted_at)->values();
+
+                    $sosPhoto = null;
+                    if ($sos->photo_path) {
+                        $decodedSosPhotos = json_decode($sos->photo_path, true);
+                        $sosPhoto = is_array($decodedSosPhotos) ? ($decodedSosPhotos[0] ?? null) : $sos->photo_path;
+                    }
+                @endphp
+                <div class="sos-card sos-card--for_review" data-id="{{ $sos->id }}"
+                     onclick="window.location.href='{{ route('sos.detail', $sos->id) }}'">
+                    @if($sosPhoto)
+                        <img src="{{ Storage::url($sosPhoto) }}" class="sos-photo" alt="SOS photo">
+                    @else
+                        <div class="sos-photo-placeholder"><i class="bi bi-camera-video-off"></i></div>
+                    @endif
+
+                    <div class="sos-body">
+                        <div class="sos-top-row">
+                            <div class="sos-title">
+                                🆘 {{ $sos->display_type }}
+                                <span class="badge-status badge-forreview">For Review</span>
+                                @if($sos->report_returned_at)
+                                    <span class="tag-resent" title="Sent again after you returned it"><i class="bi bi-arrow-repeat"></i> Sent again</span>
+                                @endif
+                            </div>
+                            <div class="sos-time">Report sent {{ $sentAt->diffForHumans() }} · {{ $sentAt->format('M d, g:i A') }}</div>
+                        </div>
+
+                        <div class="sos-meta-row">
+                            <div class="sos-meta-item">
+                                <i class="bi bi-person-fill"></i>
+                                <span class="sos-reporter">{{ $reporter }}</span>
+                                @if(! $sos->citizen_id) <span class="tag-guest">Guest</span> @endif
+                                @if($mobile) <span>· {{ $mobile }}</span> @endif
+                            </div>
+                            <div class="sos-meta-item">
+                                <i class="bi bi-geo-alt-fill"></i>
+                                <a href="{{ $mapsUrl }}" target="_blank" onclick="event.stopPropagation()" style="color:#1a3c8f;text-decoration:none;font-weight:600;">
+                                    {{ $sos->location ?: number_format($sos->latitude, 5) . ', ' . number_format($sos->longitude, 5) }}
+                                </a>
+                            </div>
+                            @if($team->isNotEmpty())
+                                <div class="sos-meta-item">
+                                    <i class="bi bi-shield-fill-check"></i>
+                                    <span>{{ $team->first()->full_name }}{{ $team->first()->agency ? ' (' . $team->first()->agency . ')' : '' }}{{ $team->count() > 1 ? ' +' . ($team->count() - 1) : '' }}</span>
+                                </div>
+                            @endif
+                        </div>
+
+                        <div class="review-actions" onclick="event.stopPropagation()">
+                            @if($sos->report_data)
+                                <a href="{{ route('incident.report-pdf', $sos) }}" target="_blank" class="btn-pdf">
+                                    <i class="bi bi-file-earmark-pdf"></i> Report
+                                </a>
+                            @endif
+                            <form action="{{ route('incident.confirm-resolved', $sos->id) }}" method="POST" class="resolve-form"
+                                  data-type="SOS"
+                                  data-notifies-citizen="{{ $sos->citizen_id ? '1' : '0' }}">
+                                @csrf
+                                <button type="submit" class="btn-approve">
+                                    <i class="bi bi-check2-circle"></i> Mark as Resolved
+                                </button>
+                            </form>
+                            <button type="button" class="btn-return" data-bs-toggle="modal" data-bs-target="#returnModal{{ $sos->id }}">
+                                <i class="bi bi-arrow-return-left"></i> Return
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                @include('partials.return-report-modal', ['incident' => $sos, 'modalId' => 'returnModal' . $sos->id])
+            @empty
+                <div class="empty-state">
+                    <i class="bi bi-clipboard2-check"></i>
+                    No SOS reports waiting for your review.
+                </div>
+            @endforelse
+        </div>
+
+        <!-- ══ TAB: PENDING (every new SOS, waiting for review before dispatch) ══ -->
+        <div id="tab-pending" class="tab-panel active">
             <div class="review-banner">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
                 <span>Every SOS alert waits here for your review. Call the number shown to confirm the emergency, then approve it to notify the responders. Responders are not notified until you approve.</span>
@@ -648,8 +775,8 @@
             @endforelse
         </div>
 
-        <!-- ══ TAB: RESOLVED HISTORY ══ -->
-        <div id="tab-history" class="tab-panel">
+        <!-- ══ TAB: RESOLVED ══ -->
+        <div id="tab-resolved" class="tab-panel">
 
             @if($resolvedSos->count())
             <!-- FILTER BAR -->
@@ -890,11 +1017,37 @@
         btn.classList.add('active');
     }
 
+    // Opens a tab by name. The tabs were called "review" (now Pending) and
+    // "history" (now Resolved) before, so old links still land right.
+    function openTab(name) {
+        const renamed = { review: 'pending', history: 'resolved', forreview: 'for-review', for_review: 'for-review' };
+        const tab = renamed[name] || name;
+        const btn = tab && document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+        if (btn) switchTab(tab, btn);
+        return !!btn;
+    }
+
     // ?tab=declined (e.g. after deleting a declined alert) opens that tab.
     (function () {
         const tab = new URLSearchParams(window.location.search).get('tab');
-        const btn = tab && document.querySelector('.tab-btn[data-tab="' + tab + '"]');
-        if (btn) switchTab(tab, btn);
+        if (tab) openTab(tab);
+    })();
+
+    // Pending is the first tab, so after Mark as Resolved / Return on the
+    // For Review tab the reload would jump back to it. Remember the tab the
+    // change came from and reopen it once.
+    (function () {
+        const KEY = 'resqpulse_sos_return_tab';
+        document.querySelectorAll('.tab-panel form:not(.delete-form)').forEach(form => {
+            form.addEventListener('submit', () => {
+                const panel = form.closest('.tab-panel');
+                if (!panel) return;
+                try { sessionStorage.setItem(KEY, panel.id.replace('tab-', '')); } catch (e) {}
+            });
+        });
+        let tab = null;
+        try { tab = sessionStorage.getItem(KEY); sessionStorage.removeItem(KEY); } catch (e) {}
+        if (tab) openTab(tab);
     })();
 
     // Delete (declined alerts only) — asks first, since it can't be undone.
@@ -955,7 +1108,7 @@
         const aiFilter      = document.getElementById('filterAiH');
         const searchInput   = document.getElementById('searchInputH');
         const btnClear      = document.getElementById('btnClearH');
-        const cards         = Array.from(document.querySelectorAll('#tab-history .history-row'));
+        const cards         = Array.from(document.querySelectorAll('#tab-resolved .history-row'));
         const resultsCount  = document.getElementById('resultsCountH');
         const noMatch       = document.getElementById('historyNoMatch');
         const totalCount    = cards.length;

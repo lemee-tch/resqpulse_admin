@@ -49,6 +49,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/critical', [IncidentController::class, 'criticalIndex'])->name('critical');
     Route::get('/incidents-overview', [IncidentController::class, 'overviewIndex'])->name('incidents.overview');
     Route::post('/incidents-overview/recheck-locations', [IncidentController::class, 'recheckLocations'])->name('incidents.recheck-locations');
+    // Resolved tab → "Add Resolved Report" (an incident handled outside the
+    // app). Kept ABOVE /incidents/{incident} so "resolved-report" is never
+    // read as an incident.
+    Route::get('/incidents/resolved-report/create', [IncidentController::class, 'createManual'])->name('incident.manual.create');
+    Route::post('/incidents/resolved-report', [IncidentController::class, 'storeManual'])->name('incident.manual.store');
     Route::get('/incidents/{incident}', [IncidentController::class, 'show'])->name('incident.detail');
     Route::get('/incidents/{incident}/report-pdf', [IncidentController::class, 'reportPdf'])->name('incident.report-pdf');
     Route::get('/sos-alerts', [IncidentController::class, 'sosIndex'])->name('sos-alerts');
@@ -73,6 +78,9 @@ Route::middleware('auth')->group(function () {
     Route::patch('/incidents/{incident}/note', [IncidentController::class, 'updateNote'])->name('incident.note');
     Route::post('/incidents/{incident}/approve', [IncidentController::class, 'approve'])->name('incident.approve');
     Route::post('/incidents/{incident}/decline', [IncidentController::class, 'decline'])->name('incident.decline');
+    // For Review: accept the responders' Final report, or send it back.
+    Route::post('/incidents/{incident}/confirm-resolved', [IncidentController::class, 'confirmResolved'])->name('incident.confirm-resolved');
+    Route::post('/incidents/{incident}/return-report', [IncidentController::class, 'returnReport'])->name('incident.return-report');
     // Declined reports / SOS alerts only — see IncidentController::destroy().
     Route::delete('/incidents/{incident}', [IncidentController::class, 'destroy'])->name('incident.destroy');
 

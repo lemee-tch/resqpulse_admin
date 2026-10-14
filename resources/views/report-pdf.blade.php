@@ -80,6 +80,7 @@
     $statusOf = function ($inc) {
         if ($inc->declined_at) return 'Declined';
         if ($inc->needs_review) return 'Pending Review';
+        if ($inc->status === 'for_review') return 'For Review';
         return ucfirst((string) ($inc->status ?: 'pending'));
     };
 

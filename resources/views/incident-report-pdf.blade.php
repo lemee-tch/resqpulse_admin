@@ -163,6 +163,19 @@
 
     <div class="sect" style="margin-top:8px;">Report Released by: <span style="font-weight:normal;">(Reporter/Designation/ Office/Agency)</span></div>
     <div class="body" style="min-height:14px;">{{ $r['released_by'] ?? '' }}</div>
+
+    {{-- MDRRMO's check of the responders' Final report (For Review), or
+         who added an incident that was handled outside the app. --}}
+    @if (($r['source'] ?? 'app') === 'manual')
+        <div class="sect" style="margin-top:8px;">Recorded by: <span style="font-weight:normal;">(MDRRMO — handled outside the ResQPulse app)</span></div>
+        <div class="body" style="min-height:14px;">
+            {{ $r['recorded_by'] ?? '' }}@if(!empty($r['recorded_at'])) — {{ $r['recorded_at'] }}@endif
+            @if(!empty($r['reported_via']))<br>Reported to MDRRMO via: {{ $r['reported_via'] }}@endif
+        </div>
+    @elseif (!empty($r['reviewed_by']))
+        <div class="sect" style="margin-top:8px;">Reviewed by: <span style="font-weight:normal;">(MDRRMO)</span></div>
+        <div class="body" style="min-height:14px;">{{ $r['reviewed_by'] }}@if(!empty($r['reviewed_at'])) — {{ $r['reviewed_at'] }}@endif</div>
+    @endif
 </div>
 
 @if($photoSrc)

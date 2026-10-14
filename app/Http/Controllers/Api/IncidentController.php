@@ -17,6 +17,9 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class IncidentController extends Controller
 {
+    /** A responder's Final report is with MDRRMO (status for_review). */
+    private const UNDER_REVIEW_MESSAGE = 'Your Final report is with MDRRMO for review. You can only change it if MDRRMO sends it back to you.';
+
     /**
      * Resolves the citizen from the bearer token if one was sent, WITHOUT
      * rejecting the request when it's absent or invalid. This is what
@@ -322,12 +325,21 @@ class IncidentController extends Controller
         ], 201);
     }
 
+    /**
+     * The resident's own reports (My Reports). MDRRMO's internal notes,
+     * the responders' MDRRMC report (it names casualties) and what MDRRMO
+     * asked the responders to fix stay out of it — the app shows none of
+     * them.
+     */
     public function mine(Request $request)
     {
         $incidents = Incident::with('responders')
             ->where('citizen_id', $request->user()->id)
             ->orderByDesc('created_at')
-            ->get();
+            ->get()
+            ->each(fn (Incident $incident) => $incident->makeHidden([
+                'admin_notes', 'report_data', 'report_return_reason', 'resolved_by',
+            ]));
 
         return response()->json($incidents);
     }
@@ -341,7 +353,10 @@ class IncidentController extends Controller
         }
 
         $incidents = Incident::with(['citizen', 'responders'])
-            ->where('status', '!=', 'resolved')
+            // Resolved, or the team's Final report is with MDRRMO for
+            // review (it comes back here if MDRRMO sends the report back).
+            // Both are listed in Report History instead.
+            ->whereNotIn('status', ['resolved', 'for_review'])
             // Reports and SOS alerts still waiting for admin review must
             // never reach the responder feed — they're only dispatched
             // when an admin approves them.
@@ -367,14 +382,16 @@ class IncidentController extends Controller
     }
 
     /**
-     * Report History — resolved incidents this responder personally
-     * accepted (or backed up on). assignedToResponder() above filters
-     * OUT resolved incidents by design (it's the "what's still active"
-     * feed), so a resolved incident simply disappears from it the moment
-     * it's closed — this is the separate feed the Report History screen
-     * needs instead. Scoped via the incident_responder pivot rather than
-     * the deprecated singular responder_id column, matching how
-     * accept()/decline() actually record responders now.
+     * Report History — incidents this responder personally accepted (or
+     * backed up on) whose Final report is done: resolved, or still with
+     * MDRRMO for review (status for_review, shown as "Under Review").
+     * assignedToResponder() above filters both OUT by design (it's the
+     * "what's still active" feed), so an incident disappears from it the
+     * moment the Final report is sent — this is the separate feed the
+     * Report History screen needs instead. Scoped via the
+     * incident_responder pivot rather than the deprecated singular
+     * responder_id column, matching how accept()/decline() actually
+     * record responders now.
      */
     public function resolvedForResponder(Request $request)
     {
@@ -385,7 +402,7 @@ class IncidentController extends Controller
         }
 
         $incidents = Incident::with(['citizen', 'responders'])
-            ->where('status', 'resolved')
+            ->whereIn('status', ['resolved', 'for_review'])
             ->whereHas('responders', function ($q) use ($responder) {
                 $q->where('responders.id', $responder->id);
             })
@@ -428,6 +445,11 @@ class IncidentController extends Controller
 
         if ($incident->status === 'resolved') {
             return response()->json(['message' => 'This incident has already been resolved.'], 409);
+        }
+
+        // The team already sent its Final report — nothing left to join.
+        if ($incident->status === 'for_review') {
+            return response()->json(['message' => "This incident's Final report is already with MDRRMO for review."], 409);
         }
 
         // Declined by MDRRMO (spam, a duplicate, unverifiable, outside
@@ -518,6 +540,9 @@ class IncidentController extends Controller
         if ($incident->status === 'resolved') {
             return response()->json(['message' => 'This incident has already been resolved.'], 409);
         }
+        if ($incident->status === 'for_review') {
+            return response()->json(['message' => "This incident's Final report is already with MDRRMO for review."], 409);
+        }
 
         // Already on this incident — the app already disables Decline
         // once joined, so this only guards a stale/racing request from
@@ -549,27 +574,31 @@ class IncidentController extends Controller
      * Files the MDRRMC Incident Report from the field — see
      * IncidentResolutionScreen (incident_resolution.dart). Only a
      * responder who's actually on this incident (i.e. called accept()
-     * already) can file it: a Final report closes the mission out, so it
-     * isn't safe to leave open to any responder who merely sees it in
-     * their feed.
+     * already) can file it: a Final report ends the team's part of the
+     * mission, so it isn't safe to leave open to any responder who merely
+     * sees it in their feed.
      *
      * The report's type decides what happens:
      *   initial  saved, and the incident stays open. It can be sent again
      *            as often as needed — each time replaces the saved report
      *            and rebuilds the PDF — until it's sent as Final.
-     *   final    saved, and the incident is resolved. After that the
-     *            report can't be changed (409).
+     *   final    saved, and the incident goes to MDRRMO's For Review tab
+     *            (status for_review). MDRRMO then marks it resolved, or
+     *            sends the report back (Admin\IncidentController::
+     *            returnReport() — it becomes Initial again, so the team
+     *            can fix it and send it as Final once more). While it's
+     *            with MDRRMO the report can't be changed (409).
      *
      * If an admin resolved the incident while the report was still
-     * Initial, the team can still update and finalize it (the status stays
-     * resolved). A resolved incident with no report at all is refused, as
-     * before.
+     * Initial (incidents resolved before For Review existed), the team can
+     * still update and finalize it (the status stays resolved). A resolved
+     * incident with no report at all is refused, as before.
      *
      * The photo is kept between updates unless a new one is sent (it
      * replaces the old one) or remove_photo=1 is sent.
      *
-     * Older app versions that send only notes (no report) still just
-     * resolve the incident.
+     * Older app versions that send only notes (no report) still finish the
+     * incident — it goes to For Review the same way.
      */
     public function resolve(Request $request, Incident $incident)
     {
@@ -583,6 +612,13 @@ class IncidentController extends Controller
 
         if (! $isAssigned) {
             return response()->json(['message' => 'You are not assigned to this incident.'], 403);
+        }
+
+        if ($incident->status === 'for_review') {
+            return response()->json([
+                'message'  => self::UNDER_REVIEW_MESSAGE,
+                'incident' => $incident->load(['responders', 'citizen']),
+            ], 409);
         }
 
         $saved = is_array($incident->report_data) ? $incident->report_data : null;
@@ -626,9 +662,10 @@ class IncidentController extends Controller
             ? $reports->normalize($incident, $responder, $reportInput, $saved)
             : null;
 
-        // No report sent (older app versions) = resolve, as before.
+        // No report sent (older app versions) = finished, as before.
         $isFinal     = $reportData === null || IncidentReportService::isFinal($reportData);
         $wasResolved = $incident->status === 'resolved';
+        $wasReturned = $incident->report_returned_at !== null;
 
         $oldPhoto  = $incident->resolution_photo_path;
         $photoPath = $oldPhoto;
@@ -650,7 +687,9 @@ class IncidentController extends Controller
             $changes['report_data'] = $reportData;
         }
         if ($isFinal && ! $wasResolved) {
-            $changes['status'] = 'resolved';
+            // MDRRMO checks it first (Incidents → For Review).
+            $changes['status']              = 'for_review';
+            $changes['report_submitted_at'] = now();
         }
 
         $incident->update($changes);
@@ -677,12 +716,13 @@ class IncidentController extends Controller
         }
 
         $what = AuditLogService::describeIncident($incident);
+        $sentForReview = 'Final report submitted. MDRRMO will review it, then mark the incident resolved.';
 
         [$action, $description, $message] = match (true) {
             $reportData === null => [
-                'resolved',
-                "Resolved the {$what}.",
-                'Incident marked as resolved.',
+                'updated',
+                "Marked the {$what} as done (no report attached) — sent to MDRRMO for review.",
+                'Sent to MDRRMO. They will review it, then mark the incident resolved.',
             ],
             ! $isFinal && $saved === null => [
                 'created',
@@ -699,10 +739,20 @@ class IncidentController extends Controller
                 "Filed the final MDRRMC Incident Report for the {$what}.",
                 'Final report submitted.',
             ],
+            $wasReturned => [
+                'updated',
+                "Sent the corrected final MDRRMC Incident Report for the {$what} back to MDRRMO for review.",
+                $sentForReview,
+            ],
+            $saved === null => [
+                'created',
+                "Filed the final MDRRMC Incident Report for the {$what} — sent to MDRRMO for review.",
+                $sentForReview,
+            ],
             default => [
-                'resolved',
-                "Resolved the {$what} and filed the final MDRRMC Incident Report.",
-                'Final report submitted. The incident is now resolved.',
+                'updated',
+                "Submitted the final MDRRMC Incident Report for the {$what} — sent to MDRRMO for review.",
+                $sentForReview,
             ],
         };
 
@@ -715,6 +765,7 @@ class IncidentController extends Controller
             'incident'    => $incident,
             'report_type' => $reportData['report_type'] ?? null,
             'resolved'    => $incident->status === 'resolved',
+            'for_review'  => $incident->status === 'for_review',
             'can_edit'    => ! $isFinal,
         ]);
     }
@@ -726,7 +777,11 @@ class IncidentController extends Controller
      *
      *   report           the saved report (null if none yet)
      *   is_final         a Final report was submitted — nothing to edit
+     *   under_review     the Final report is with MDRRMO (For Review)
      *   can_edit         the form may be sent (see resolve())
+     *   returned_reason  what MDRRMO asked the team to fix, while a report
+     *                    MDRRMO sent back is waiting to be sent again
+     *   returned_at      when MDRRMO sent it back
      *   photo_path       the report's photo, on the public disk
      *   incident_status  so the app can update its own copy
      */
@@ -742,19 +797,26 @@ class IncidentController extends Controller
             return response()->json(['message' => 'You are not assigned to this incident.'], 403);
         }
 
-        $report  = is_array($incident->report_data) ? $incident->report_data : null;
-        $isFinal = IncidentReportService::isFinal($report);
-        $canEdit = ! $isFinal && ! ($incident->status === 'resolved' && $report === null);
+        $report      = is_array($incident->report_data) ? $incident->report_data : null;
+        $isFinal     = IncidentReportService::isFinal($report);
+        $underReview = $incident->status === 'for_review';
+        $canEdit     = ! $isFinal && ! $underReview && ! ($incident->status === 'resolved' && $report === null);
+        $returned    = $canEdit && $incident->report_returned_at !== null && filled($incident->report_return_reason);
 
         return response()->json([
             'report'          => $report,
             'is_final'        => $isFinal,
+            'under_review'    => $underReview,
             'can_edit'        => $canEdit,
+            'returned_reason' => $returned ? $incident->report_return_reason : null,
+            'returned_at'     => $returned ? $incident->report_returned_at?->toIso8601String() : null,
             'photo_path'      => $incident->resolution_photo_path,
             'incident_status' => $incident->status,
-            'message'         => $canEdit ? null : ($isFinal
-                ? 'The final report for this incident was already submitted and can no longer be changed.'
-                : 'This incident has already been resolved.'),
+            'message'         => $canEdit ? null : match (true) {
+                $underReview => self::UNDER_REVIEW_MESSAGE,
+                $isFinal     => 'The final report for this incident was already submitted and can no longer be changed.',
+                default      => 'This incident has already been resolved.',
+            },
         ]);
     }
 }

@@ -57,6 +57,8 @@
         .badge-pending    { background: #fef3c7; color: #92400e; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
         .badge-responding { background: #e0f2fe; color: #0369a1; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
         .badge-review     { background: #fde68a; color: #78350f; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+        .badge-forreview  { background: #ede9fe; color: #5b21b6; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+        .badge-declined   { background: #fee2e2; color: #991b1b; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 
         .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
         .empty-state i { font-size: 2.2rem; color: #34d399; margin-bottom: 10px; display: block; }
@@ -227,19 +229,21 @@
                         @foreach($criticalIncidents as $inc)
                             @php
                                 $isSos = $inc->emergency_type === 'SOS Emergency';
-                                $reporterName = $inc->citizen?->full_name ?? ($inc->citizen_id ? 'Unknown' : 'Guest');
+                                // A guest's typed name too — see Incident::getReporterNameAttribute().
+                                $reporterName = $inc->reporter_name;
                                 $detailUrl = $isSos
                                     ? route('sos.detail', $inc->id)
                                     : route('incident.detail', $inc->id);
 
                                 $statusBadge = match(true) {
                                     $inc->needs_review    => 'badge-review',
+                                    (bool) $inc->declined_at => 'badge-declined',
                                     $inc->status === 'responding' => 'badge-responding',
+                                    $inc->status === 'for_review' => 'badge-forreview',
                                     default                => 'badge-pending',
                                 };
-                                $statusLabel = $inc->needs_review
-                                    ? 'Pending Review'
-                                    : ($inc->status === 'responding' ? 'Responding' : 'Pending');
+                                // "Pending Review", "Awaiting Responder", "For Review"… — see Incident::getStatusLabelAttribute().
+                                $statusLabel = $inc->status_label;
                             @endphp
                             <tr class="critical-row" onclick="window.location.href='{{ $detailUrl }}'">
                                 <td>

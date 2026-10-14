@@ -52,7 +52,7 @@
     </div>
     <nav class="sidebar-nav">
         <a href="{{ route('dashboard') }}" class="{{ $navActive('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
-        <a href="{{ route('incident') }}" class="{{ $navActive('incident', 'incident.detail', 'incident.report-pdf') }}">
+        <a href="{{ route('incident') }}" class="{{ $navActive('incident', 'incident.detail', 'incident.report-pdf', 'incident.manual.create') }}">
             <i class="bi bi-clipboard2-pulse"></i> Incidents
             @if(($pendingIncidentsCount ?? 0) > 0)
                 <span style="{{ $countBadge }}">{{ $pendingIncidentsCount }}</span>

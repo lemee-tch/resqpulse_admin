@@ -166,6 +166,7 @@
         .pop-pending  { background: #fef3c7; color: #92400e; }
         .pop-responding { background: #dbeafe; color: #1e40af; }
         .pop-resolved { background: #d1fae5; color: #065f46; }
+        .pop-for_review { background: #ede9fe; color: #5b21b6; }
         .pop-open     { background: #d1fae5; color: #065f46; }
         .pop-full     { background: #fee2e2; color: #991b1b; }
         .pop-closed   { background: #f3f4f6; color: #6b7280; }
@@ -454,6 +455,7 @@
     const statusColorMap = {
         pending:    '#92400e',
         responding: '#1e40af',
+        for_review: '#6d28d9',
         resolved:   '#065f46',
     };
 
@@ -462,8 +464,8 @@
         return typeIconMap[key] || defaultIcon;
     }
 
-    const statusLabel = { pending: 'Pending', responding: 'Responding', resolved: 'Resolved' };
-    const statusClass = { pending: 'pop-pending', responding: 'pop-responding', resolved: 'pop-resolved' };
+    const statusLabel = { pending: 'Pending', responding: 'Responding', for_review: 'For Review', resolved: 'Resolved' };
+    const statusClass = { pending: 'pop-pending', responding: 'pop-responding', for_review: 'pop-for_review', resolved: 'pop-resolved' };
 
     const evacStatusLabel = { open: 'Open', full: 'Full', closed: 'Closed' };
     const evacStatusClass = { open: 'pop-open', full: 'pop-full', closed: 'pop-closed' };
@@ -971,7 +973,8 @@
         respMarkers = [];
 
         incidentsData.forEach(incident => {
-            if (incident.status === 'resolved') return;
+            // Resolved, or the team's Final report is with MDRRMO (For Review).
+            if (incident.status === 'resolved' || incident.status === 'for_review') return;
 
             const responders = incident.responders || [];
             if (!responders.length) return;

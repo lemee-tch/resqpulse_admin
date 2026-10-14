@@ -83,6 +83,35 @@ class PushNotificationService
     }
 
     /**
+     * Notifies the responders on one incident — e.g. when MDRRMO sends
+     * their Final report back for changes, or confirms it as resolved.
+     * Best-effort like the rest: never throws back to the caller, and
+     * responders with no fcm_token (or a deactivated account) are skipped.
+     *
+     * @param  iterable<Responder>  $responders
+     */
+    public function notifyResponders(iterable $responders, string $title, string $body): void
+    {
+        try {
+            $tokens = collect($responders)
+                ->filter(fn ($r) => $r instanceof Responder && $r->status === 'active' && $r->fcm_token)
+                ->pluck('fcm_token')
+                ->unique()
+                ->values()
+                ->all();
+
+            Log::info('FCM incident-team send attempt', [
+                'title' => $title,
+                'token_count' => count($tokens),
+            ]);
+
+            $this->sendToTokens($tokens, $title, $body, 'incident team');
+        } catch (\Throwable $e) {
+            Log::error('FCM incident-team send failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * Notifies every active responder in a given agency (PNP/BFP/SARS)
      * who has an FCM token registered.
      */

@@ -7,14 +7,26 @@ use App\Services\AuditLogService;
 use App\Services\BarangayLocationService;
 use App\Services\PushNotificationService;
 use App\Services\IncidentReportService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class IncidentController extends Controller
 {
     /**
      * Regular citizen-submitted reports only. SOS panic-button alerts
      * are excluded here and live on their own page — see sosIndex().
+     *
+     * incident.blade.php splits them into four tabs (Incident::$stage):
+     *   Pending     waiting for the admin to approve or decline
+     *   Active      approved and sent to the responders
+     *   For Review  the responders sent their Final report — the admin
+     *               marks it resolved (confirmResolved()) or sends it back
+     *               (returnReport())
+     *   Resolved    resolved or declined, plus incidents handled outside
+     *               the app that the admin added (storeManual())
      */
     public function index()
     {
@@ -37,7 +49,10 @@ class IncidentController extends Controller
         $what = $incident->emergency_type === 'SOS Emergency'
             ? 'SOS alert' . ($incident->sos_emergency_type ? " ({$incident->sos_emergency_type})" : '')
             : ($incident->emergency_type ?: 'incident') . ' report';
-        if (! $incident->citizen_id) {
+        if ($incident->isManualRecord()) {
+            // Added by MDRRMO on the Resolved tab — no one used the app.
+            $what = ($incident->emergency_type ?: 'incident') . ' incident (handled outside the app)';
+        } elseif (! $incident->citizen_id) {
             $what = "guest {$what}"; // no resident account behind it
         }
 
@@ -98,7 +113,7 @@ class IncidentController extends Controller
 
         $query = Incident::with(['citizen', 'responders'])->orderByDesc('created_at');
 
-        if (in_array($status, ['pending', 'acknowledged', 'responding', 'resolved'], true)) {
+        if (in_array($status, ['pending', 'acknowledged', 'responding', 'for_review', 'resolved'], true)) {
             $query->where('status', $status);
         }
 
@@ -290,12 +305,12 @@ class IncidentController extends Controller
      * declined, since the record itself is gone.
      *
      * Goes back to the list it belongs to: SOS Alerts' Declined tab, or
-     * Incidents' Resolved History (where declined reports are listed).
+     * Incidents' Resolved tab (where declined reports are listed).
      */
     public function destroy(Incident $incident)
     {
         $isSos = $incident->emergency_type === 'SOS Emergency';
-        $list = $isSos ? route('sos-alerts', ['tab' => 'declined']) : route('incident', ['tab' => 'history']);
+        $list = $isSos ? route('sos-alerts', ['tab' => 'declined']) : route('incident', ['tab' => 'resolved']);
 
         if (! $incident->declined_at) {
             return redirect($list)->withErrors(['delete' => 'Only declined reports and SOS alerts can be deleted.']);
@@ -342,6 +357,297 @@ class IncidentController extends Controller
         }
 
         return redirect($list)->with('success', $isSos ? 'Declined SOS alert deleted.' : 'Declined report deleted.');
+    }
+
+    /**
+     * For Review → "Mark as Resolved". The admin has checked the
+     * responders' Final MDRRMC report and accepts it: the incident is now
+     * resolved. The PDF is rebuilt with who reviewed it ("Reviewed by"),
+     * the resident who reported it (if any) and the responding team are
+     * told.
+     */
+    public function confirmResolved(Incident $incident, IncidentReportService $reports, PushNotificationService $push)
+    {
+        if (! $incident->isForReview()) {
+            return back()->withErrors(['review' => 'This incident is no longer waiting for review.']);
+        }
+
+        $admin = auth('web')->user();
+        $changes = [
+            'status'      => 'resolved',
+            'resolved_at' => now(),
+            'resolved_by' => $admin?->id,
+        ];
+
+        if (is_array($incident->report_data)) {
+            $report = $incident->report_data;
+            $report['reviewed_by'] = $admin?->name ? "{$admin->name}, MDRRMO Rosales" : 'MDRRMO Rosales';
+            $report['reviewed_at'] = now()->format('F j, Y g:i A');
+            $changes['report_data'] = $report;
+        }
+
+        $incident->update($changes);
+        $this->rebuildReportPdf($incident, $reports);
+
+        $isSos = $incident->emergency_type === 'SOS Emergency';
+        if ($incident->citizen_id && $incident->citizen) {
+            $push->notifyCitizen(
+                $incident->citizen,
+                'Incident Resolved',
+                $isSos
+                    ? 'Your SOS alert has been resolved. Stay safe!'
+                    : "Your {$incident->emergency_type} report has been resolved. Thank you for reporting."
+            );
+        }
+        $push->notifyResponders(
+            $incident->responders,
+            'Report accepted by MDRRMO',
+            "{$incident->display_type} — {$incident->location}: your Final report was accepted. The incident is now resolved."
+        );
+
+        AuditLogService::log(
+            'resolved',
+            "Reviewed the responders' Final report and marked the {$this->describeIncident($incident)} as resolved.",
+            $incident,
+            ['status' => 'for_review'],
+            ['status' => 'resolved']
+        );
+
+        return back()->with('success', 'Report accepted. The incident is now resolved.');
+    }
+
+    /**
+     * For Review → "Return to Responders". Something in the Final report
+     * needs fixing. The report becomes Initial again and the incident
+     * goes back to Active (status responding), so the team can update it
+     * in the app and send it as Final again — it then comes back here.
+     * The team gets a push with the reason; the app shows it too
+     * (Api\IncidentController::reportForResponder()).
+     */
+    public function returnReport(Request $request, Incident $incident, IncidentReportService $reports, PushNotificationService $push)
+    {
+        if (! $incident->isForReview()) {
+            return back()->withErrors(['review' => 'This incident is no longer waiting for review.']);
+        }
+
+        $request->validate([
+            'return_reason' => ['required', Rule::in(Incident::RETURN_REASONS)],
+            'return_note'   => ['nullable', 'required_if:return_reason,Other', 'string', 'max:500'],
+        ], [
+            'return_reason.required' => 'Choose what needs to be fixed before sending the report back.',
+            'return_reason.in'       => 'Choose what needs to be fixed before sending the report back.',
+            'return_note.required_if' => 'Write what the responders need to fix.',
+            'return_note.max'        => 'Keep the note under 500 characters.',
+        ]);
+
+        $note   = trim((string) $request->input('return_note'));
+        $reason = $request->return_reason === 'Other'
+            ? $note
+            : $request->return_reason . ($note !== '' ? ": {$note}" : '');
+
+        $changes = [
+            'status'               => 'responding',
+            'report_submitted_at'  => null,
+            'report_returned_at'   => now(),
+            'report_return_reason' => $reason,
+        ];
+
+        if (is_array($incident->report_data)) {
+            $report = $incident->report_data;
+            $report['report_type']  = 'initial';
+            $report['finalized_at'] = null;
+            unset($report['reviewed_by'], $report['reviewed_at']);
+            $changes['report_data'] = $report;
+        }
+
+        $incident->update($changes);
+        $this->rebuildReportPdf($incident, $reports);
+
+        $push->notifyResponders(
+            $incident->responders,
+            'Report sent back by MDRRMO',
+            "{$incident->display_type} — {$incident->location}: " . rtrim($reason, '. ') . '. Update the report and submit it as Final again.'
+        );
+
+        AuditLogService::log(
+            'rejected',
+            "Sent the Final report for the {$this->describeIncident($incident)} back to the responders — {$reason}",
+            $incident,
+            ['status' => 'for_review'],
+            ['status' => 'responding', 'return_reason' => $reason]
+        );
+
+        return back()->with('success', 'Report sent back to the responders. It comes back to For Review when they submit it again.');
+    }
+
+    /**
+     * Resolved → "Add Resolved Report": the form for an incident MDRRMO
+     * handled outside the app (a walk-in, a phone call, a radio report…).
+     */
+    public function createManual()
+    {
+        return view('incident-manual-report', [
+            'barangays' => array_keys(BarangayLocationService::allCoordinates()),
+        ]);
+    }
+
+    /**
+     * Saves an incident that was handled outside the app, already
+     * resolved, with its MDRRMC Incident Report (same PDF the responders
+     * file). It shows on the Resolved tab marked "Added by MDRRMO".
+     *
+     * It's dated when it happened (created_at), so the Dashboard and
+     * Reports & Analytics count it on the right day. No one is notified
+     * and nothing is sent to the responders — it's a record.
+     */
+    public function storeManual(Request $request, IncidentReportService $reports)
+    {
+        // "0917 123 4567" / "+639171234567" → "09171234567"; landlines stay as typed.
+        $phone = preg_replace('/\s+/', ' ', trim((string) $request->input('reporter_mobile')));
+        $digits = preg_replace('/\D+/', '', $phone);
+        if (strlen($digits) === 12 && str_starts_with($digits, '639')) {
+            $phone = '0' . substr($digits, 2);
+        } elseif (strlen($digits) === 10 && str_starts_with($digits, '9')) {
+            $phone = '0' . $digits;
+        } elseif (strlen($digits) === 11 && str_starts_with($digits, '09')) {
+            $phone = $digits;
+        }
+        $request->merge(['reporter_mobile' => $phone]);
+
+        $casualtyRow = ['nullable', 'string'];
+        $validated = $request->validate([
+            'emergency_type'  => ['required', Rule::in(Incident::TYPES)],
+            'other_type'      => ['nullable', 'required_if:emergency_type,Other', 'string', 'max:60'],
+            'priority'        => ['required', 'in:critical,high,low'],
+            'barangay'        => ['required', Rule::in(array_keys(BarangayLocationService::allCoordinates()))],
+            'street'          => ['nullable', 'string', 'max:150'],
+            'occurred_at'     => ['required', 'date', 'before_or_equal:now'],
+            'resolved_at'     => ['required', 'date', 'after_or_equal:occurred_at', 'before_or_equal:now'],
+            'reported_via'    => ['required', Rule::in(Incident::REPORTED_VIA)],
+            'reporter_name'   => ['nullable', 'string', 'max:120'],
+            'reporter_mobile' => ['nullable', 'string', 'max:20', 'regex:/^[0-9+()\-\s]{7,20}$/'],
+            'narrative'       => ['required', 'string', 'max:2000'],
+            'effects'         => ['nullable', 'string', 'max:1000'],
+            'actions_taken'   => ['required', 'string', 'max:1500'],
+            'released_by'     => ['nullable', 'string', 'max:255'],
+            'casualties'                => ['nullable', 'array'],
+            'casualties.*'              => ['nullable', 'array', 'max:30'],
+            'casualties.*.*.name'       => [...$casualtyRow, 'max:120'],
+            'casualties.*.*.age'        => [...$casualtyRow, 'max:10'],
+            'casualties.*.*.sex'        => [...$casualtyRow, 'max:10'],
+            'casualties.*.*.address'    => [...$casualtyRow, 'max:160'],
+            'casualties.*.*.cause'      => [...$casualtyRow, 'max:120'],
+            'casualties.*.*.remarks'    => [...$casualtyRow, 'max:200'],
+            'team'            => ['nullable', 'array', 'max:20'],
+            'team.*.name'     => ['nullable', 'string', 'max:120'],
+            'team.*.agency'   => ['nullable', 'string', 'max:160'],
+            'photo'           => ['nullable', 'image', 'max:5120'],
+        ], [
+            'emergency_type.required' => 'Choose the type of incident.',
+            'other_type.required_if'  => 'Type what kind of incident it was.',
+            'priority.required'       => 'Choose the priority (Critical, High or Low).',
+            'barangay.required'       => 'Choose the barangay where it happened.',
+            'barangay.in'             => 'Choose a barangay of Rosales from the list.',
+            'occurred_at.required'    => 'Enter when the incident happened.',
+            'occurred_at.before_or_equal' => "The incident's date and time can't be in the future.",
+            'resolved_at.required'    => 'Enter when the incident was resolved.',
+            'resolved_at.after_or_equal' => 'It can only be resolved after it happened — check both dates and times.',
+            'resolved_at.before_or_equal' => "The resolved date and time can't be in the future.",
+            'reported_via.required'   => 'Choose how MDRRMO learned about the incident.',
+            'reporter_mobile.regex'   => 'Enter a valid contact number, e.g. 09171234567.',
+            'narrative.required'      => 'Describe what happened (Details / Narrative).',
+            'actions_taken.required'  => 'Write the actions taken.',
+            'photo.image'             => 'The photo must be an image (JPG or PNG).',
+            'photo.max'               => 'The photo must be 5 MB or smaller.',
+        ]);
+
+        $admin    = auth('web')->user();
+        $type     = $validated['emergency_type'] === 'Other'
+            ? trim($validated['other_type'])
+            : $validated['emergency_type'];
+        $street   = trim((string) ($validated['street'] ?? ''));
+        $location = ($street !== '' ? "{$street}, " : '') . "Brgy. {$validated['barangay']}, Rosales, Pangasinan";
+        $occurred = Carbon::parse($validated['occurred_at']);
+        $resolved = Carbon::parse($validated['resolved_at']);
+
+        $photoPath = $request->hasFile('photo')
+            ? $request->file('photo')->store('incident_resolution_photos', 'public')
+            : null;
+
+        $incident = new Incident([
+            'citizen_id'            => null,
+            'emergency_type'        => $type,
+            'location'              => $location,
+            'latitude'              => null,
+            'longitude'             => null,
+            'description'           => $validated['narrative'],
+            'status'                => 'resolved',
+            'priority'              => $validated['priority'],
+            'needs_review'          => false,
+            'reviewed_at'           => now(),
+            'resolution_notes'      => $validated['narrative'],
+            'resolution_photo_path' => $photoPath,
+            'resolved_at'           => $resolved,
+            'resolved_by'           => $admin?->id,
+            'source'                => 'manual',
+            'reported_via'          => $validated['reported_via'],
+            'guest_name'            => filled($validated['reporter_name'] ?? null) ? trim($validated['reporter_name']) : null,
+            'guest_mobile'          => filled($validated['reporter_mobile'] ?? null) ? $validated['reporter_mobile'] : null,
+        ]);
+        // Dated when it happened, not when it was typed in.
+        $incident->created_at = $occurred;
+        $incident->save();
+
+        $releasedBy = trim((string) ($validated['released_by'] ?? ''));
+        if ($releasedBy === '') {
+            $releasedBy = $admin?->name ? strtoupper($admin->name) . ', MDRRMO Rosales' : 'MDRRMO Rosales';
+        }
+
+        $report = $reports->normalize($incident, null, [
+            'report_type'   => 'final',
+            'location'      => $location,
+            'narrative'     => $validated['narrative'],
+            'casualties'    => $validated['casualties'] ?? [],
+            'effects'       => $validated['effects'] ?? '',
+            'actions_taken' => $validated['actions_taken'],
+            'released_by'   => $releasedBy,
+        ]);
+        $report['team']         = $reports->teamFromInput($validated['team'] ?? []);
+        $report['source']       = 'manual';
+        $report['reported_via'] = $validated['reported_via'];
+        $report['recorded_by']  = $admin?->name ? "{$admin->name}, MDRRMO Rosales" : 'MDRRMO Rosales';
+        $report['recorded_at']  = now()->format('F j, Y g:i A');
+        $report['resolved_at']  = $resolved->format('F j, Y g:i A');
+
+        $incident->update(['report_data' => $report]);
+        $this->rebuildReportPdf($incident, $reports);
+
+        AuditLogService::log(
+            'created',
+            "Added a resolved {$this->describeIncident($incident)} — reported to MDRRMO via " . strtolower($validated['reported_via']) . '.',
+            $incident
+        );
+
+        return redirect()
+            ->route('incident.detail', $incident)
+            ->with('success', 'Resolved report added. It is listed on the Resolved tab.');
+    }
+
+    /** Rebuilds the MDRRMC report PDF. A PDF problem never undoes the change itself. */
+    private function rebuildReportPdf(Incident $incident, IncidentReportService $reports): void
+    {
+        if (! is_array($incident->report_data)) {
+            return;
+        }
+
+        try {
+            $path = $reports->generate($incident->fresh());
+            if ($path) {
+                $incident->update(['report_pdf_path' => $path]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Incident report PDF could not be rebuilt.', ['incident' => $incident->id, 'error' => $e->getMessage()]);
+        }
     }
 
     /**

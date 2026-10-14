@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Inter', sans-serif; background: #f4f6fb; display: flex; min-height: 100vh; }
@@ -106,6 +107,22 @@
         .btn-approve-lg { background: #1a3c8f; color: #fff; }
         .btn-decline-lg { background: #fff; color: #dc2626; border: 1.5px solid #dc2626; }
         .btn-decline-lg:hover { background: #dc2626; color: #fff; }
+        /* For Review: the responders' Final report is waiting for the admin. */
+        .review-banner--report   { background: #f5f3ff; border-color: #ddd6fe; color: #5b21b6; }
+        .review-banner--returned { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
+        .review-banner--manual   { background: #eef2ff; border-color: #c7d2fe; color: #3730a3; }
+        .quick-actions form { margin: 0; }
+        .btn-report-lg  { background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; }
+        .btn-report-lg:hover { color: #991b1b; }
+        .btn-resolve-lg { background: #10b981; color: #fff; }
+        .btn-return-lg  { background: #fff; color: #b45309; border: 1.5px solid #f59e0b; }
+        .btn-return-lg:hover { background: #f59e0b; color: #fff; }
+        .tag-manual {
+            display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 20px;
+            background: #e0e7ff; color: #3730a3; font-size: .68rem; font-weight: 700;
+            letter-spacing: .3px; vertical-align: middle;
+        }
+        .map-note { font-size: .72rem; color: #9ca3af; margin-top: 6px; }
         .form-label-m { font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 5px; display: block; }
         .form-control-m {
             width: 100%; border: 1.5px solid #d1d5db; border-radius: 8px;
@@ -362,9 +379,35 @@
             // A guest's typed name and number — see Incident::getReporterNameAttribute().
             $reporter = $incident->reporter_name;
             $mobile = $incident->reporter_mobile;
-            $isGuestReport = ! $incident->citizen_id;
-            $lat = $incident->latitude  ?? 15.8952;
-            $lng = $incident->longitude ?? 120.6263;
+            $isManual = $incident->isManualRecord();
+            $isGuestReport = ! $incident->citizen_id && ! $isManual;
+            // An incident MDRRMO added by hand has no GPS pin — the map shows
+            // the middle of its barangay instead.
+            $hasPin = $incident->latitude && $incident->longitude;
+            $approxBarangay = null;
+            if (! $hasPin) {
+                $approxBarangay = app(\App\Services\BarangayLocationService::class)->barangayFromText($incident->location);
+            }
+            $approxPoint = $approxBarangay ? (\App\Services\BarangayLocationService::allCoordinates()[$approxBarangay] ?? null) : null;
+            $lat = $incident->latitude  ?? ($approxPoint[0] ?? 15.8952);
+            $lng = $incident->longitude ?? ($approxPoint[1] ?? 120.6263);
+            // Which Incidents tab this one is on, for "Back to Incidents".
+            $backTab = ['pending' => 'pending', 'active' => 'active', 'for_review' => 'for-review', 'resolved' => 'resolved'][$incident->stage] ?? null;
+
+            // The responders' MDRRMC report (Initial or Final) — see
+            // Api\IncidentController::resolve() — or the one MDRRMO typed in
+            // for an incident handled outside the app.
+            $report = is_array($incident->report_data) ? $incident->report_data : null;
+            $reportIsInitial = $report && ($report['report_type'] ?? 'final') === 'initial';
+            $reportUpdatedAt = null;
+            if ($report && !empty($report['updated_at'])) {
+                try {
+                    $reportUpdatedAt = \Carbon\Carbon::parse($report['updated_at'])->setTimezone(config('app.timezone'));
+                } catch (\Throwable $e) {
+                    $reportUpdatedAt = null;
+                }
+            }
+            $isReturned = $incident->status === 'responding' && $incident->report_returned_at && $incident->report_return_reason;
             $typeIcons = [
                 'Fire'              => '🔥',
                 'Flood'             => '🌊',
@@ -389,7 +432,7 @@
             <div class="page-title">
                 Incident Details
             </div>
-            <a href="{{ route('incident') }}" class="back-link">
+            <a href="{{ route('incident', $backTab ? ['tab' => $backTab] : []) }}" class="back-link">
                 <i class="bi bi-arrow-left"></i> Back to Incidents
             </a>
         </div>
@@ -413,8 +456,8 @@
                 <span class="badge-priority">{{ $priorityLabel }}</span>
             </div>
             <div class="banner-meta">
-                <span><strong>Status</strong> {{ $incident->needs_review ? 'Pending Review' : ($incident->declined_at ? 'Declined' : ucfirst($incident->status)) }}</span>
-                <span><strong>Reported</strong> {{ $incident->created_at->format('M d, Y g:i A') }}</span>
+                <span><strong>Status</strong> {{ $incident->status_label }}</span>
+                <span><strong>{{ $isManual ? 'Happened' : 'Reported' }}</strong> {{ $incident->created_at->format('M d, Y g:i A') }}</span>
                 <span><strong>Reporter</strong> {{ $reporter }}</span>
             </div>
         </div>
@@ -444,6 +487,56 @@
             </div>
         @endif
 
+        {{-- For Review: the responders sent their Final report. The admin
+             accepts it (Mark as Resolved) or sends it back with what needs
+             fixing — Admin\IncidentController::confirmResolved() / returnReport(). --}}
+        @if($incident->isForReview())
+            <div class="review-banner review-banner--report">
+                <i class="bi bi-clipboard2-check" style="margin-top:1px;"></i>
+                <span>
+                    The responding team sent their <strong>Final report</strong>@if($incident->report_submitted_at) on {{ $incident->report_submitted_at->format('M d, Y g:i A') }}@endif.
+                    Check it — narrative, casualties, actions taken and photo — then mark the incident as resolved,
+                    or return the report to the responders with what needs fixing.
+                </span>
+            </div>
+
+            <div class="quick-actions">
+                @if($report)
+                    <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="btn-quick btn-report-lg">
+                        <i class="bi bi-file-earmark-pdf-fill"></i> Open Final Report
+                    </a>
+                @endif
+                <form action="{{ route('incident.confirm-resolved', $incident->id) }}" method="POST" class="resolve-form"
+                      data-type="{{ $incident->emergency_type }}"
+                      data-notifies-citizen="{{ $incident->citizen_id ? '1' : '0' }}">
+                    @csrf
+                    <button type="submit" class="btn-quick btn-resolve-lg">
+                        <i class="bi bi-check2-circle"></i> Mark as Resolved
+                    </button>
+                </form>
+                <button type="button" class="btn-quick btn-return-lg" data-bs-toggle="modal" data-bs-target="#returnModal">
+                    <i class="bi bi-arrow-return-left"></i> Return to Responders
+                </button>
+            </div>
+        @elseif($isReturned)
+            <div class="review-banner review-banner--returned">
+                <i class="bi bi-arrow-return-left" style="margin-top:1px;"></i>
+                <span>
+                    You sent the report back to the responders on {{ $incident->report_returned_at->format('M d, Y g:i A') }}:
+                    <strong>{{ rtrim($incident->report_return_reason, '. ') }}</strong>.
+                    It comes back to <strong>For Review</strong> when they send it again.
+                </span>
+            </div>
+        @elseif($isManual)
+            <div class="review-banner review-banner--manual">
+                <i class="bi bi-pencil-square" style="margin-top:1px;"></i>
+                <span>
+                    This incident was handled outside the app and added by MDRRMO{{ $incident->resolvedBy ? ' (' . $incident->resolvedBy->name . ')' : '' }}
+                    @if($incident->reported_via) — reported to MDRRMO via <strong>{{ strtolower($incident->reported_via) }}</strong>@endif.
+                </span>
+            </div>
+        @endif
+
         <!-- THREE COLUMN GRID -->
         <div class="detail-grid">
 
@@ -455,6 +548,12 @@
                     {{ $incident->location }}
                 </div>
                 <div id="detail-map"></div>
+                @unless($hasPin)
+                    <div class="map-note">
+                        <i class="bi bi-info-circle"></i>
+                        {{ $approxBarangay ? "No GPS pin — the map shows the middle of Brgy. {$approxBarangay}." : 'No GPS pin for this incident.' }}
+                    </div>
+                @endunless
                 <a href="https://www.google.com/maps?q={{ $lat }},{{ $lng }}" target="_blank" class="btn-gmaps">
                     <i class="bi bi-map"></i> Open in Google Maps
                 </a>
@@ -468,9 +567,13 @@
                 <div class="detail-sub">Reported by</div>
                 <div class="detail-val">
                     {{ $reporter }}
-                    @if($isGuestReport) <span class="tag-guest">Guest</span> @endif<br>
+                    @if($isGuestReport) <span class="tag-guest">Guest</span> @endif
+                    @if($isManual) <span class="tag-manual">Added by MDRRMO</span> @endif<br>
                     @if($mobile)
                         <a href="tel:{{ $mobile }}" class="call-link"><i class="bi bi-telephone-fill"></i> {{ $mobile }}</a><br>
+                    @endif
+                    @if($isManual && $incident->reported_via)
+                        Reported via {{ strtolower($incident->reported_via) }}<br>
                     @endif
                     {{ $incident->created_at->format('m/d/y, g:i A') }}
                 </div>
@@ -509,26 +612,16 @@
                     <div class="admin-notes-box">{{ $incident->admin_notes }}</div>
                 @endif
 
-                @php
-                    // An Initial report can be filed while the incident is
-                    // still open; the team can keep updating it until they
-                    // submit it as Final (Api\IncidentController::resolve()).
-                    $report = is_array($incident->report_data) ? $incident->report_data : null;
-                    $reportIsInitial = $report && ($report['report_type'] ?? 'final') === 'initial';
-                    $reportUpdatedAt = null;
-                    if ($report && !empty($report['updated_at'])) {
-                        try {
-                            $reportUpdatedAt = \Carbon\Carbon::parse($report['updated_at'])->setTimezone(config('app.timezone'));
-                        } catch (\Throwable $e) {
-                            $reportUpdatedAt = null;
-                        }
-                    }
-                @endphp
-
-                @if($incident->status === 'resolved' || $report)
+                @if(in_array($incident->status, ['resolved', 'for_review'], true) || $report)
                     <div class="detail-sub" style="margin-top:14px;">
-                        @if($incident->status === 'resolved')
+                        @if($isManual)
+                            <i class="bi bi-check-circle-fill" style="color:#10b981;"></i> Resolution (added by MDRRMO)
+                        @elseif($incident->status === 'resolved')
                             <i class="bi bi-check-circle-fill" style="color:#10b981;"></i> Resolution (from responder)
+                        @elseif($incident->isForReview())
+                            <i class="bi bi-clipboard2-check" style="color:#7c3aed;"></i> Final report (from responder) — waiting for your review
+                        @elseif($isReturned)
+                            <i class="bi bi-arrow-return-left" style="color:#c2410c;"></i> Report sent back to the responders
                         @else
                             <i class="bi bi-hourglass-split" style="color:#d97706;"></i> Initial report (from responder)
                         @endif
@@ -560,10 +653,16 @@
                                     <span class="report-type-tag {{ $reportIsInitial ? 'is-initial' : 'is-final' }}">{{ $reportIsInitial ? 'Initial' : 'Final' }}</span>
                                 </div>
                                 <div class="report-pdf-sub">
-                                    @if($reportIsInitial)
+                                    @if($isReturned)
+                                        Sent back for changes — the team updates it and submits it as Final again.
+                                    @elseif($reportIsInitial)
                                         The responding team can still update it until they submit the Final report.
+                                    @elseif($isManual)
+                                        Added by MDRRMO
+                                    @elseif($incident->isForReview())
+                                        Filed by the responding team — waiting for your review
                                     @else
-                                        Filed by the responding team
+                                        Filed by the responding team{{ !empty($report['reviewed_by']) ? ' · reviewed by ' . $report['reviewed_by'] : '' }}
                                     @endif
                                     @if($reportUpdatedAt)
                                         · {{ ($report['revision'] ?? 1) > 1 ? 'Last updated' : 'Filed' }} {{ $reportUpdatedAt->format('m/d/y, g:i A') }}
@@ -608,9 +707,30 @@
                         </div>
                     </div>
                 @empty
-                    <div style="font-size:.82rem;color:#9ca3af;font-style:italic;">
-                        Not yet accepted by a responder.
-                    </div>
+                    @if($isManual && !empty($report['team']))
+                        @foreach($report['team'] as $member)
+                            <div style="display:flex;align-items:center;gap:10px;{{ !$loop->last ? 'margin-bottom:12px;' : '' }}">
+                                <div style="width:38px;height:38px;border-radius:50%;background:#e0e7ff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <i class="bi bi-person-badge-fill" style="color:#3730a3;"></i>
+                                </div>
+                                <div>
+                                    <div style="font-weight:700;font-size:.85rem;color:#111827;">{{ $member['name'] ?: '—' }}</div>
+                                    <div style="font-size:.75rem;color:#6b7280;">
+                                        {{ $member['agency'] ?: '—' }} · {{ $member['role'] ?? '' }}
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+                        <div style="font-size:.72rem;color:#9ca3af;margin-top:10px;">Typed in by MDRRMO — no responder accounts were used.</div>
+                    @elseif($isManual)
+                        <div style="font-size:.82rem;color:#9ca3af;font-style:italic;">
+                            No responding team was written down.
+                        </div>
+                    @else
+                        <div style="font-size:.82rem;color:#9ca3af;font-style:italic;">
+                            Not yet accepted by a responder.
+                        </div>
+                    @endif
                 @endforelse
             </div>
 
@@ -619,11 +739,15 @@
                 <div class="panel-label">Status</div>
                 <div class="action-panel">
                     @php
-                        $statusMeta = match($incident->status) {
-                            'responding' => ['bg' => '#e0f2fe', 'border' => '#bae6fd', 'text' => '#0369a1', 'icon' => 'bi-lightning-charge-fill', 'label' => 'Responding'],
-                            'resolved'   => ['bg' => '#ecfdf5', 'border' => '#a7f3d0', 'text' => '#065f46', 'icon' => 'bi-check-circle-fill', 'label' => 'Resolved'],
-                            default      => ['bg' => '#fef3c7', 'border' => '#fde68a', 'text' => '#92400e', 'icon' => 'bi-hourglass-split', 'label' => 'Pending'],
+                        $statusMeta = match(true) {
+                            (bool) $incident->needs_review      => ['bg' => '#fef3c7', 'border' => '#fde68a', 'text' => '#92400e', 'icon' => 'bi-hourglass-split'],
+                            (bool) $incident->declined_at       => ['bg' => '#fee2e2', 'border' => '#fecaca', 'text' => '#991b1b', 'icon' => 'bi-x-circle-fill'],
+                            $incident->status === 'responding'  => ['bg' => '#e0f2fe', 'border' => '#bae6fd', 'text' => '#0369a1', 'icon' => 'bi-lightning-charge-fill'],
+                            $incident->status === 'for_review'  => ['bg' => '#f5f3ff', 'border' => '#ddd6fe', 'text' => '#5b21b6', 'icon' => 'bi-clipboard2-check'],
+                            $incident->status === 'resolved'    => ['bg' => '#ecfdf5', 'border' => '#a7f3d0', 'text' => '#065f46', 'icon' => 'bi-check-circle-fill'],
+                            default                             => ['bg' => '#fef3c7', 'border' => '#fde68a', 'text' => '#92400e', 'icon' => 'bi-broadcast'],
                         };
+                        $statusMeta['label'] = $incident->status_label;
                     @endphp
 
                     <div style="display:flex; align-items:center; gap:8px; background:{{ $statusMeta['bg'] }}; border:1px solid {{ $statusMeta['border'] }}; border-radius:8px; padding:12px 14px;">
@@ -644,7 +768,19 @@
                             <i class="bi bi-x-circle"></i>
                             <span>Declined{{ $incident->decline_reason ? ': ' . $incident->decline_reason : '' }}. Responders were not notified.</span>
                         </div>
-                    @elseif($incident->status !== 'resolved')
+                    @elseif($incident->isForReview())
+                        <div class="dispatch-note">
+                            <i class="bi bi-clipboard2-check"></i>
+                            <span>The responders' Final report is waiting for your review. Mark it as resolved, or return it to them.</span>
+                        </div>
+                    @elseif($incident->status === 'resolved')
+                        <div class="dispatch-note">
+                            <i class="bi bi-check2-circle"></i>
+                            <span>
+                                Resolved{{ $incident->resolved_at ? ' ' . $incident->resolved_at->format('M d, Y g:i A') : '' }}{{ $incident->resolvedBy ? ($isManual ? ' — added by ' : ' — reviewed by ') . $incident->resolvedBy->name : '' }}.
+                            </span>
+                        </div>
+                    @else
                         <div class="dispatch-note">
                             <i class="bi bi-broadcast"></i>
                             <span>Approved and sent to the responders for this emergency type. Status updates as they act on it.</span>
@@ -668,8 +804,13 @@
                     <div class="tl-time">{{ $incident->created_at->format('g:i A') }}</div>
                     <div class="tl-dot info"></div>
                     <div class="tl-text">
-                        Incident reported by <strong>{{ $reporter }}</strong>
-                        — {{ $incident->emergency_type }} at {{ $incident->location }}
+                        @if($isManual)
+                            Incident happened — {{ $incident->emergency_type }} at {{ $incident->location }}
+                            @if($incident->reported_via) (reported to MDRRMO via {{ strtolower($incident->reported_via) }}) @endif
+                        @else
+                            Incident reported by <strong>{{ $reporter }}</strong>
+                            — {{ $incident->emergency_type }} at {{ $incident->location }}
+                        @endif
                     </div>
                 </div>
                 @if($incident->priority)
@@ -679,19 +820,37 @@
                     <div class="tl-text">Priority set to <strong>{{ ucfirst($incident->priority) }}</strong></div>
                 </div>
                 @endif
-                @if(in_array($incident->status, ['acknowledged', 'responding', 'resolved']))
+                @if(! $isManual && $incident->responders->isNotEmpty())
                 <div class="tl-row">
-                    <div class="tl-time">—</div>
+                    <div class="tl-time">{{ $incident->responders->min(fn ($r) => $r->pivot->accepted_at) ? \Illuminate\Support\Carbon::parse($incident->responders->min(fn ($r) => $r->pivot->accepted_at))->format('g:i A') : '—' }}</div>
                     <div class="tl-dot warning"></div>
-                    <div class="tl-text">Status updated to <strong>{{ ucfirst($incident->status) }}</strong></div>
+                    <div class="tl-text">Accepted by the responders — status <strong>Responding</strong></div>
+                </div>
+                @endif
+                @if($incident->report_returned_at)
+                <div class="tl-row">
+                    <div class="tl-time">{{ $incident->report_returned_at->format('g:i A') }}</div>
+                    <div class="tl-dot danger"></div>
+                    <div class="tl-text">
+                        Final report <strong>sent back</strong> to the responders
+                        @if($incident->report_return_reason) — "{{ \Illuminate\Support\Str::limit($incident->report_return_reason, 80) }}" @endif
+                    </div>
+                </div>
+                @endif
+                @if($incident->report_submitted_at)
+                <div class="tl-row">
+                    <div class="tl-time">{{ $incident->report_submitted_at->format('g:i A') }}</div>
+                    <div class="tl-dot" style="background:#7c3aed;"></div>
+                    <div class="tl-text">Final report sent — <strong>For Review</strong></div>
                 </div>
                 @endif
                 @if($incident->status === 'resolved')
                 <div class="tl-row">
-                    <div class="tl-time">—</div>
+                    <div class="tl-time">{{ $incident->resolved_at ? $incident->resolved_at->format('g:i A') : '—' }}</div>
                     <div class="tl-dot success"></div>
                     <div class="tl-text">
                         Incident <strong>resolved</strong>
+                        @if($incident->resolvedBy) {{ $isManual ? '— added by' : '— reviewed by' }} {{ $incident->resolvedBy->name }} @endif
                         @if($incident->resolution_notes) — "{{ \Illuminate\Support\Str::limit($incident->resolution_notes, 60) }}" @endif
                     </div>
                 </div>
@@ -740,7 +899,7 @@
 @endif
 
 {{-- Resolution Photo Modal — separate from the citizen report's photo carousel above --}}
-@if($incident->status === 'resolved' && $incident->resolution_photo_path)
+@if($incident->resolution_photo_path)
 <div class="modal fade" id="resolutionPhotoModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border-radius:14px;border:none;">
@@ -832,6 +991,10 @@
 </div>
 @endif
 
+@if($incident->isForReview())
+    @include('partials.return-report-modal', ['incident' => $incident, 'modalId' => 'returnModal'])
+@endif
+
 {{-- Add Note Modal --}}
 <div class="modal fade" id="noteModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -869,10 +1032,13 @@
             keyboardShortcuts: false,
             clickableIcons: false,
         });
+        @if($hasPin || $approxPoint)
         new google.maps.Marker({
             position: { lat: {{ $lat }}, lng: {{ $lng }} },
             map,
+            @if(! $hasPin) opacity: 0.6, title: 'Barangay center (approximate)', @endif
         });
+        @endif
     }
 
     function showPhotoSlide(index) {

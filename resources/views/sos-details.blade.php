@@ -83,6 +83,15 @@
         .btn-approve-lg { background: #1a3c8f; color: #fff; }
         .btn-decline-lg { background: #fff; color: #dc2626; border: 1.5px solid #dc2626; }
         .btn-decline-lg:hover { background: #dc2626; color: #fff; }
+        /* For Review: the responders' Final report is waiting for the admin. */
+        .review-banner--report   { background: #f5f3ff; border-color: #ddd6fe; color: #5b21b6; }
+        .review-banner--returned { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
+        .quick-actions form { margin: 0; }
+        .btn-report-lg  { background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; }
+        .btn-report-lg:hover { color: #991b1b; }
+        .btn-resolve-lg { background: #10b981; color: #fff; }
+        .btn-return-lg  { background: #fff; color: #b45309; border: 1.5px solid #f59e0b; }
+        .btn-return-lg:hover { background: #f59e0b; color: #fff; }
 
         /* Decline-reason modal — same dropdown pattern as the Residents
            Verification rejection modal. */
@@ -348,6 +357,22 @@
             $icon = '🆘';
             $isDeclined = (bool) $incident->declined_at;
 
+            // The responders' MDRRMC report (Initial or Final) — see
+            // Api\IncidentController::resolve().
+            $report = is_array($incident->report_data) ? $incident->report_data : null;
+            $reportIsInitial = $report && ($report['report_type'] ?? 'final') === 'initial';
+            $reportUpdatedAt = null;
+            if ($report && !empty($report['updated_at'])) {
+                try {
+                    $reportUpdatedAt = \Carbon\Carbon::parse($report['updated_at'])->setTimezone(config('app.timezone'));
+                } catch (\Throwable $e) {
+                    $reportUpdatedAt = null;
+                }
+            }
+            $isReturned = $incident->status === 'responding' && $incident->report_returned_at && $incident->report_return_reason;
+            // Which SOS Alerts tab this one is on, for "Back to SOS Alerts".
+            $backTab = $isDeclined ? 'declined' : (['pending' => 'pending', 'active' => 'active', 'for_review' => 'for-review', 'resolved' => 'resolved'][$incident->stage] ?? null);
+
             $detailPhotos = collect();
             if ($incident->photo_path) {
                 $decodedPhotos = json_decode($incident->photo_path, true);
@@ -357,7 +382,7 @@
 
         <div class="page-header">
             <div class="page-title">SOS Alert Details</div>
-            <a href="{{ route('sos-alerts') }}" class="back-link">
+            <a href="{{ route('sos-alerts', $backTab ? ['tab' => $backTab] : []) }}" class="back-link">
                 <i class="bi bi-arrow-left"></i> Back to SOS Alerts
             </a>
         </div>
@@ -365,6 +390,11 @@
         @if(session('success'))
             <div class="alert alert-success" style="border-radius:10px;font-size:.85rem;margin-bottom:16px;">
                 {{ session('success') }}
+            </div>
+        @endif
+        @if($errors->any())
+            <div class="alert alert-danger" style="border-radius:10px;font-size:.85rem;margin-bottom:16px;">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i> {{ $errors->first() }}
             </div>
         @endif
 
@@ -380,7 +410,7 @@
                 <span class="badge-priority">{{ $priorityLabel }}</span>
             </div>
             <div class="banner-meta">
-                <span><strong>Status</strong> {{ $incident->needs_review ? 'Pending Review' : ($isDeclined ? 'Declined' : ucfirst($incident->status)) }}</span>
+                <span><strong>Status</strong> {{ $incident->status_label }}</span>
                 <span><strong>Reported</strong> {{ $incident->created_at->format('M d, Y g:i A') }}</span>
                 <span><strong>Reporter</strong> {{ $reporter }}@if($isGuestReport) (guest)@endif</span>
             </div>
@@ -414,6 +444,47 @@
                 </button>
             @endif
         </div>
+
+        {{-- For Review: the responders sent their Final report. The admin
+             accepts it (Mark as Resolved) or sends it back with what needs
+             fixing — Admin\IncidentController::confirmResolved() / returnReport(). --}}
+        @if($incident->isForReview())
+            <div class="review-banner review-banner--report">
+                <i class="bi bi-clipboard2-check" style="margin-top:1px;"></i>
+                <span>
+                    The responding team sent their <strong>Final report</strong>@if($incident->report_submitted_at) on {{ $incident->report_submitted_at->format('M d, Y g:i A') }}@endif.
+                    Check it, then mark the SOS as resolved — or return the report to the responders with what needs fixing.
+                </span>
+            </div>
+
+            <div class="quick-actions">
+                @if($report)
+                    <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="btn-quick btn-report-lg">
+                        <i class="bi bi-file-earmark-pdf-fill"></i> Open Final Report
+                    </a>
+                @endif
+                <form action="{{ route('incident.confirm-resolved', $incident->id) }}" method="POST" class="resolve-form"
+                      data-type="SOS"
+                      data-notifies-citizen="{{ $incident->citizen_id ? '1' : '0' }}">
+                    @csrf
+                    <button type="submit" class="btn-quick btn-resolve-lg">
+                        <i class="bi bi-check2-circle"></i> Mark as Resolved
+                    </button>
+                </form>
+                <button type="button" class="btn-quick btn-return-lg" data-bs-toggle="modal" data-bs-target="#returnModal">
+                    <i class="bi bi-arrow-return-left"></i> Return to Responders
+                </button>
+            </div>
+        @elseif($isReturned)
+            <div class="review-banner review-banner--returned">
+                <i class="bi bi-arrow-return-left" style="margin-top:1px;"></i>
+                <span>
+                    You sent the report back to the responders on {{ $incident->report_returned_at->format('M d, Y g:i A') }}:
+                    <strong>{{ rtrim($incident->report_return_reason, '. ') }}</strong>.
+                    It comes back to <strong>For Review</strong> when they send it again.
+                </span>
+            </div>
+        @endif
 
         <!-- THREE COLUMN GRID -->
         <div class="detail-grid">
@@ -490,26 +561,14 @@
                     <div class="decline-reason-box">{{ $incident->decline_reason }}</div>
                 @endif
 
-                @php
-                    // An Initial report can be filed while the incident is
-                    // still open; the team can keep updating it until they
-                    // submit it as Final (Api\IncidentController::resolve()).
-                    $report = is_array($incident->report_data) ? $incident->report_data : null;
-                    $reportIsInitial = $report && ($report['report_type'] ?? 'final') === 'initial';
-                    $reportUpdatedAt = null;
-                    if ($report && !empty($report['updated_at'])) {
-                        try {
-                            $reportUpdatedAt = \Carbon\Carbon::parse($report['updated_at'])->setTimezone(config('app.timezone'));
-                        } catch (\Throwable $e) {
-                            $reportUpdatedAt = null;
-                        }
-                    }
-                @endphp
-
-                @if($incident->status === 'resolved' || $report)
+                @if(in_array($incident->status, ['resolved', 'for_review'], true) || $report)
                     <div class="detail-sub" style="margin-top:14px;">
                         @if($incident->status === 'resolved')
                             <i class="bi bi-check-circle-fill" style="color:#10b981;"></i> Resolution (from responder)
+                        @elseif($incident->isForReview())
+                            <i class="bi bi-clipboard2-check" style="color:#7c3aed;"></i> Final report (from responder) — waiting for your review
+                        @elseif($isReturned)
+                            <i class="bi bi-arrow-return-left" style="color:#c2410c;"></i> Report sent back to the responders
                         @else
                             <i class="bi bi-hourglass-split" style="color:#d97706;"></i> Initial report (from responder)
                         @endif
@@ -541,10 +600,14 @@
                                     <span class="report-type-tag {{ $reportIsInitial ? 'is-initial' : 'is-final' }}">{{ $reportIsInitial ? 'Initial' : 'Final' }}</span>
                                 </div>
                                 <div class="report-pdf-sub">
-                                    @if($reportIsInitial)
+                                    @if($isReturned)
+                                        Sent back for changes — the team updates it and submits it as Final again.
+                                    @elseif($reportIsInitial)
                                         The responding team can still update it until they submit the Final report.
+                                    @elseif($incident->isForReview())
+                                        Filed by the responding team — waiting for your review
                                     @else
-                                        Filed by the responding team
+                                        Filed by the responding team{{ !empty($report['reviewed_by']) ? ' · reviewed by ' . $report['reviewed_by'] : '' }}
                                     @endif
                                     @if($reportUpdatedAt)
                                         · {{ ($report['revision'] ?? 1) > 1 ? 'Last updated' : 'Filed' }} {{ $reportUpdatedAt->format('m/d/y, g:i A') }}
@@ -602,21 +665,33 @@
                 <div class="action-panel">
                     @php
                         $statusMeta = match(true) {
-                            $isDeclined                   => ['bg' => '#fee2e2', 'border' => '#fecaca', 'text' => '#991b1b', 'icon' => 'bi-x-circle-fill', 'label' => 'Declined'],
-                            $incident->status === 'responding' => ['bg' => '#e0f2fe', 'border' => '#bae6fd', 'text' => '#0369a1', 'icon' => 'bi-lightning-charge-fill', 'label' => 'Responding'],
-                            $incident->status === 'resolved'   => ['bg' => '#ecfdf5', 'border' => '#a7f3d0', 'text' => '#065f46', 'icon' => 'bi-check-circle-fill', 'label' => 'Resolved'],
-                            default                             => ['bg' => '#fef3c7', 'border' => '#fde68a', 'text' => '#92400e', 'icon' => 'bi-hourglass-split', 'label' => 'Pending'],
+                            $isDeclined                         => ['bg' => '#fee2e2', 'border' => '#fecaca', 'text' => '#991b1b', 'icon' => 'bi-x-circle-fill'],
+                            $incident->status === 'responding'  => ['bg' => '#e0f2fe', 'border' => '#bae6fd', 'text' => '#0369a1', 'icon' => 'bi-lightning-charge-fill'],
+                            $incident->status === 'for_review'  => ['bg' => '#f5f3ff', 'border' => '#ddd6fe', 'text' => '#5b21b6', 'icon' => 'bi-clipboard2-check'],
+                            $incident->status === 'resolved'    => ['bg' => '#ecfdf5', 'border' => '#a7f3d0', 'text' => '#065f46', 'icon' => 'bi-check-circle-fill'],
+                            default                             => ['bg' => '#fef3c7', 'border' => '#fde68a', 'text' => '#92400e', 'icon' => 'bi-hourglass-split'],
                         };
+                        $statusMeta['label'] = $incident->status_label;
                     @endphp
 
                     <div style="display:flex; align-items:center; gap:8px; background:{{ $statusMeta['bg'] }}; border:1px solid {{ $statusMeta['border'] }}; border-radius:8px; padding:12px 14px;">
                         <i class="bi {{ $statusMeta['icon'] }}" style="color:{{ $statusMeta['text'] }}; font-size:1.1rem;"></i>
                         <span style="font-size:.85rem; font-weight:700; color:{{ $statusMeta['text'] }};">
-                            {{ $incident->needs_review ? 'Pending Review' : $statusMeta['label'] }}
+                            {{ $statusMeta['label'] }}
                         </span>
                     </div>
 
-                    @if(!$incident->needs_review && !$isDeclined && $incident->status !== 'resolved')
+                    @if($incident->isForReview())
+                        <div class="dispatch-note">
+                            <i class="bi bi-clipboard2-check"></i>
+                            <span>The responders' Final report is waiting for your review. Mark it as resolved, or return it to them.</span>
+                        </div>
+                    @elseif($incident->status === 'resolved')
+                        <div class="dispatch-note">
+                            <i class="bi bi-check2-circle"></i>
+                            <span>Resolved{{ $incident->resolved_at ? ' ' . $incident->resolved_at->format('M d, Y g:i A') : '' }}{{ $incident->resolvedBy ? ' — reviewed by ' . $incident->resolvedBy->name : '' }}.</span>
+                        </div>
+                    @elseif(!$incident->needs_review && !$isDeclined)
                         <div class="dispatch-note">
                             <i class="bi bi-broadcast"></i>
                             <span>Approved and sent to the responders. Status updates as they act on it.</span>
@@ -660,19 +735,38 @@
                         </div>
                     </div>
                 @endif
-                @if(in_array($incident->status, ['acknowledged', 'responding', 'resolved']))
+                @if($incident->responders->isNotEmpty())
+                    @php $firstAccepted = $incident->responders->min(fn ($r) => $r->pivot->accepted_at); @endphp
                     <div class="tl-row">
-                        <div class="tl-time">—</div>
+                        <div class="tl-time">{{ $firstAccepted ? \Illuminate\Support\Carbon::parse($firstAccepted)->format('g:i A') : '—' }}</div>
                         <div class="tl-dot warning"></div>
-                        <div class="tl-text">Status updated to <strong>{{ ucfirst($incident->status) }}</strong></div>
+                        <div class="tl-text">Accepted by the responders — status <strong>Responding</strong></div>
+                    </div>
+                @endif
+                @if($incident->report_returned_at)
+                    <div class="tl-row">
+                        <div class="tl-time">{{ $incident->report_returned_at->format('g:i A') }}</div>
+                        <div class="tl-dot danger"></div>
+                        <div class="tl-text">
+                            Final report <strong>sent back</strong> to the responders
+                            @if($incident->report_return_reason) — "{{ \Illuminate\Support\Str::limit($incident->report_return_reason, 80) }}" @endif
+                        </div>
+                    </div>
+                @endif
+                @if($incident->report_submitted_at)
+                    <div class="tl-row">
+                        <div class="tl-time">{{ $incident->report_submitted_at->format('g:i A') }}</div>
+                        <div class="tl-dot" style="background:#7c3aed;"></div>
+                        <div class="tl-text">Final report sent — <strong>For Review</strong></div>
                     </div>
                 @endif
                 @if($incident->status === 'resolved')
                     <div class="tl-row">
-                        <div class="tl-time">—</div>
+                        <div class="tl-time">{{ $incident->resolved_at ? $incident->resolved_at->format('g:i A') : '—' }}</div>
                         <div class="tl-dot success"></div>
                         <div class="tl-text">
                             SOS <strong>resolved</strong>
+                            @if($incident->resolvedBy) — reviewed by {{ $incident->resolvedBy->name }} @endif
                             @if($incident->resolution_notes) — "{{ \Illuminate\Support\Str::limit($incident->resolution_notes, 60) }}" @endif
                         </div>
                     </div>
@@ -721,7 +815,7 @@
 @endif
 
 {{-- Resolution Photo Modal — separate from the citizen report's photo carousel above --}}
-@if($incident->status === 'resolved' && $incident->resolution_photo_path)
+@if($incident->resolution_photo_path)
 <div class="modal fade" id="resolutionPhotoModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border-radius:14px;border:none;">
@@ -779,6 +873,10 @@
         </div>
     </div>
 </div>
+@endif
+
+@if($incident->isForReview())
+    @include('partials.return-report-modal', ['incident' => $incident, 'modalId' => 'returnModal'])
 @endif
 
 {{-- Add Note Modal --}}

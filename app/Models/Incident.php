@@ -6,6 +6,22 @@ use Illuminate\Database\Eloquent\Model;
 
 class Incident extends Model
 {
+    /** Report types, as on the residents' Report Emergency screen. */
+    public const TYPES = ['Fire', 'Flood', 'Earthquake', 'Accident', 'Medical Emergency', 'Landslide', 'Other'];
+
+    /** How MDRRMO learned about an incident it adds by hand (Add Resolved Report). */
+    public const REPORTED_VIA = ['Walk-in', 'Phone call', 'Radio', 'Barangay officials', 'Responders on patrol', 'Other'];
+
+    /** Why MDRRMO sends a Final report back to the responders (For Review → Return). */
+    public const RETURN_REASONS = [
+        'Casualty details are missing or incomplete',
+        'The narrative needs more detail',
+        'Actions taken are missing or incomplete',
+        'Wrong incident type, location, date or time',
+        'The photo is missing or unclear',
+        'Other',
+    ];
+
     protected $fillable = [
         'citizen_id', 'responder_id', 'accepted_at', 'emergency_type', 'location', 'latitude', 'longitude',
         'description', 'photo_path', 'status', 'priority', 'admin_notes',
@@ -14,7 +30,12 @@ class Incident extends Model
         'sos_emergency_type', 'decline_reason', 'declined_at',
         // What a guest (no account) typed before sending — see
         // Api\IncidentController and the add_guest_details migration.
+        // On an incident MDRRMO added by hand, the person who reported it.
         'guest_name', 'guest_mobile',
+        // For Review and Add Resolved Report — see the
+        // add_review_and_manual_reports migration.
+        'report_submitted_at', 'report_returned_at', 'report_return_reason',
+        'resolved_at', 'resolved_by', 'source', 'reported_via',
     ];
 
     protected function casts(): array
@@ -23,10 +44,13 @@ class Incident extends Model
     }
 
     protected $casts = [
-        'needs_review' => 'boolean',
-        'reviewed_at'  => 'datetime',
-        'declined_at'  => 'datetime',
-        'report_data'  => 'array',
+        'needs_review'        => 'boolean',
+        'reviewed_at'         => 'datetime',
+        'declined_at'         => 'datetime',
+        'report_data'         => 'array',
+        'report_submitted_at' => 'datetime',
+        'report_returned_at'  => 'datetime',
+        'resolved_at'         => 'datetime',
     ];
 
     // Includes display_type (see getDisplayTypeAttribute() below) in
@@ -38,9 +62,61 @@ class Incident extends Model
     // Keep the private PDF storage path out of API JSON.
     protected $hidden = ['report_pdf_path'];
 
+    /**
+     * Where an incident is in MDRRMO's process — one per tab on the
+     * Incidents page:
+     *
+     *   pending     waiting for an admin to approve or decline it
+     *   active      approved and sent to the responders (waiting for one
+     *               to accept, or being responded to)
+     *   for_review  the responders sent their Final report; the admin
+     *               checks it before it counts as resolved
+     *   resolved    resolved — or declined (shown on the same tab)
+     */
+    public function getStageAttribute(): string
+    {
+        return match (true) {
+            (bool) $this->needs_review       => 'pending',
+            (bool) $this->declined_at        => 'resolved',
+            $this->status === 'for_review'   => 'for_review',
+            $this->status === 'resolved'     => 'resolved',
+            default                          => 'active',
+        };
+    }
+
+    /** The status as the admin pages show it. */
+    public function getStatusLabelAttribute(): string
+    {
+        return match (true) {
+            (bool) $this->needs_review       => 'Pending Review',
+            (bool) $this->declined_at        => 'Declined',
+            $this->status === 'for_review'   => 'For Review',
+            $this->status === 'resolved'     => 'Resolved',
+            $this->status === 'responding'   => 'Responding',
+            default                          => 'Awaiting Responder',
+        };
+    }
+
+    /** An incident handled outside the app that MDRRMO added by hand. */
+    public function isManualRecord(): bool
+    {
+        return $this->source === 'manual';
+    }
+
+    public function isForReview(): bool
+    {
+        return $this->status === 'for_review';
+    }
+
     public function citizen()
     {
         return $this->belongsTo(Citizen::class);
+    }
+
+    /** The admin who marked it resolved, or who added it by hand. */
+    public function resolvedBy()
+    {
+        return $this->belongsTo(User::class, 'resolved_by');
     }
 
     /**
@@ -112,7 +188,9 @@ class Incident extends Model
     /**
      * Who sent it, for the admin pages: the resident's name, or the full
      * name a guest had to enter before sending (guest_name). Guest reports
-     * from before that was required just say "Guest".
+     * from before that was required just say "Guest". On an incident
+     * MDRRMO added by hand, the person who reported it, if one was
+     * written down.
      */
     public function getReporterNameAttribute(): string
     {
@@ -122,8 +200,11 @@ class Incident extends Model
         if ($this->citizen_id) {
             return 'Unknown';
         }
+        if (filled($this->guest_name)) {
+            return (string) $this->guest_name;
+        }
 
-        return filled($this->guest_name) ? (string) $this->guest_name : 'Guest';
+        return $this->isManualRecord() ? 'Not recorded' : 'Guest';
     }
 
     /** A number MDRRMO can call back: the resident's, or the guest's. */

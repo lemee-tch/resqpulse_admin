@@ -301,6 +301,7 @@
         .status-pending  { color: #f97316; font-weight: 600; font-size: .75rem; }
         .status-onway    { color: #3b82f6; font-weight: 600; font-size: .75rem; }
         .status-resolved { color: #10b981; font-weight: 600; font-size: .75rem; }
+        .status-review   { color: #7c3aed; font-weight: 600; font-size: .75rem; }
 
         /* ── MAP placeholder ── */
         .map-placeholder {
@@ -632,11 +633,13 @@
                                 $priorityLabel = $inc->priority ? ucfirst($inc->priority) : 'Not Set';
                                 $statusClass = match($inc->status) {
                                     'responding' => 'status-onway',
+                                    'for_review' => 'status-review',
                                     'resolved' => 'status-resolved',
                                     default => 'status-pending',
                                 };
                                 $statusLabel = match($inc->status) {
                                     'responding' => 'On the way',
+                                    'for_review' => 'For Review',
                                     'resolved' => 'Resolved',
                                     default => 'Pending',
                                 };
@@ -935,7 +938,7 @@ function initDashboardMap() {
 
     renderDashboardBoundary(map);
 
-    const statusColor = { pending: '#92400e', responding: '#1e40af', acknowledged: '#1e40af' };
+    const statusColor = { pending: '#92400e', responding: '#1e40af', acknowledged: '#1e40af', for_review: '#6d28d9' };
     const typeEmoji = {
         Fire: '🔥', Flood: '🌊', Earthquake: '🏚️', Accident: '🚗',
         'Medical Emergency': '🚑', Landslide: '⛰️', 'SOS Emergency': '🆘',
