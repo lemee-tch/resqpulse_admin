@@ -745,12 +745,16 @@ class AuthController extends Controller
     }
 
     /**
-     * Lets a logged-in citizen update their own name, mobile number and
-     * address fields — the counterpart to register() above, but for an
-     * EXISTING account instead of creating one. Deliberately excludes
-     * email (tied to login + verification_status) and municipality
-     * (fixed to Rosales, same as register()); password changes stay on
-     * the separate forgot/reset-password OTP flow, not this endpoint.
+     * Lets a logged-in citizen update their own name and address fields —
+     * the counterpart to register() above, but for an EXISTING account
+     * instead of creating one. Municipality stays fixed to Rosales (same
+     * as register()); password changes stay on the separate
+     * forgot/reset-password OTP flow.
+     *
+     * The email and mobile number are changed with a code sent to the new
+     * email or number (ContactChangeController). The app still sends the
+     * current number here, which is fine; a different one is refused.
+     * Before, this changed the number with no code.
      *
      * Resident activity trail — shows up in the admin Audit Log page
      * (filterable by action=updated), same convention as login()/
@@ -766,12 +770,13 @@ class AuthController extends Controller
             return response()->json(['message' => 'Not a citizen account.'], 403);
         }
 
-        // A mobile account logs in with its number, which was confirmed with
-        // a texted code — changing it here would skip that check.
-        if ($citizen->isMobileAccount()
+        // The number is changed with a code sent to the new number
+        // (ContactChangeController) — older app builds still send a new one
+        // here.
+        if ($request->filled('mobile')
             && SmsService::normalizeNumber($this->inputString($request, 'mobile'))
                 !== SmsService::normalizeNumber((string) $citizen->mobile)) {
-            $message = 'Your mobile number is how you log in, so it can\'t be changed here.';
+            $message = 'Your mobile number can only be changed with a code sent to the new number. Please update the app to change it.';
 
             return response()->json(['message' => $message, 'errors' => ['mobile' => [$message]]], 422);
         }
@@ -781,11 +786,6 @@ class AuthController extends Controller
             'middle_name' => ['nullable', 'string', 'max:255'],
             'last_name'   => ['required', 'string', 'max:255'],
             'suffix'      => ['nullable', 'string', 'max:20'],
-            'mobile'      => [
-                'required',
-                'string',
-                Rule::unique('citizens', 'mobile')->ignore($citizen->id),
-            ],
             'barangay'    => ['required', 'string'],
             'street'      => ['nullable', 'string'],
             'zone'        => ['nullable', 'string'],
@@ -795,7 +795,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        $trackedFields = ['first_name', 'middle_name', 'last_name', 'suffix', 'mobile', 'barangay', 'street', 'zone'];
+        $trackedFields = ['first_name', 'middle_name', 'last_name', 'suffix', 'barangay', 'street', 'zone'];
         $before = $citizen->only($trackedFields);
 
         $fullName = collect([
@@ -811,7 +811,6 @@ class AuthController extends Controller
             'last_name'   => $request->last_name,
             'suffix'      => $request->suffix,
             'full_name'   => $fullName,
-            'mobile'      => $request->mobile,
             'barangay'    => $request->barangay,
             'street'      => $request->street,
             'zone'        => $request->zone,

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ContactChangeController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AlertController as ApiAlertController;
@@ -42,9 +43,13 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
     Route::get('/me', [AuthController::class, 'me']);
-    // Citizen edit-profile — name, mobile, address fields only (not
-    // email or password, see AuthController::updateProfile doc comment).
+    // Citizen edit-profile — name and address fields (see
+    // AuthController::updateProfile doc comment).
     Route::patch('/profile', [AuthController::class, 'updateProfile']);
+    // Change email / Change number, confirmed with a code sent to the new
+    // email or number (see ContactChangeController).
+    Route::post('/profile/contact', [ContactChangeController::class, 'send']);
+    Route::post('/profile/contact/verify', [ContactChangeController::class, 'verify']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/alerts', [ApiAlertController::class, 'index']);
     Route::post('/fcm-token', [ApiAlertController::class, 'updateToken']);

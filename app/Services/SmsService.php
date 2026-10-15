@@ -96,8 +96,10 @@ class SmsService
      *                invalid_number, too_soon, hourly_limit, gateway_error
      *   retry_after  seconds to wait, for too_soon / hourly_limit
      *
-     * $purpose picks the wording: 'signup' ("verification code") or
-     * 'reset' ("password reset code", for Forgot Password by text).
+     * $purpose picks the wording: 'signup' ("verification code"), 'reset'
+     * ("password reset code", for Forgot Password by text) or 'change'
+     * ("code to confirm this number", for Change number in Personal
+     * Information).
      */
     public function sendVerificationCode(string $mobile, string $code, int $minutes = 10, string $purpose = 'signup'): array
     {
@@ -153,7 +155,11 @@ class SmsService
      */
     public function verificationMessage(string $code, int $minutes = 10, string $purpose = 'signup'): string
     {
-        $what = $purpose === 'reset' ? 'password reset code' : 'verification code';
+        $what = match ($purpose) {
+            'reset'  => 'password reset code',
+            'change' => 'code to confirm this number', // Change number, in Personal Information
+            default  => 'verification code',
+        };
 
         return "ResQPulse: Your {$what} is {$code}. "
             . "It expires in {$minutes} minutes. Do not share it with anyone.";

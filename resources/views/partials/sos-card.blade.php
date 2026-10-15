@@ -7,16 +7,16 @@
     $tab  pending | active | for-review | resolved | declined. It decides
           the status chip, which time is shown on the right, and the
           buttons along the bottom:
-            pending     Approve & Dispatch · Decline (its dialog is on the page)
+            pending     Approve & Send to <teams> · Decline (its dialog is on the page)
             for-review  Report (PDF) · Mark as Resolved · Return (dialog on the page)
             declined    the reason · Delete
 
-    Left: the first photo (with the number of photos when there are more).
-    Middle: the type and status, who sent it (Call), where (a pin outside
-    Rosales is flagged), the team, the AI's reading of the photo. Right:
-    the time that matters on this tab, and View, which opens SOS Details.
-    Clicking anywhere else on the card opens it too (the script on the
-    page skips the card's own buttons and links).
+    Kept simple: the type and status, who sent it (Call), where (a pin
+    outside Rosales is flagged) and, once it's dispatched, the team. The
+    photo and the AI's reading of it are on SOS Details only — the card
+    used to show them too. Right: the time that matters on this tab, and
+    View, which opens SOS Details. Clicking anywhere else on the card opens
+    it too (the script on the page skips the card's own buttons and links).
 
     The styles (.sos-card …) are on the page.
 --}}
@@ -38,14 +38,6 @@
         $place = number_format((float) $sos->latitude, 5) . ', ' . number_format((float) $sos->longitude, 5);
     }
 
-    // Photos: a JSON list (very old rows hold one plain path).
-    $photos = collect();
-    if ($sos->photo_path) {
-        $decoded = json_decode($sos->photo_path, true);
-        $photos = is_array($decoded) ? collect($decoded) : collect([$sos->photo_path]);
-    }
-    $photos = $photos->filter(fn ($p) => is_string($p) && $p !== '')->values();
-
     // The team: where MDRRMO sent it, and who accepted (first one leads).
     $teams = $sos->assignedTeamCodes();
     $onIt  = $sos->responders->sortBy(fn ($r) => (string) $r->pivot->accepted_at)->values();
@@ -53,11 +45,6 @@
     $leadText = $lead
         ? $lead->full_name . ($lead->agency ? " ({$lead->agency})" : '') . ($onIt->count() > 1 ? ' +' . ($onIt->count() - 1) . ' more' : '')
         : null;
-    $crewText = $leadText ? match ($tab) {
-        'active'     => $leadText . ' — responding',
-        'for-review' => 'Final report from ' . $leadText,
-        default      => 'Handled by ' . $leadText,
-    } : null;
 
     // Status chip, colour of the left edge, and the time that matters here.
     [$chipClass, $chipText] = match ($tab) {
@@ -84,6 +71,11 @@
     $whenText = $tab === 'pending'
         ? 'Waiting ' . $whenAt->diffForHumans(['syntax' => \Carbon\CarbonInterface::DIFF_ABSOLUTE])
         : $whenLabel . ' ' . $whenAt->diffForHumans();
+    // Under it: when the SOS was sent (on Pending and Active that's the
+    // same moment, so just the date and time).
+    $sentText = in_array($tab, ['pending', 'active'], true)
+        ? $sos->created_at->format('M d, g:i A')
+        : 'SOS sent ' . $sos->created_at->format('M d, g:i A');
     // Nobody has looked at it for over 10 minutes.
     $late = $tab === 'pending' && $whenAt->lt(now()->subMinutes(10));
 
@@ -94,39 +86,21 @@
          data-id="{{ $sos->id }}" data-href="{{ $url }}"
          @if($tab === 'resolved')
              data-date="{{ $sos->created_at->format('Y-m-d') }}"
-             data-ai="{{ $sos->ai_detected_type }}"
-             data-search="{{ strtolower($reporter . ' ' . $mobile . ' ' . $sos->location . ' ' . $sos->ai_detected_type . ' ' . $sos->ai_analysis) }}"
+             data-type="{{ $sos->sos_emergency_type }}"
+             data-search="{{ strtolower($reporter . ' ' . $mobile . ' ' . $sos->location . ' ' . $sos->display_type) }}"
          @elseif($tab === 'declined')
              data-date="{{ $sos->created_at->format('Y-m-d') }}"
              data-reason="{{ $sos->decline_reason }}"
-             data-search="{{ strtolower($reporter . ' ' . $mobile . ' ' . $sos->location . ' ' . $sos->decline_reason . ' ' . $sos->ai_detected_type) }}"
+             data-search="{{ strtolower($reporter . ' ' . $mobile . ' ' . $sos->location . ' ' . $sos->decline_reason . ' ' . $sos->display_type) }}"
          @endif>
-
-    {{-- Photo --}}
-    <a href="{{ $url }}" class="sos-thumb{{ $photos->isEmpty() ? ' is-empty' : '' }}" aria-label="Open this SOS alert">
-        @if($photos->isNotEmpty())
-            <img src="{{ Storage::url($photos->first()) }}" alt="Photo sent with the SOS" loading="lazy"
-                 onerror="this.parentElement.classList.add('is-broken'); this.remove();">
-            @if($photos->count() > 1)
-                <span class="photo-count"><i class="bi bi-images"></i> {{ $photos->count() }}</span>
-            @endif
-        @endif
-        <span class="no-photo">
-            <i class="bi bi-image"></i>
-            {{ $photos->isEmpty() ? 'No photo' : "Photo didn't load" }}
-        </span>
-    </a>
 
     {{-- What, who, where, the team --}}
     <div class="sos-main">
         <div class="sos-head">
             <h3 class="sos-title"><i class="bi bi-exclamation-octagon-fill"></i>{{ $sos->display_type }}</h3>
             <span class="badge-status {{ $chipClass }}">{{ $chipText }}</span>
-            @if($sos->ai_detected_type)
-                <span class="badge-ai" title="What the AI saw in the photo"><i class="bi bi-stars"></i> AI: {{ $sos->ai_detected_type }}</span>
-            @endif
             @if($tab === 'active' && $sos->report_returned_at && $sos->report_return_reason)
-                <span class="tag-returned" title="{{ $sos->report_return_reason }}"><i class="bi bi-arrow-return-left"></i> Report sent back</span>
+                <span class="tag-returned" title="Sent back: {{ $sos->report_return_reason }}"><i class="bi bi-arrow-return-left"></i> Report sent back</span>
             @elseif($tab === 'for-review' && $sos->report_returned_at)
                 <span class="tag-resent" title="Sent again after you returned it"><i class="bi bi-arrow-repeat"></i> Sent again</span>
             @endif
@@ -136,7 +110,12 @@
             <li>
                 <i class="bi bi-person-fill" title="Sent by"></i>
                 <span>
-                    <strong class="sos-reporter">{{ $reporter }}</strong>
+                    @if(! $sos->citizen_id && blank($sos->guest_name))
+                        {{-- An older app sent no name: say so, instead of "Guest Guest". --}}
+                        <span class="muted">Name not given</span>
+                    @else
+                        <strong class="sos-reporter">{{ $reporter }}</strong>
+                    @endif
                     @if($sos->citizen_id)
                         <span class="tag-resident">Resident</span>
                     @else
@@ -166,50 +145,33 @@
                 </span>
             </li>
 
-            @if(in_array($tab, ['active', 'for-review', 'resolved'], true))
+            {{-- One line for the team once it's dispatched. --}}
+            @if($tab === 'active')
                 <li>
                     <i class="bi bi-people-fill" title="Response team"></i>
-                    <span>{{ $teams ? 'Sent to ' . implode(' · ', $teams) : 'Sent to the responders' }}</span>
-                </li>
-                <li>
-                    <i class="bi bi-shield-fill-check" title="Responders"></i>
                     <span>
-                        @if($crewText)
-                            {{ $crewText }}
-                        @elseif($tab === 'active')
-                            <span class="warn-text">No responder has accepted yet</span>
+                        <strong>{{ $teams ? implode(' · ', $teams) : 'Responders' }}</strong> —
+                        @if($leadText)
+                            {{ $leadText }} responding
                         @else
-                            <span class="muted">No responder recorded</span>
+                            <span class="warn-text">no one has accepted yet</span>
                         @endif
                     </span>
                 </li>
-            @endif
-
-            @if($tab === 'active' && $sos->report_returned_at && $sos->report_return_reason)
-                <li class="wide">
-                    <i class="bi bi-arrow-return-left" title="Report sent back"></i>
-                    <span>Report sent back: {{ rtrim($sos->report_return_reason, '. ') }}. Waiting for the team to send it again.</span>
-                </li>
-            @endif
-
-            @if(in_array($tab, ['for-review', 'resolved', 'declined'], true))
+            @elseif($tab === 'for-review')
                 <li>
-                    <i class="bi bi-clock" title="When the SOS was sent"></i>
-                    <span>SOS sent {{ $sos->created_at->format('M d, g:i A') }}</span>
+                    <i class="bi bi-people-fill" title="Response team"></i>
+                    <span>{{ $leadText ? 'Final report from ' . $leadText : 'Final report sent' }}</span>
                 </li>
-            @endif
-
-            @if($tab === 'resolved' && $sos->resolvedBy)
+            @elseif($tab === 'resolved')
                 <li>
-                    <i class="bi bi-person-check-fill" title="Reviewed by"></i>
-                    <span>Reviewed by {{ $sos->resolvedBy->name }}</span>
-                </li>
-            @endif
-
-            @if($sos->ai_analysis)
-                <li class="wide">
-                    <i class="bi bi-stars" title="What the AI saw in the photo"></i>
-                    <span class="ai-quote">“{{ \Illuminate\Support\Str::limit($sos->ai_analysis, 140) }}”</span>
+                    <i class="bi bi-people-fill" title="Response team"></i>
+                    <span>
+                        {{ $leadText ? 'Handled by ' . $leadText : ($teams ? 'Sent to ' . implode(' · ', $teams) : 'Sent to the responders') }}
+                        @if($sos->resolvedBy)
+                            · reviewed by {{ $sos->resolvedBy->name }}
+                        @endif
+                    </span>
                 </li>
             @endif
         </ul>
@@ -218,12 +180,13 @@
     {{-- When + View --}}
     <div class="sos-side">
         <div class="sos-when">
-            <div class="ago{{ $tab === 'pending' ? ($late ? ' late' : ' waiting') : '' }}">
+            <div class="ago{{ $tab === 'pending' ? ($late ? ' late' : ' waiting') : '' }}"
+                 title="{{ $whenLabel }} {{ $whenAt->format('M d, g:i A') }}">
                 @if($tab === 'pending')<i class="bi bi-stopwatch"></i> @endif{{ $whenText }}
             </div>
-            <div class="at">{{ $whenAt->format('M d, g:i A') }}</div>
+            <div class="at">{{ $sentText }}</div>
         </div>
-        <a href="{{ $url }}" class="btn-view" title="Open the SOS details: photos, map, team and timeline">
+        <a href="{{ $url }}" class="btn-view" title="Open the SOS details: photo, map, team and timeline">
             <i class="bi bi-eye"></i> View
         </a>
     </div>
@@ -231,27 +194,25 @@
     {{-- The buttons for this tab --}}
     @if($tab === 'pending')
         @php
-            $usualTeams = $sos->defaultTeams();
+            // Quick Approve sends it to the usual team(s) for the type. To
+            // pick others or add notes, the admin opens View.
+            $usualTeams = $sos->defaultTeams() ?: ['SARS'];
             $usualTeamText = count($usualTeams) > 1
                 ? implode(', ', array_slice($usualTeams, 0, -1)) . ' and ' . end($usualTeams)
-                : ($usualTeams[0] ?? 'SARS');
+                : $usualTeams[0];
         @endphp
         <div class="sos-foot">
             <div class="foot-actions">
                 <form action="{{ route('incident.approve', $sos->id) }}" method="POST">
                     @csrf
-                    <button type="submit" class="btn-approve">
-                        <i class="bi bi-check-lg"></i> Approve &amp; Dispatch to Responders
+                    <button type="submit" class="btn-approve"
+                            title="Sends it to {{ $usualTeamText }}. To choose other teams or add notes, click View.">
+                        <i class="bi bi-check-lg"></i> Approve &amp; Send to {{ implode(' + ', $usualTeams) }}
                     </button>
                 </form>
                 <button type="button" class="btn-decline" data-bs-toggle="modal" data-bs-target="#declineModal{{ $sos->id }}">
                     <i class="bi bi-x-lg"></i> Decline
                 </button>
-            </div>
-            <div class="dispatch-hint">
-                <i class="bi bi-people"></i>
-                Approve sends it to <strong>{{ $usualTeamText }}</strong>.
-                <a href="{{ $url }}">Choose other teams or add notes for the team</a>
             </div>
         </div>
     @elseif($tab === 'for-review')

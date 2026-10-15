@@ -156,14 +156,14 @@
         @media (max-width: 560px) { .tab-btn { padding: 10px 12px; } }
 
         /* ── SOS CARD (partials/sos-card.blade.php) ──
-           Photo │ type, who, where, team │ time + View.
-           The buttons for the tab (Approve / Decline, Mark as Resolved /
-           Return, Delete) run along the bottom. On phones: photo + text,
-           then the buttons, then the time and View. */
+           Type, who, where, team │ time + View. No photo: it's on SOS
+           Details. The buttons for the tab (Approve / Decline, Mark as
+           Resolved / Return, Delete) run along the bottom. On phones: the
+           text, then the buttons, then the time and View. */
         .sos-card {
             display: grid;
-            grid-template-columns: 104px minmax(0, 1fr) auto;
-            grid-template-areas: "thumb main side";
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-areas: "main side";
             column-gap: 18px;
             align-items: start;
             background: #fff;
@@ -176,7 +176,7 @@
             box-shadow: 0 1px 3px rgba(0,0,0,.04);
             transition: box-shadow .2s, transform .15s;
         }
-        .sos-card.has-foot { grid-template-areas: "thumb main side" "thumb foot foot"; }
+        .sos-card.has-foot { grid-template-areas: "main side" "foot foot"; }
         .sos-card:hover { box-shadow: 0 8px 24px rgba(17,24,39,.1); transform: translateY(-1px); }
 
         /* Left edge: what the alert needs. Waiting for review = amber (same
@@ -189,33 +189,6 @@
         .sos-card--for_review { border-left-color: #7c3aed; }
         .sos-card--resolved   { border-left-color: #10b981; }
         .sos-card--declined   { border-left-color: #991b1b; background: #fcfcfd; }
-
-        /* Photo */
-        .sos-thumb {
-            grid-area: thumb;
-            position: relative; display: block;
-            width: 104px; height: 104px;
-            border-radius: 12px; overflow: hidden;
-            background: #f3f4f6; border: 1px solid #eef0f4;
-            text-decoration: none;
-        }
-        .sos-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s; }
-        .sos-card:hover .sos-thumb img { transform: scale(1.04); }
-        .sos-thumb .no-photo {
-            position: absolute; inset: 0; display: none;
-            flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-            padding: 6px; text-align: center;
-            color: #9ca3af; font-size: .7rem; font-weight: 600; line-height: 1.2;
-        }
-        .sos-thumb .no-photo i { font-size: 1.5rem; color: #c4c9d4; }
-        .sos-thumb.is-empty, .sos-thumb.is-broken { background: #f9fafb; border-style: dashed; border-color: #e5e7eb; }
-        .sos-thumb.is-empty .no-photo, .sos-thumb.is-broken .no-photo { display: flex; }
-        .photo-count {
-            position: absolute; right: 6px; bottom: 6px;
-            display: inline-flex; align-items: center; gap: 4px;
-            background: rgba(17,24,39,.75); color: #fff;
-            font-size: .68rem; font-weight: 700; padding: 2px 7px; border-radius: 20px;
-        }
 
         /* Type, status, facts */
         .sos-main { grid-area: main; min-width: 0; }
@@ -234,10 +207,6 @@
         .badge-review       { background: #fef3c7; color: #92400e; }
         .badge-declined     { background: #fee2e2; color: #991b1b; }
         .badge-forreview    { background: #ede9fe; color: #5b21b6; }
-        .badge-ai {
-            display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
-            background: #eef2ff; color: #4338ca; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px;
-        }
 
         /* Each fact takes the room it needs and wraps to the next line when
            the card is narrow. */
@@ -248,7 +217,7 @@
         .sos-facts li.wide { flex-basis: 100%; }
         .sos-facts .muted { color: #9ca3af; }
         .sos-facts .warn-text { color: #b45309; font-weight: 600; }
-        .ai-quote { color: #6b7280; font-style: italic; }
+        .sos-facts strong { color: #111827; }
 
         .sos-reporter { font-weight: 700; color: #111827; }
         .tag-guest, .tag-resident {
@@ -296,18 +265,16 @@
         }
         .foot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
         .foot-actions form { margin: 0; display: flex; }
-        .sos-foot .dispatch-hint { margin: 0; }
         .sos-foot .declined-reason-note { flex: 1; min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px; }
         .sos-foot form.delete-form { margin: 0; display: flex; }
 
         @media (max-width: 720px) {
             .sos-card {
-                grid-template-columns: 76px minmax(0, 1fr);
-                grid-template-areas: "thumb main" "side side";
-                column-gap: 14px; padding: 14px;
+                grid-template-columns: minmax(0, 1fr);
+                grid-template-areas: "main" "side";
+                padding: 14px;
             }
-            .sos-card.has-foot { grid-template-areas: "thumb main" "foot foot" "side side"; }
-            .sos-thumb { width: 76px; height: 76px; }
+            .sos-card.has-foot { grid-template-areas: "main" "foot" "side"; }
             .sos-facts { flex-direction: column; }
             .sos-side {
                 flex-direction: row; align-items: center; justify-content: space-between; text-align: left;
@@ -341,12 +308,6 @@
             font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;
         }
         .review-banner--report { background: #f5f3ff; border-color: #ddd6fe; color: #5b21b6; }
-        /* Under Approve: which team(s) the quick Approve sends the SOS to. */
-        .dispatch-hint { font-size: .76rem; color: #6b7280; margin-top: 8px; line-height: 1.45; }
-        .dispatch-hint i { margin-right: 2px; }
-        .dispatch-hint strong { color: #374151; }
-        .dispatch-hint a { color: #1a3c8f; font-weight: 600; text-decoration: none; margin-left: 4px; }
-        .dispatch-hint a:hover { text-decoration: underline; }
         /* For Review actions: the report PDF, Return. */
         .btn-pdf {
             display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
@@ -605,7 +566,7 @@
         <div id="tab-for-review" class="tab-panel">
             <div class="review-banner review-banner--report">
                 <i class="bi bi-clipboard2-check" style="margin-top:1px;"></i>
-                <span>The responding team sent their <strong>Final report</strong> for these SOS alerts. Open the report and check it, then <strong>Mark as Resolved</strong> — or <strong>Return</strong> it to the responders with what needs fixing. A returned report goes back to Active until they send it again.</span>
+                <span>The team sent their <strong>Final report</strong>. Check it, then <strong>Mark as Resolved</strong>, or <strong>Return</strong> it with what needs fixing.</span>
             </div>
 
             @forelse($forReviewSos as $sos)
@@ -623,7 +584,7 @@
         <div id="tab-pending" class="tab-panel active">
             <div class="review-banner">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>Every SOS alert waits here for your review. Call the number shown to confirm the emergency, then approve it to notify the responders. Click <strong>View</strong> to see the photos and the map, choose the teams, or add notes for them. Responders are not notified until you approve.</span>
+                <span>Call the number to confirm the emergency, then approve it. Responders are notified only after you approve. To see the photo, change the team or add notes, click <strong>View</strong>.</span>
             </div>
 
             @forelse($pendingReviewSos as $sos)
@@ -690,11 +651,12 @@
                 <input type="date" class="filter-date" id="filterDateH" title="Filter by date"
                        style="border:1.5px solid #d1d5db;border-radius:8px;padding:9px 14px;font-size:.82rem;font-family:'Inter',sans-serif;color:#374151;background:#fff;">
 
-                <select class="filter-select" id="filterAiH"
+                {{-- The SOS type on the card (it was the AI's reading of the photo). --}}
+                <select class="filter-select" id="filterTypeH"
                         style="appearance:none;-webkit-appearance:none;background:#fff url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E&quot;) no-repeat right 12px center;border:1.5px solid #d1d5db;border-radius:8px;padding:9px 34px 9px 14px;font-size:.82rem;color:#374151;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">
-                    <option value="">All AI Types</option>
-                    @foreach($resolvedSos->pluck('ai_detected_type')->filter()->unique()->sort() as $aiType)
-                        <option value="{{ $aiType }}">{{ $aiType }}</option>
+                    <option value="">All Types</option>
+                    @foreach($resolvedSos->pluck('sos_emergency_type')->filter()->unique()->sort() as $sosType)
+                        <option value="{{ $sosType }}">{{ $sosType }}</option>
                     @endforeach
                 </select>
 
@@ -884,12 +846,12 @@
         } catch (e) {}
     })();
 
-    // Resolved History tab filters (date / AI type / search)
+    // Resolved History tab filters (date / type / search)
     (function () {
         const dateFilter   = document.getElementById('filterDateH');
         if (!dateFilter) return;
 
-        const aiFilter      = document.getElementById('filterAiH');
+        const typeFilter    = document.getElementById('filterTypeH');
         const searchInput   = document.getElementById('searchInputH');
         const btnClear      = document.getElementById('btnClearH');
         const cards         = Array.from(document.querySelectorAll('#tab-resolved .history-row'));
@@ -899,13 +861,13 @@
 
         function applyFilters() {
             const date   = dateFilter.value;
-            const ai     = aiFilter.value;
+            const type   = typeFilter.value;
             const search = searchInput.value.trim().toLowerCase();
             let visible  = 0;
 
             cards.forEach(card => {
                 const ok = (!date   || card.dataset.date === date)
-                        && (!ai     || card.dataset.ai   === ai)
+                        && (!type   || card.dataset.type === type)
                         && (!search || card.dataset.search.includes(search));
                 card.style.display = ok ? '' : 'none';
                 if (ok) visible++;
@@ -916,10 +878,10 @@
         }
 
         dateFilter.addEventListener('change', applyFilters);
-        aiFilter.addEventListener('change', applyFilters);
+        typeFilter.addEventListener('change', applyFilters);
         searchInput.addEventListener('input', applyFilters);
         btnClear.addEventListener('click', () => {
-            aiFilter.value = '';
+            typeFilter.value = '';
             dateFilter.value = searchInput.value = '';
             applyFilters();
         });
