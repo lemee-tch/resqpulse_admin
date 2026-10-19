@@ -183,10 +183,13 @@ class AuthController extends Controller
         $mapIncidents = \App\Models\Incident::whereNotNull('latitude')
             ->whereNotNull('longitude')
             ->where('status', '!=', 'resolved')
-            ->select('id', 'emergency_type', 'location', 'latitude', 'longitude', 'status')
+            ->select('id', 'emergency_type', 'location', 'latitude', 'longitude', 'status', 'needs_review', 'declined_at', 'assigned_teams')
             ->orderByDesc('created_at')
             ->take(15)
-            ->get();
+            ->get()
+            // The pin's colour: waiting for approval, approved but no one
+            // has accepted yet, responding… (Incident::progressKey()).
+            ->each(fn ($incident) => $incident->setAttribute('progress', $incident->progressKey()));
 
         // "Incidents over Time" mini trend — last 7 days, one bucket per day.
         // Same shape/pattern as reportsAnalytics()'s $trendWeek.
@@ -315,11 +318,13 @@ class AuthController extends Controller
             ->orderByDesc('total')
             ->pluck('total', 'type');
 
-        // Same normalization, scoped to status='pending' only — lets the
-        // legend show "2 pending" under a type instead of just a flat
-        // count that doesn't say whether any of them still need
-        // attention. Uses the same CASE WHEN as $reportsByType above so
-        // a type here always matches a type there.
+        // Same normalization, scoped to reports still waiting for approval
+        // (Pending) — lets the legend show "2 pending" under a type instead
+        // of just a flat count that doesn't say whether any of them still
+        // need attention. Approved ones no one has accepted yet are Active
+        // (Awaiting Responder), not pending, and declined ones are done.
+        // Uses the same CASE WHEN as $reportsByType above so a type here
+        // always matches a type there.
         $reportsByTypePending = \App\Models\Incident::selectRaw("
                 CASE
                     WHEN emergency_type = 'SOS Emergency' THEN 'SOS Emergency'
@@ -332,7 +337,8 @@ class AuthController extends Controller
                 COUNT(*) as total
             ")
             ->whereBetween('created_at', [$fromDate, $toDate])
-            ->where('status', 'pending')
+            ->where('needs_review', true)
+            ->whereNull('declined_at')
             ->groupBy('type')
             ->pluck('total', 'type');
 
@@ -579,11 +585,9 @@ class AuthController extends Controller
             fputcsv($handle, ['Date & time', 'Type', 'Location', 'Reporter', 'Mobile', 'Priority', 'Status']);
 
             foreach ($incidents as $inc) {
-                $status = match (true) {
-                    (bool) $inc->declined_at => 'Declined',
-                    (bool) $inc->needs_review => 'Pending Review',
-                    default => ucfirst((string) ($inc->status ?: 'pending')),
-                };
+                // Same words as the PDF: "Pending Review", "Active · Awaiting
+                // Responder", "For Review"… (Incident::progressLabel()).
+                $status = $inc->needs_review ? 'Pending Review' : $inc->progressLabel();
 
                 fputcsv($handle, [
                     $inc->created_at->format('Y-m-d H:i'),

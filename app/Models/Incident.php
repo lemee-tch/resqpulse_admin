@@ -116,6 +116,51 @@ class Incident extends Model
     }
 
     /**
+     * Where it stands, as one key — the Incidents tabs, with Active split
+     * by whether anyone has accepted. Used where the status is shown
+     * without the tabs (the Dashboard, Map View, the incidents overview,
+     * the exported report):
+     *
+     *   review      waiting for approval ("Pending")
+     *   declined    declined by MDRRMO
+     *   needs_team  approved but not sent to anyone (item 36)
+     *   awaiting    approved and sent, no one has accepted yet
+     *               ("Active · Awaiting Responder")
+     *   responding  a responder accepted
+     *   for_review  the Final report is with MDRRMO
+     *   resolved
+     */
+    public function progressKey(): string
+    {
+        return match (true) {
+            (bool) $this->needs_review     => 'review',
+            (bool) $this->declined_at      => 'declined',
+            $this->status === 'for_review' => 'for_review',
+            $this->status === 'resolved'   => 'resolved',
+            $this->status === 'responding' => 'responding',
+            $this->awaitingTeam()          => 'needs_team',
+            default                        => 'awaiting',
+        };
+    }
+
+    /** progressKey() in words. */
+    public const PROGRESS_LABELS = [
+        'review'     => 'Pending',
+        'declined'   => 'Declined',
+        'needs_team' => 'Active · Needs Team',
+        'awaiting'   => 'Active · Awaiting Responder',
+        'responding' => 'Responding',
+        'for_review' => 'For Review',
+        'resolved'   => 'Resolved',
+    ];
+
+    /** "Pending", "Active · Awaiting Responder", "Responding"… */
+    public function progressLabel(): string
+    {
+        return self::PROGRESS_LABELS[$this->progressKey()];
+    }
+
+    /**
      * Approved, but not sent to anyone: an empty team list ([]). Approving
      * now sends it to all responders right away, so this is only an
      * incident approved while approving didn't send it anywhere (item 36).

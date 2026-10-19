@@ -114,9 +114,14 @@ class IncidentController extends Controller
 
         $query = Incident::with(['citizen', 'responders'])->orderByDesc('created_at');
 
-        if (in_array($status, ['pending', 'acknowledged', 'responding', 'for_review', 'resolved'], true)) {
-            $query->where('status', $status);
-        }
+        // Pending = waiting for approval. Approved with no one accepted yet
+        // is Awaiting Responder (status 'pending' too, but it's Active).
+        match ($status) {
+            'pending'  => $query->where('needs_review', true)->whereNull('declined_at'),
+            'awaiting' => $query->where('needs_review', false)->whereNull('declined_at')->where('status', 'pending'),
+            'acknowledged', 'responding', 'for_review', 'resolved' => $query->where('status', $status),
+            default    => null,
+        };
 
         $incidents = $query->get();
 

@@ -62,7 +62,8 @@
         .overview-table tbody tr.overview-row:hover { background: #f8faff; }
         .overview-table td { padding: 14px 18px; font-size: .82rem; color: #4b5563; vertical-align: middle; }
 
-        .badge-pending    { background: #fef3c7; color: #92400e; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+        /* Approved, no one has accepted yet (Active · Awaiting Responder). */
+        .badge-awaiting   { background: #ffedd5; color: #c2410c; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
         .badge-responding { background: #e0f2fe; color: #0369a1; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
         .badge-review     { background: #fde68a; color: #78350f; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
         .badge-forreview  { background: #ede9fe; color: #5b21b6; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
@@ -212,6 +213,7 @@
             $titles = [
                 null         => 'All Incidents',
                 'pending'    => 'Pending',
+                'awaiting'   => 'Awaiting Responder',
                 'responding' => 'Responding',
                 'for_review' => 'For Review',
                 'resolved'   => 'Resolved',
@@ -246,6 +248,7 @@
         <div class="status-tabs">
             <a href="{{ route('incidents.overview') }}" class="status-tab {{ $status === null ? 'active' : '' }}">All</a>
             <a href="{{ route('incidents.overview', ['status' => 'pending']) }}" class="status-tab {{ $status === 'pending' ? 'active' : '' }}">Pending</a>
+            <a href="{{ route('incidents.overview', ['status' => 'awaiting']) }}" class="status-tab {{ $status === 'awaiting' ? 'active' : '' }}">Awaiting Responder</a>
             <a href="{{ route('incidents.overview', ['status' => 'responding']) }}" class="status-tab {{ $status === 'responding' ? 'active' : '' }}">Responding</a>
             <a href="{{ route('incidents.overview', ['status' => 'for_review']) }}" class="status-tab {{ $status === 'for_review' ? 'active' : '' }}">For Review</a>
             <a href="{{ route('incidents.overview', ['status' => 'resolved']) }}" class="status-tab {{ $status === 'resolved' ? 'active' : '' }}">Resolved</a>
@@ -285,10 +288,14 @@
                                     $inc->status === 'responding' => 'badge-responding',
                                     $inc->status === 'for_review' => 'badge-forreview',
                                     $inc->status === 'resolved'   => 'badge-resolved',
-                                    default                        => 'badge-pending',
+                                    default                        => 'badge-awaiting',
                                 };
-                                // "Pending Review", "Awaiting Responder", "For Review"… — see Incident::getStatusLabelAttribute().
-                                $statusLabel = $inc->status_label;
+                                // "Pending Review", "Active · Awaiting Responder", "For Review"… — see
+                                // Incident::getStatusLabelAttribute(). Approved with no one accepted
+                                // yet is Active, not pending.
+                                $statusLabel = in_array($inc->progressKey(), ['awaiting', 'needs_team'], true)
+                                    ? 'Active · ' . $inc->status_label
+                                    : $inc->status_label;
                             @endphp
                             <tr class="overview-row" onclick="window.location.href='{{ $detailUrl }}'">
                                 <td>

@@ -167,6 +167,9 @@
         .pop-responding { background: #dbeafe; color: #1e40af; }
         .pop-resolved { background: #d1fae5; color: #065f46; }
         .pop-for_review { background: #ede9fe; color: #5b21b6; }
+        .pop-awaiting { background: #ffedd5; color: #c2410c; }
+        .pop-needsteam { background: #ffedd5; color: #9a3412; }
+        .pop-declined { background: #f3f4f6; color: #6b7280; }
         .pop-open     { background: #d1fae5; color: #065f46; }
         .pop-full     { background: #fee2e2; color: #991b1b; }
         .pop-closed   { background: #f3f4f6; color: #6b7280; }
@@ -400,7 +403,9 @@
             <div class="control-card">
                 <span class="ctrl-label">Status Key</span>
                 <div class="leg-inline"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#92400e;"></span> Pending</div>
+                <div class="leg-inline"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ea580c;"></span> Awaiting Responder</div>
                 <div class="leg-inline"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1e40af;"></span> Responding</div>
+                <div class="leg-inline"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#6d28d9;"></span> For Review</div>
                 <div class="leg-inline"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#065f46;"></span> Resolved</div>
             </div>
 
@@ -452,11 +457,15 @@
     };
     const defaultIcon = { emoji: '⚠️' };
 
+    // Keyed by incident.progress (Incident::progressKey()).
     const statusColorMap = {
-        pending:    '#92400e',
+        review:     '#92400e',
+        awaiting:   '#ea580c',
+        needs_team: '#ea580c',
         responding: '#1e40af',
         for_review: '#6d28d9',
         resolved:   '#065f46',
+        declined:   '#6b7280',
     };
 
     function getTypeIcon(type) {
@@ -464,8 +473,14 @@
         return typeIconMap[key] || defaultIcon;
     }
 
-    const statusLabel = { pending: 'Pending', responding: 'Responding', for_review: 'For Review', resolved: 'Resolved' };
-    const statusClass = { pending: 'pop-pending', responding: 'pop-responding', for_review: 'pop-for_review', resolved: 'pop-resolved' };
+    const statusLabel = {
+        review: 'Pending', awaiting: 'Active · Awaiting Responder', needs_team: 'Active · Needs Team',
+        responding: 'Responding', for_review: 'For Review', resolved: 'Resolved', declined: 'Declined',
+    };
+    const statusClass = {
+        review: 'pop-pending', awaiting: 'pop-awaiting', needs_team: 'pop-needsteam',
+        responding: 'pop-responding', for_review: 'pop-for_review', resolved: 'pop-resolved', declined: 'pop-declined',
+    };
 
     const evacStatusLabel = { open: 'Open', full: 'Full', closed: 'Closed' };
     const evacStatusClass = { open: 'pop-open', full: 'pop-full', closed: 'pop-closed' };
@@ -901,10 +916,10 @@
             if (isNaN(lat) || isNaN(lng)) return;
 
             const iconInfo = getTypeIcon(incident.emergency_type);
-            const statusKey = (incident.status || 'pending').toLowerCase();
-            const pinColor = statusColorMap[statusKey] || statusColorMap.pending;
+            const statusKey = incident.progress || 'review';
+            const pinColor = statusColorMap[statusKey] || statusColorMap.review;
             const badgeClass = statusClass[statusKey] || 'pop-pending';
-            const badgeLabel = statusLabel[statusKey] || incident.status || 'Pending';
+            const badgeLabel = statusLabel[statusKey] || 'Pending';
 
             const content = `
                 <div class="incident-popup">
@@ -915,7 +930,8 @@
                 </div>`;
 
             const marker = emojiOverlay(lat, lng, iconInfo.emoji, pinColor, {
-                pulse: statusKey === 'pending',
+                // Still waiting on someone: approval, or a responder.
+                pulse: ['review', 'awaiting', 'needs_team'].includes(statusKey),
                 popupContent: content,
             });
             if (!layerVisible.incidents) marker.setMap(null);

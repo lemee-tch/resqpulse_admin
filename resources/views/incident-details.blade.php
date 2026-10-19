@@ -729,17 +729,6 @@
                                 @endforeach
                             </div>
                         @endif
-
-                        @if($incident->resolution_notes)
-                            <div class="narrative">{{ $incident->resolution_notes }}</div>
-                        @elseif(! $report)
-                            <div class="small-note">No report or notes were sent.</div>
-                        @endif
-
-                        @if($incident->resolution_photo_path)
-                            <img src="{{ Storage::url($incident->resolution_photo_path) }}" class="res-photo"
-                                 data-bs-toggle="modal" data-bs-target="#resolutionPhotoModal" alt="Photo from the scene">
-                        @endif
                     </section>
                 @endif
 
@@ -931,7 +920,7 @@
                                         <span class="team-pill">{{ $code }}</span>
                                     @endforeach
                                 </div>
-                                <div class="field-help">All responders: every response team gets it and any of them can accept it. After approving, you can notify specific teams.</div>
+                                <div class="field-help">All responders: every response team gets it and any of them can accept it.</div>
                             </div>
 
                             <div class="action-buttons">

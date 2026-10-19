@@ -20,7 +20,11 @@ class MapViewController extends Controller
                 $query->where('status', '!=', 'resolved')
                       ->orWhere('updated_at', '>=', now()->subDay());
             })
-            ->select('id', 'emergency_type', 'location', 'latitude', 'longitude', 'description', 'status', 'created_at', 'updated_at')
+            ->select(
+                'id', 'emergency_type', 'location', 'latitude', 'longitude', 'description', 'status', 'created_at', 'updated_at',
+                // For progress (below).
+                'needs_review', 'declined_at', 'assigned_teams'
+            )
             // Responders have no live GPS column — the only location we can
             // truthfully show for one is the incident they accepted. This
             // eager-loads just what the map popup needs (name + agency);
@@ -32,7 +36,11 @@ class MapViewController extends Controller
                 $q->select('responders.id', 'responders.full_name', 'responders.first_name', 'responders.last_name', 'responders.agency', 'responders.unit_station');
             }])
             ->orderByDesc('created_at')
-            ->get();
+            ->get()
+            // Where it stands, for the pin's popup: "Pending" only while it
+            // waits for approval; approved with no one accepted yet is
+            // "Active · Awaiting Responder". See Incident::progressKey().
+            ->each(fn (Incident $incident) => $incident->setAttribute('progress', $incident->progressKey()));
 
         $evacCenters = EvacuationCenter::select('id', 'name', 'barangay', 'latitude', 'longitude', 'capacity', 'occupancy', 'status')
             ->get();

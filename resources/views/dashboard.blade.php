@@ -302,6 +302,9 @@
         .status-onway    { color: #3b82f6; font-weight: 600; font-size: .75rem; }
         .status-resolved { color: #10b981; font-weight: 600; font-size: .75rem; }
         .status-review   { color: #7c3aed; font-weight: 600; font-size: .75rem; }
+        /* Approved, no one has accepted yet. */
+        .status-awaiting { color: #c2410c; font-weight: 600; font-size: .75rem; }
+        .status-declined { color: #6b7280; font-weight: 600; font-size: .75rem; }
 
         /* ── MAP placeholder ── */
         .map-placeholder {
@@ -631,17 +634,17 @@
                             @php
                                 $priorityClass = $inc->priority ? 'priority-'.$inc->priority : '';
                                 $priorityLabel = $inc->priority ? ucfirst($inc->priority) : 'Not Set';
-                                $statusClass = match($inc->status) {
-                                    'responding' => 'status-onway',
-                                    'for_review' => 'status-review',
-                                    'resolved' => 'status-resolved',
-                                    default => 'status-pending',
-                                };
-                                $statusLabel = match($inc->status) {
-                                    'responding' => 'On the way',
-                                    'for_review' => 'For Review',
-                                    'resolved' => 'Resolved',
-                                    default => 'Pending',
+                                // Where it stands (Incident::progressKey()). "Pending" is
+                                // only for reports waiting for approval; approved with no
+                                // one accepted yet is Active · Awaiting Responder.
+                                [$statusLabel, $statusClass] = match ($inc->progressKey()) {
+                                    'review'     => ['Pending', 'status-pending'],
+                                    'declined'   => ['Declined', 'status-declined'],
+                                    'needs_team' => ['Active · Needs Team', 'status-awaiting'],
+                                    'awaiting'   => ['Active · Awaiting Responder', 'status-awaiting'],
+                                    'responding' => ['On the way', 'status-onway'],
+                                    'for_review' => ['For Review', 'status-review'],
+                                    default      => ['Resolved', 'status-resolved'],
                                 };
                             @endphp
                             <tr>
@@ -938,7 +941,12 @@ function initDashboardMap() {
 
     renderDashboardBoundary(map);
 
-    const statusColor = { pending: '#92400e', responding: '#1e40af', acknowledged: '#1e40af', for_review: '#6d28d9' };
+    // Same colours as Map View, keyed by incident.progress
+    // (Incident::progressKey()).
+    const statusColor = {
+        review: '#92400e', awaiting: '#ea580c', needs_team: '#ea580c',
+        responding: '#1e40af', for_review: '#6d28d9', declined: '#6b7280',
+    };
     const typeEmoji = {
         Fire: '🔥', Flood: '🌊', Earthquake: '🏚️', Accident: '🚗',
         'Medical Emergency': '🚑', Landslide: '⛰️', 'SOS Emergency': '🆘',
@@ -969,7 +977,7 @@ function initDashboardMap() {
         hasPoints = true;
 
         const emoji = typeEmoji[inc.emergency_type] || '⚠️';
-        const color = statusColor[inc.status] || '#92400e';
+        const color = statusColor[inc.progress] || '#92400e';
         new google.maps.Marker({
             position,
             map,

@@ -77,12 +77,9 @@
     $logoRight = $logo('logo_rosales.png');
 
     // ── Status, type and barangay of each incident ──
-    $statusOf = function ($inc) {
-        if ($inc->declined_at) return 'Declined';
-        if ($inc->needs_review) return 'Pending Review';
-        if ($inc->status === 'for_review') return 'For Review';
-        return ucfirst((string) ($inc->status ?: 'pending'));
-    };
+    // Approved with no one accepted yet is "Active · Awaiting Responder",
+    // not pending (Incident::progressLabel()).
+    $statusOf = fn ($inc) => $inc->needs_review ? 'Pending Review' : $inc->progressLabel();
 
     // Same grouping as the "Reports by Type" chart on Reports & Analytics:
     // SOS stays SOS, otherwise the AI-detected type if any, and anything
