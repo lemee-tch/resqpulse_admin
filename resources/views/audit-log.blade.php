@@ -25,8 +25,8 @@
         .sidebar-logout a { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: rgba(255,255,255,.75); text-decoration: none; font-weight: 500; transition: color .2s; }
         .sidebar-logout a:hover { color: #fff; }
 
-        .main-wrap { margin-left: 250px; flex: 1; display: flex; flex-direction: column; }
-        .content { padding: 28px 32px; flex: 1; }
+        .main-wrap { margin-left: 250px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        .content { padding: 28px 32px; flex: 1; min-width: 0; }
         .page-title { font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1.5rem; color: #111827; margin-bottom: 4px; }
         .page-sub { font-size: .82rem; color: #6b7280; margin-bottom: 20px; }
 
@@ -65,7 +65,7 @@
         .badge-declined { background: #ffedd5; color: #9a3412; }
         .badge-resolved { background: #ccfbf1; color: #115e59; }
 
-        /* Who did it — one tag per group, same colours as the tabs. */
+        /* Who did it — one tag per group. */
         .actor-name { font-weight: 600; color: #111827; }
         .who-tag { display: inline-block; margin-top: 3px; font-size: .65rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; white-space: nowrap; letter-spacing: .2px; }
         .who-admin     { background: #dbeafe; color: #1e40af; }
@@ -74,17 +74,8 @@
         .who-responder { background: #ccfbf1; color: #115e59; }
         .who-system    { background: #f3f4f6; color: #6b7280; }
 
-        /* Everyone / Admin / Residents & Guests / Responders */
-        .tab-bar { display: flex; flex-wrap: wrap; border-bottom: 2px solid #e5e7eb; margin-bottom: 16px; }
-        .tab-link {
-            padding: 10px 18px; font-size: .85rem; font-weight: 600; color: #6b7280;
-            text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -2px;
-            display: inline-flex; align-items: center; gap: 8px; transition: color .2s, border-color .2s;
-        }
-        .tab-link:hover { color: #1a3c8f; }
-        .tab-link.active { color: #1a3c8f; border-bottom-color: #1a3c8f; }
-        .tab-count { font-size: .7rem; font-weight: 700; background: #f3f4f6; color: #4b5563; padding: 1px 8px; border-radius: 20px; }
-        .tab-link.active .tab-count { background: #e0e7ff; color: #1a3c8f; }
+        /* A dropdown with something picked stands out. */
+        .filter-select.is-set { border-color: #1a3c8f; color: #1a3c8f; font-weight: 600; }
 
         .empty-state { text-align: center; padding: 48px 20px; color: #9ca3af; font-size: .9rem; }
         .ip-cell { font-size: .74rem; color: #9ca3af; }
@@ -225,52 +216,28 @@
         <div class="page-title">Audit Log</div>
         <div class="page-sub">Everything done in ResQPulse, newest first: admin actions in this panel, residents and guests in the residents app, and responders in the responder app.</div>
 
-        @php
-            // Tab links keep the other filters; switching tabs starts at page 1.
-            // (The admin filter only makes sense for Everyone / Admin.)
-            $tabUrl = fn ($whoValue) => route('audit-log', array_filter(
-                array_merge(
-                    request()->except(in_array($whoValue, ['resident', 'responder'], true) ? ['page', 'who', 'user_id'] : ['page', 'who']),
-                    ['who' => $whoValue]
-                ),
-                fn ($v) => $v !== null && $v !== ''
-            ));
-            $tabs = [
-                null        => ['Everyone', $counts['all']],
-                'admin'     => ['Admin', $counts['admin']],
-                'resident'  => ['Residents & Guests', $counts['resident']],
-                'responder' => ['Responders', $counts['responder']],
-            ];
-        @endphp
-
-        <nav class="tab-bar" aria-label="Whose activity">
-            @foreach($tabs as $tabWho => [$tabLabel, $tabCount])
-                <a href="{{ $tabUrl($tabWho ?: null) }}" class="tab-link {{ ($who ?? null) === ($tabWho ?: null) ? 'active' : '' }}">
-                    {{ $tabLabel }} <span class="tab-count">{{ number_format($tabCount) }}</span>
-                </a>
-            @endforeach
-        </nav>
-
         <form method="GET" action="{{ route('audit-log') }}" class="filter-bar">
-            @if($who)
-                <input type="hidden" name="who" value="{{ $who }}">
-            @endif
-
-            <select name="action" class="filter-select" onchange="this.form.submit()">
+            <select name="action" class="filter-select {{ request('action') ? 'is-set' : '' }}" onchange="this.form.submit()" aria-label="Action">
                 <option value="">All Actions</option>
                 @foreach($actions as $a)
                     <option value="{{ $a }}" {{ request('action') === $a ? 'selected' : '' }}>{{ ucfirst($a) }}</option>
                 @endforeach
             </select>
 
-            @if($who === null || $who === 'admin')
-                <select name="user_id" class="filter-select" onchange="this.form.submit()">
-                    <option value="">Any Admin</option>
-                    @foreach($adminUsers as $admin)
-                        <option value="{{ $admin->id }}" {{ (string) request('user_id') === (string) $admin->id ? 'selected' : '' }}>{{ $admin->name }}</option>
-                    @endforeach
-                </select>
-            @endif
+            {{-- Whose activity: everyone, one group, or one admin. The counts
+                 follow the other filters. --}}
+            <select name="who" class="filter-select {{ $whoValue !== '' ? 'is-set' : '' }}" onchange="this.form.submit()" aria-label="Whose activity">
+                @foreach(['' => ['Everyone', $counts['all']], 'admin' => ['Admin', $counts['admin']], 'resident' => ['Residents & Guests', $counts['resident']], 'responder' => ['Responders', $counts['responder']]] as $value => [$label, $count])
+                    <option value="{{ $value }}" {{ $whoValue === (string) $value ? 'selected' : '' }}>{{ $label }} ({{ number_format($count) }})</option>
+                @endforeach
+                @if($adminUsers->isNotEmpty())
+                    <optgroup label="Admins">
+                        @foreach($adminUsers as $admin)
+                            <option value="admin-{{ $admin->id }}" {{ $whoValue === 'admin-' . $admin->id ? 'selected' : '' }}>{{ $admin->name }} ({{ number_format($adminCounts[$admin->id] ?? 0) }})</option>
+                        @endforeach
+                    </optgroup>
+                @endif
+            </select>
 
             <input type="date" name="date" class="filter-date" value="{{ request('date') }}" onchange="this.form.submit()">
 
@@ -280,7 +247,7 @@
             </div>
 
             <button type="submit" class="btn-filter">Filter</button>
-            <a href="{{ route('audit-log', array_filter(['who' => $who])) }}" class="btn-clear" style="text-decoration:none;display:inline-block;">Clear</a>
+            <a href="{{ route('audit-log') }}" class="btn-clear" style="text-decoration:none;display:inline-block;">Clear</a>
         </form>
 
         <div class="table-card">
@@ -317,7 +284,7 @@
                     <tr>
                         <td colspan="5">
                             <div class="empty-state">
-                                {{ request()->hasAny(['action', 'user_id', 'date', 'search']) ? 'No entries match these filters.' : 'Nothing logged here yet.' }}
+                                {{ request()->anyFilled(['action', 'who', 'user_id', 'date', 'search']) ? 'No entries match these filters.' : 'Nothing logged here yet.' }}
                             </div>
                         </td>
                     </tr>
