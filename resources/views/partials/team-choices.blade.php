@@ -1,13 +1,15 @@
 {{--
-    Response team checkboxes (BFP / PNP / SARS / HCU) for Incident Details:
-    Verify & Assign, and Response Assignment while the incident is Active.
+    Response team checkboxes (BFP / PNP / SARS / HCU) for Incident Details,
+    while the incident is Active: Notify Again (no one has accepted yet),
+    changing the assignment after someone accepted, and Assign response
+    team on an incident approved without a team.
 
         @include('partials.team-choices', ['checked' => [...], 'previous' => [...] or null])
 
     $checked   the codes ticked when the page opens
-    $previous  the teams already notified (Response Assignment). A team
-               ticked that isn't in it shows "will be notified". Null on
-               Verify & Assign, where every ticked team is notified.
+    $previous  the teams already notified (changing the assignment). A team
+               ticked that isn't in it shows "will be notified". Null when
+               every ticked team is notified (Notify Again, Assign).
 
     The styles (.team-grid, .team-choice, .choice-input) are on the page.
 --}}

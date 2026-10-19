@@ -125,14 +125,6 @@
         /* Active, approved but the team isn't assigned yet (Incident Details assigns it). */
         .badge-needsteam    { background: #ffedd5; color: #9a3412; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
 
-        /* Inline dropdowns */
-        .inline-select {
-            border: 1.5px solid #e5e7eb; border-radius: 6px; padding: 4px 8px;
-            font-size: .78rem; font-family: 'Inter', sans-serif; font-weight: 600;
-            background: #f9fafb; cursor: pointer; transition: border-color .2s;
-        }
-        .inline-select:focus { outline: none; border-color: #1a3c8f; background: #fff; }
-
         .no-results { text-align: center; padding: 48px 20px; color: #9ca3af; font-size: .9rem; }
         .no-results i { font-size: 2rem; display: block; margin-bottom: 10px; color: #d1d5db; }
 
@@ -373,10 +365,10 @@
             //   Pending     every new report waits here until an admin
             //               approves or declines it on Incident Details (the
             //               table only has View)
-            //   Active      approved: waiting for the admin to assign the
-            //               response team ("Needs Team" — only then are the
-            //               responders notified), for one to accept, or
-            //               being responded to
+            //   Active      approved and sent to the usual teams: waiting for
+            //               one to accept (the admin can notify them again),
+            //               or being responded to. "Needs Team" only on
+            //               incidents approved without a team (item 36)
             //   For Review  the responders sent their Final report; the admin
             //               marks it resolved or sends it back
             //   Resolved    resolved, declined (badged "Declined"), and
@@ -451,7 +443,7 @@
         <div id="tab-pending" class="tab-panel active">
             <div class="tab-note tab-note--pending">
                 <i class="bi bi-info-circle"></i>
-                <span>Every new report waits here for your review. Open <strong>View</strong> to check the photos, description and reporter, then approve or decline it there. Once approved it moves to <strong>Active</strong>, where you assign the response team — the team is notified then.</span>
+                <span>Every new report waits here for your review. Open <strong>View</strong> to check the photos, description and reporter, then approve or decline it there. Approving sends it to the usual response teams right away; if no one accepts, you can notify them again from its page on <strong>Active</strong>.</span>
             </div>
 
             <div class="table-card">
@@ -572,20 +564,8 @@
                             data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
                             data-href="{{ route('incident.detail', $inc->id) }}"
                         >
-                            <td onclick="event.stopPropagation()">
-                                <form method="POST" action="{{ route('incident.priority', $inc->id) }}">
-                                    @csrf @method('PATCH')
-                                    <select class="inline-select {{ $priorityClass }}"
-                                            name="priority"
-                                            onchange="this.form.submit()"
-                                            title="Set priority">
-                                        <option value="" {{ !$inc->priority ? 'selected' : '' }} disabled>Not Set</option>
-                                        <option value="critical" {{ $inc->priority === 'critical' ? 'selected' : '' }}>Critical</option>
-                                        <option value="high"     {{ $inc->priority === 'high'     ? 'selected' : '' }}>High</option>
-                                        <option value="low"      {{ $inc->priority === 'low'      ? 'selected' : '' }}>Low</option>
-                                    </select>
-                                </form>
-                            </td>
+                            {{-- Set when the report was approved; it can't be changed after that. --}}
+                            <td><span class="{{ $priorityClass }}" title="Set when it was approved">{{ $priorityLabel }}</span></td>
                             <td>
                                 {{ $inc->emergency_type }}
                                 @if($inc->report_returned_at && $inc->report_return_reason)

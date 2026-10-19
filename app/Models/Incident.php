@@ -117,14 +117,14 @@ class Incident extends Model
     }
 
     /**
-     * Approved, but the admin hasn't assigned the response team yet. The
-     * team is assigned on Incident Details once the incident is approved
-     * and Active (Admin\IncidentController::updateAssignment()) — no one
-     * is notified before that.
+     * Approved, but no team was sent: an empty team list ([]). Approving
+     * now sends it to the usual teams right away, so this is only an
+     * incident approved while approving didn't send it anywhere (item 36).
+     * The admin assigns the team on Incident Details
+     * (Admin\IncidentController::updateAssignment()).
      *
-     * Approving saves an empty team list ([]), which is how this is told
-     * apart from an incident approved before teams were assigned at all
-     * (no list, NULL): those stay open to every team.
+     * Told apart from an incident approved before teams were assigned at
+     * all (no list, NULL): those stay open to every team.
      */
     public function awaitingTeam(): bool
     {

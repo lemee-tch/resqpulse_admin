@@ -10,6 +10,7 @@ use App\Services\IncidentReportService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -122,8 +123,17 @@ class IncidentController extends Controller
         return view('incidents-overview', compact('incidents', 'status'));
     }
 
+    /**
+     * The priority is chosen while the report is Pending (approve()) and
+     * can't be changed after it's approved — the Active tab and Incident
+     * Details only show it. This refuses any change after that.
+     */
     public function updatePriority(Request $request, Incident $incident)
     {
+        if (! $incident->needs_review) {
+            return back()->withErrors(['priority' => 'The priority is set when the report is approved and can\'t be changed after that.']);
+        }
+
         $request->validate([
             'priority' => ['required', 'in:critical,high,low'],
         ]);
@@ -179,19 +189,20 @@ class IncidentController extends Controller
      * Approve — Incident Details → Administrative Actions, while it's
      * Pending. The lists only have View: an admin approves or declines
      * after checking the photos, the map and the reporter on the details
-     * page (Lem: "while still pending, it should only show view action…
-     * it should only show on details").
+     * page.
      *
      *   priority  reports only — Critical, High or Low. Nothing sets it
-     *             automatically. SOS is always Critical.
+     *             automatically, and it can't be changed after approving.
+     *             SOS is always Critical.
      *
-     * Approving notifies no one yet. The incident moves to Active, where
-     * the admin assigns the response team (updateAssignment()) — "it can
-     * only assign when it's already accepted by the admin". The empty team
-     * list saved here marks it as waiting for a team
-     * (Incident::awaitingTeam()).
+     * Approving sends it to the responders right away (Lem: "once the
+     * report was accepted or approved, it will immediately notify the
+     * responders"): the usual teams for the type (Incident::defaultTeams(),
+     * Fire → BFP + SARS…). On Active, the admin can notify them again or
+     * add teams while no one has accepted (updateAssignment()). A logged-in
+     * resident is told it was approved; a guest has no account to notify.
      */
-    public function approve(Request $request, Incident $incident)
+    public function approve(Request $request, Incident $incident, PushNotificationService $push)
     {
         if (! $incident->needs_review) {
             return back()->with('success', 'This report was already approved.');
@@ -203,49 +214,71 @@ class IncidentController extends Controller
             $request->validate(['priority' => ['required', 'in:critical,high,low']], $this->assignmentMessages());
         }
 
+        $teams       = $incident->defaultTeams();
         $oldPriority = $incident->priority;
         $changes = [
             'needs_review'     => false,
             'reviewed_at'      => now(),
             'reviewed_by'      => auth('web')->id(),
-            // No team yet — see Incident::awaitingTeam().
-            'assigned_teams'   => [],
+            'assigned_teams'   => $teams,
             'assignment_notes' => null,
-            'assigned_at'      => null,
+            'assigned_at'      => now(),
         ];
         if (! $isSos) {
             $changes['priority'] = $request->priority;
         }
         $incident->update($changes);
 
-        // Back on the details page, where the team is assigned next.
-        $details = redirect()->route($isSos ? 'sos.detail' : 'incident.detail', $incident);
-        $next    = 'Now assign the response team — no one is notified until you do.';
+        $push->dispatchToRespondersForIncident($incident->fresh());
+
+        if ($incident->citizen_id && $incident->citizen) {
+            $push->notifyCitizen(
+                $incident->citizen,
+                'Report Approved',
+                $isSos
+                    ? 'Your SOS alert has been approved and sent to responders.'
+                    : "Your {$incident->emergency_type} report has been approved and sent to responders."
+            );
+        }
+
+        $teamList = $this->teamList($teams);
+        $details  = redirect()->route($isSos ? 'sos.detail' : 'incident.detail', $incident);
 
         if ($isSos) {
-            AuditLogService::log('approved', "Approved the {$this->describeIncident($incident)}.", $incident);
+            AuditLogService::log(
+                'approved',
+                "Approved the {$this->describeIncident($incident)} — sent to {$teamList}.",
+                $incident,
+                null,
+                ['teams' => $teams]
+            );
 
-            return $details->with('success', "SOS approved. {$next}");
+            return $details->with('success', "SOS approved and sent to {$teamList}.");
         }
 
         $priorityLabel = ucfirst($incident->priority);
 
         AuditLogService::log(
             'approved',
-            "Approved the {$this->describeIncident($incident)} as {$priorityLabel} priority.",
+            "Approved the {$this->describeIncident($incident)} as {$priorityLabel} priority — sent to {$teamList}.",
             $incident,
             ['priority' => $oldPriority],
-            ['priority' => $incident->priority]
+            ['priority' => $incident->priority, 'teams' => $teams]
         );
 
-        return $details->with('success', "Report approved as {$priorityLabel} priority. {$next}");
+        return $details->with('success', "Report approved as {$priorityLabel} priority and sent to {$teamList}.");
     }
 
     /**
-     * Incident Details → Assign response team, once the incident is
-     * approved (Active):
+     * Incident Details → the response team, while the incident is Active.
+     * The priority was set when it was approved and isn't changed here (a
+     * priority sent along is ignored).
      *
-     *   priority          reports only; it can still be changed here
+     *   notify_again=1    no one has accepted yet: the alert goes out again
+     *                     to every ticked team (Lem: "notifying them again
+     *                     just in case no one accepted the report"), at
+     *                     most once a minute
+     *
      *   teams[]           BFP / PNP / SARS / HCU — only these are notified,
      *                     and only they see it and can accept it in the
      *                     responder app
@@ -253,10 +286,9 @@ class IncidentController extends Controller
      *
      * The first time (Incident::awaitingTeam()), every ticked team is
      * notified, and a resident is told their report was approved and sent
-     * to the responders. After that, the admin can change the priority, the
-     * team(s) and the notes: a team that's added is notified right away (as
-     * backup); a team that's removed stops seeing it, unless it already
-     * accepted.
+     * to the responders. After that, the admin can change the team(s) and
+     * the notes: a team that's added is notified right away (as backup); a
+     * team that's removed stops seeing it, unless it already accepted.
      */
     public function updateAssignment(Request $request, Incident $incident, PushNotificationService $push)
     {
@@ -266,20 +298,17 @@ class IncidentController extends Controller
                 : 'The response team can only be changed while the incident is active.']);
         }
 
-        $isSos = $incident->isSos();
-
-        $rules = $this->assignmentRules();
-        if (! $isSos) {
-            $rules['priority'] = ['required', 'in:critical,high,low'];
-        }
-        $request->validate($rules, $this->assignmentMessages());
+        $request->validate($this->assignmentRules(), $this->assignmentMessages());
 
         $newTeams = $this->orderedTeams($request->input('teams'));
         $notes    = $this->cleanText($request->input('assignment_notes'));
-        $priority = $isSos ? $incident->priority : $request->priority;
 
         if ($incident->awaitingTeam()) {
-            return $this->assignFirstTeam($incident, $newTeams, $notes, $priority, $push);
+            return $this->assignFirstTeam($incident, $newTeams, $notes, $push);
+        }
+
+        if ($request->boolean('notify_again') && $incident->responders()->doesntExist()) {
+            return $this->notifyAgain($incident, $newTeams, $notes, $push);
         }
 
         // Incidents approved before teams were assigned went to the usual
@@ -289,9 +318,6 @@ class IncidentController extends Controller
         $removed  = array_values(array_diff($oldTeams, $newTeams));
 
         $what = [];
-        if ($priority !== $incident->priority) {
-            $what[] = 'priority to ' . ucfirst($priority);
-        }
         if ($added) {
             $what[] = 'added ' . $this->teamList($added);
         }
@@ -307,13 +333,11 @@ class IncidentController extends Controller
         }
 
         $old = [
-            'priority'         => $incident->priority,
             'teams'            => $incident->assignedTeamCodes(),
             'assignment_notes' => $incident->assignment_notes,
         ];
 
         $incident->update([
-            'priority'         => $priority,
             'assigned_teams'   => $newTeams,
             'assignment_notes' => $notes,
             'assigned_at'      => ($added || $removed) ? now() : ($incident->assigned_at ?? now()),
@@ -330,7 +354,6 @@ class IncidentController extends Controller
             $incident,
             $old,
             [
-                'priority'         => $priority,
                 'teams'            => $newTeams,
                 'assignment_notes' => $notes,
             ]
@@ -344,12 +367,9 @@ class IncidentController extends Controller
      * incident, and a resident is told it was approved and sent to the
      * responders (a guest has no account to notify).
      */
-    private function assignFirstTeam(Incident $incident, array $teams, ?string $notes, ?string $priority, PushNotificationService $push)
+    private function assignFirstTeam(Incident $incident, array $teams, ?string $notes, PushNotificationService $push)
     {
-        $oldPriority = $incident->priority;
-
         $incident->update([
-            'priority'         => $priority,
             'assigned_teams'   => $teams,
             'assignment_notes' => $notes,
             'assigned_at'      => now(),
@@ -371,14 +391,67 @@ class IncidentController extends Controller
 
         AuditLogService::log(
             'updated',
-            "Assigned {$teamList} to the {$this->describeIncident($incident)}"
-                . ($priority !== $oldPriority ? ' and set it to ' . ucfirst((string) $priority) . ' priority' : '') . '.',
+            "Assigned {$teamList} to the {$this->describeIncident($incident)}.",
             $incident,
-            ['priority' => $oldPriority, 'teams' => []],
-            ['priority' => $priority, 'teams' => $teams, 'assignment_notes' => $notes]
+            ['teams' => []],
+            ['teams' => $teams, 'assignment_notes' => $notes]
         );
 
         return back()->with('success', "Sent to {$teamList}. They've been notified.");
+    }
+
+    /**
+     * No one has accepted yet: sends the alert again to every ticked team
+     * (and saves the teams and the notes). At most once a minute per
+     * incident, so a double click doesn't send it twice.
+     *
+     * A responder on a ticked team who declined it gets it back in their
+     * list (Api\IncidentController::decline() hides it from them) —
+     * otherwise the alert would point to an incident they can't see.
+     */
+    private function notifyAgain(Incident $incident, array $teams, ?string $notes, PushNotificationService $push)
+    {
+        $key = 'incident-notify-again:' . $incident->id;
+        if (RateLimiter::tooManyAttempts($key, 1)) {
+            return back()->withErrors(['assignment' => 'The teams were just notified. Wait a minute before notifying them again.']);
+        }
+        RateLimiter::hit($key, 60);
+
+        $oldTeams = $incident->assignedTeamCodes() ?: $incident->defaultTeams();
+        $added    = array_values(array_diff($teams, $oldTeams));
+        $removed  = array_values(array_diff($oldTeams, $teams));
+
+        // assigned_at stays when it was first sent (the details page shows
+        // "Sent 20 minutes ago, and again to … 2 minutes ago").
+        $incident->update([
+            'assigned_teams'   => $teams,
+            'assignment_notes' => $notes,
+            'assigned_at'      => $incident->assigned_at ?? $incident->reviewed_at ?? now(),
+        ]);
+
+        $declined = $incident->declinedBy()->whereIn('responders.agency', $teams)->pluck('responders.id');
+        if ($declined->isNotEmpty()) {
+            $incident->declinedBy()->detach($declined);
+        }
+
+        $push->dispatchToRespondersForIncident($incident->fresh(), $teams, true);
+
+        $teamList = $this->teamList($teams);
+        $changes  = array_filter([
+            $added ? 'added ' . $this->teamList($added) : null,
+            $removed ? 'removed ' . $this->teamList($removed) : null,
+        ]);
+
+        AuditLogService::log(
+            'updated',
+            "Notified {$teamList} again about the {$this->describeIncident($incident)} — no one had accepted yet"
+                . ($changes ? ' (' . implode(', ', $changes) . ')' : '') . '.',
+            $incident,
+            ['teams' => $oldTeams],
+            ['teams' => $teams, 'assignment_notes' => $notes]
+        );
+
+        return back()->with('success', "Sent again to {$teamList}.");
     }
 
     /** Validation for the team and the notes for the team. */

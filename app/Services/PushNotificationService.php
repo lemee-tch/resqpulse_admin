@@ -155,10 +155,11 @@ class PushNotificationService
     }
 
     /**
-     * Sends the incident to the responders — called when the admin assigns
-     * the response team after approving it (Admin\IncidentController::
-     * updateAssignment()), and again with $onlyAgencies when the admin adds
-     * a team later, so only the newly added team is notified.
+     * Sends the incident to the responders — called when the admin approves
+     * it (Admin\IncidentController::approve()), with $onlyAgencies when the
+     * admin adds a team later (only that team is notified), and with
+     * $again when no one has accepted yet and the admin notifies the teams
+     * again ("… — no one has accepted yet").
      *
      * Goes to the teams the admin assigned (assigned_teams). Incidents
      * approved before teams were assigned fall back to the usual routing
@@ -166,7 +167,7 @@ class PushNotificationService
      * caller, since a notification failure should never undo a saved
      * report.
      */
-    public function dispatchToRespondersForIncident(Incident $incident, ?array $onlyAgencies = null): void
+    public function dispatchToRespondersForIncident(Incident $incident, ?array $onlyAgencies = null, bool $again = false): void
     {
         try {
             if ($onlyAgencies !== null) {
@@ -192,7 +193,9 @@ class PushNotificationService
             if (! $isSos && $incident->priority) {
                 $title .= ' — ' . ucfirst($incident->priority) . ' priority';
             }
-            if ($onlyAgencies !== null) {
+            if ($again) {
+                $title = ($isSos ? '🆘 SOS' : "🚨 {$incident->emergency_type} report") . ' — no one has accepted yet';
+            } elseif ($onlyAgencies !== null) {
                 $title = ($isSos ? '🆘 SOS' : "🚨 {$incident->emergency_type}") . ' — your team was added';
             }
 

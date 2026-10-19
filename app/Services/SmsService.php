@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -24,6 +25,12 @@ use Illuminate\Support\Str;
  *   - five codes per mobile number per hour,
  *   - SMS_DAILY_LIMIT codes per day for everyone together.
  * Only texts that were actually sent count.
+ *
+ * When the gateway fails to send a text (e.g. Semaphore hasn't approved
+ * the sender name yet, no credits, no connection), texting is paused for
+ * PAUSE_MINUTES: isAvailable() says no, so the app stops offering
+ * "Text me a code" and uses email where it can, instead of every resident
+ * running into the same error. It tries again after the pause.
  */
 class SmsService
 {
@@ -33,15 +40,38 @@ class SmsService
     /** Codes one number can get in an hour. */
     private const MAX_PER_NUMBER_PER_HOUR = 5;
 
+    /** Minutes texting stays off after the gateway failed to send. */
+    public const PAUSE_MINUTES = 15;
+
+    private const PAUSE_KEY = 'sms-gateway-paused';
+
     public function driver(): string
     {
         return strtolower(trim((string) config('services.sms.driver', 'none')));
     }
 
-    /** Texting is set up and today's limit isn't used up. */
+    /**
+     * Texting is set up, isn't paused after a failed text, and today's
+     * limit isn't used up.
+     */
     public function isAvailable(): bool
     {
-        return $this->isConfigured() && ! $this->dailyLimitReached();
+        return $this->isConfigured() && ! $this->isPaused() && ! $this->dailyLimitReached();
+    }
+
+    /** The gateway failed to send a text in the last PAUSE_MINUTES. */
+    public function isPaused(): bool
+    {
+        return Cache::has(self::PAUSE_KEY);
+    }
+
+    /** After a failed text: no texting for PAUSE_MINUTES (see the class comment). */
+    private function pause(): void
+    {
+        Cache::put(self::PAUSE_KEY, true, now()->addMinutes(self::PAUSE_MINUTES));
+
+        Log::warning('SMS: texting is paused for ' . self::PAUSE_MINUTES . ' minutes after the '
+            . $this->driver() . ' gateway failed to send. Codes go by email where possible meanwhile.');
     }
 
     /** The chosen gateway has what it needs (an API key). */
@@ -92,8 +122,9 @@ class SmsService
      *   code         the code that was texted. Usually $code, but
      *                Semaphore's OTP route makes its own code if it ignores
      *                ours, and its reply says which one it sent.
-     *   reason       why it wasn't sent: unavailable, daily_limit,
-     *                invalid_number, too_soon, hourly_limit, gateway_error
+     *   reason       why it wasn't sent: unavailable (off, or paused after
+     *                a failed text), daily_limit, invalid_number, too_soon,
+     *                hourly_limit, gateway_error (this one starts the pause)
      *   retry_after  seconds to wait, for too_soon / hourly_limit
      *
      * $purpose picks the wording: 'signup' ("verification code"), 'reset'
@@ -103,7 +134,7 @@ class SmsService
      */
     public function sendVerificationCode(string $mobile, string $code, int $minutes = 10, string $purpose = 'signup'): array
     {
-        if (! $this->isConfigured()) {
+        if (! $this->isConfigured() || $this->isPaused()) {
             return $this->notSent('unavailable');
         }
         if ($this->dailyLimitReached()) {
@@ -139,6 +170,8 @@ class SmsService
         }
 
         if ($sentCode === null) {
+            $this->pause();
+
             return $this->notSent('gateway_error');
         }
 
@@ -197,6 +230,8 @@ class SmsService
 
         if ($sent) {
             RateLimiter::hit($this->dailyKey(), 86400);
+        } else {
+            $this->pause();
         }
 
         return $sent;
