@@ -48,14 +48,15 @@
     }
 
     // The team: where MDRRMO sent it, and who accepted (first one leads).
-    $teams = $sos->assignedTeamCodes();
+    $teams     = $sos->assignedTeamCodes();
+    $teamsText = $sos->sentToAllTeams() ? 'All teams' : implode(' · ', $teams);
     $onIt  = $sos->responders->sortBy(fn ($r) => (string) $r->pivot->accepted_at)->values();
     $lead  = $onIt->first();
     $leadText = $lead
         ? $lead->full_name . ($lead->agency ? " ({$lead->agency})" : '') . ($onIt->count() > 1 ? ' +' . ($onIt->count() - 1) . ' more' : '')
         : null;
 
-    // Approved, but the response team isn't assigned yet.
+    // Approved, but not sent to the responders yet (item 36).
     $needsTeam = $tab === 'active' && $sos->awaitingTeam();
 
     // Where it stands: the dot's colour.
@@ -85,15 +86,15 @@
 
     // Third line: the team, or why it was declined.
     [$detail, $detailWarn] = match (true) {
-        $needsTeam => ['No team yet — open View to assign the response team', true],
+        $needsTeam => ['Not sent yet — open View to send it to the responders', true],
         $tab === 'active' => [
-            ($teams ? implode(' · ', $teams) : 'Responders') . ' — '
+            ($teams ? $teamsText : 'Responders') . ' — '
                 . ($leadText ? $leadText . ' responding' : 'no one has accepted yet'),
             ! $leadText,
         ],
         $tab === 'for-review' => [$leadText ? 'Final report from ' . $leadText : 'Final report sent', false],
         $tab === 'resolved'   => [
-            ($leadText ? 'Handled by ' . $leadText : ($teams ? 'Sent to ' . implode(' · ', $teams) : 'Sent to the responders'))
+            ($leadText ? 'Handled by ' . $leadText : ($teams ? 'Sent to ' . ($sos->sentToAllTeams() ? 'all teams' : $teamsText) : 'Sent to the responders'))
                 . ($sos->resolvedBy ? ' · reviewed by ' . $sos->resolvedBy->name : ''),
             false,
         ],

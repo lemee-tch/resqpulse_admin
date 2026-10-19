@@ -462,38 +462,43 @@
     }
     $isReturned = $incident->status === 'responding' && $incident->report_returned_at && $incident->report_return_reason;
 
-    // Response team. It's assigned once the incident is approved (Active);
-    // until then $needsTeam is true and no one is notified.
+    // Response team. Approving sends it to all responders (every team);
+    // on Active the admin can notify specific teams. $needsTeam: approved
+    // while approving didn't send it anywhere (item 36) — not sent yet.
     $needsTeam    = $incident->awaitingTeam();
     $teamOnIt     = $incident->responders->sortBy(fn ($r) => (string) $r->pivot->accepted_at)->values();
     $assigned     = $incident->assignedTeamCodes();
+    $allTeams     = array_keys(\App\Models\Incident::TEAMS);
+    $toAll        = $incident->sentToAllTeams();
     $suggested    = $incident->defaultTeams();
-    $checkedTeams = (array) old('teams', $assigned ?: $suggested);
+    $checkedTeams = (array) old('teams', []);
     $teamList = function (array $teams) {
         if (count($teams) <= 1) return $teams[0] ?? '';
         return implode(', ', array_slice($teams, 0, -1)) . ' and ' . end($teams);
     };
+    $sentTo        = $toAll ? 'all responders' : ($assigned ? $teamList($assigned) : 'the responders');
     $firstAccepted = $teamOnIt->first()?->pivot?->accepted_at;
+    $ago           = fn ($at) => $at->gt(now()->subMinute()) ? 'just now' : $at->diffForHumans();
 
-    // Active and no one has accepted yet: the teams can be notified again.
-    // When that was last done comes from the Audit Log line it writes
-    // (IncidentController::notifyAgain()).
-    $noOneYet        = $stage === 'active' && ! $needsTeam && $teamOnIt->isEmpty();
-    $ago             = fn ($at) => $at->gt(now()->subMinute()) ? 'just now' : $at->diffForHumans();
-    $notifiedAgainAt = null;
-    $declinedBy      = collect();
+    // The last time the admin notified specific teams, from the Audit Log
+    // line it writes (IncidentController::updateAssignment()): who, and
+    // whether it was "no one has accepted yet" or asking them to help.
+    $lastNotify = null;
     if (! $incident->needs_review && ! $incident->declined_at) {
-        $lastAgain = \App\Models\AuditLog::where('auditable_type', \App\Models\Incident::class)
+        $lastNotify = \App\Models\AuditLog::where('auditable_type', \App\Models\Incident::class)
             ->where('auditable_id', $incident->id)
-            ->where('description', 'like', 'Notified % again about %')
-            ->latest('id')->value('created_at');
-        $notifiedAgainAt = $lastAgain ? \Illuminate\Support\Carbon::parse($lastAgain) : null;
+            ->where('action', 'updated')
+            ->where('description', 'like', 'Notified %')
+            ->latest('id')->first();
     }
-    if ($noOneYet) {
-        // Responders who declined it ("not me") — it's off their list
-        // until the admin notifies their team again.
-        $declinedBy = $incident->declinedBy()->orderBy('incident_declines.declined_at')->get();
-    }
+    $notifiedAt    = $lastNotify?->created_at;
+    $notifiedTeams = $lastNotify ? (array) ($lastNotify->new_values['notified'] ?? $lastNotify->new_values['teams'] ?? []) : [];
+    $notifiedHelp  = $lastNotify && ($lastNotify->new_values['kind'] ?? null) === 'help';
+
+    // Responders who declined it ("not me") — it's off their list until
+    // the admin notifies their team.
+    $noOneYet   = $stage === 'active' && ! $needsTeam && $teamOnIt->isEmpty();
+    $declinedBy = $noOneYet ? $incident->declinedBy()->orderBy('incident_declines.declined_at')->get() : collect();
 @endphp
 
 <!-- ════ MAIN ════ -->
@@ -791,11 +796,11 @@
                                 @if($incident->needs_review)
                                     <li class="todo"><span class="dot"></span><div class="tl-label">Assigned · Accepted · Report · Resolved — not yet</div></li>
                                 @elseif($needsTeam)
-                                    {{-- 3. Approved, the team not assigned yet. --}}
+                                    {{-- 3. Approved, not sent to anyone yet (item 36). --}}
                                     <li class="current">
                                         <span class="dot"></span>
                                         <div class="tl-label">Assigned — waiting for you</div>
-                                        <div class="tl-sub">Choose the response team in Administrative Actions.</div>
+                                        <div class="tl-sub">Send it to the responders in Administrative Actions.</div>
                                     </li>
                                     <li class="todo"><span class="dot"></span><div class="tl-label">Accepted · Report · Resolved — not yet</div></li>
                                 @else
@@ -811,9 +816,11 @@
                                         <span class="dot"><i class="bi bi-check"></i></span>
                                         <div class="tl-label">Assigned <span class="tl-time">{{ $assignedAt?->format('M d, g:i A') }}</span></div>
                                         <div class="tl-sub">
-                                            {{ $assigned ? 'Sent to ' . $teamList($assigned) . '.' : 'Sent to the responders (before teams were assigned).' }}
+                                            {{ $assigned ? 'Sent to ' . $sentTo . '.' : 'Sent to the responders (before teams were assigned).' }}
                                             @if($teamChangedAt) Team changed {{ $teamChangedAt->format('M d, g:i A') }}. @endif
-                                            @if($notifiedAgainAt) Notified again {{ $notifiedAgainAt->format('M d, g:i A') }}. @endif
+                                            @if($notifiedAt)
+                                                {{ $notifiedHelp ? 'Asked ' . $teamList($notifiedTeams) . ' to help' : 'Notified ' . $teamList($notifiedTeams) . ' again' }} {{ $notifiedAt->format('M d, g:i A') }}.
+                                            @endif
                                         </div>
                                     </li>
 
@@ -886,15 +893,15 @@
                     <div class="card-title">Administrative Actions</div>
 
                     @if($incident->needs_review)
-                        {{-- ── PENDING: Approve or Decline. Approving sends it to the
-                             usual teams for the type right away; on Active the
-                             admin can notify them again or add teams. ── --}}
+                        {{-- ── PENDING: Approve or Decline. Approving sends it to all
+                             responders right away; on Active the admin can
+                             notify specific teams. ── --}}
                         <div class="notice notice-pending">
                             <i class="bi bi-hourglass-split"></i>
                             <span>
                                 Check the details, photos and location first.
                                 @if($mobile) Call <a href="tel:{{ $mobile }}" class="call-link">{{ $mobile }}</a> to confirm. @endif
-                                The responders are notified as soon as you approve it.
+                                All responders are notified as soon as you approve it.
                             </span>
                         </div>
 
@@ -920,11 +927,11 @@
                             <div class="field">
                                 <span class="field-label">Goes to</span>
                                 <div class="goes-to">
-                                    @foreach($suggested as $code)
+                                    @foreach($allTeams as $code)
                                         <span class="team-pill">{{ $code }}</span>
                                     @endforeach
                                 </div>
-                                <div class="field-help">The usual teams for {{ $isSos ? ($incident->sos_emergency_type ?: 'an SOS') : $incident->emergency_type }}. If no one accepts, you can notify them again or add a team after approving.</div>
+                                <div class="field-help">All responders: every response team gets it and any of them can accept it. After approving, you can notify specific teams.</div>
                             </div>
 
                             <div class="action-buttons">
@@ -938,7 +945,7 @@
                             <div class="why-disabled" id="approveHint" hidden></div>
                             <div class="action-help">
                                 <i class="bi bi-info-circle"></i>
-                                <strong>Approve &amp; Send</strong> → the {{ $isSos ? 'SOS' : 'report' }} moves to <strong>Active</strong> and {{ $teamList($suggested) }} {{ count($suggested) > 1 ? 'are' : 'is' }} notified right away.
+                                <strong>Approve &amp; Send</strong> → the {{ $isSos ? 'SOS' : 'report' }} moves to <strong>Active</strong> and all responders are notified right away.
                                 {{ $incident->citizen_id ? 'The resident is told it was approved.' : '' }}
                             </div>
                         </form>
@@ -1008,32 +1015,33 @@
                         @endif
 
                     @else
-                        {{-- ── ACTIVE: no one accepted yet → notify the teams again (or
-                             add one); someone accepted → add a backup team or change
-                             the notes. ($needsTeam: approved before approving sent it
-                             anywhere — assign the team.) ── --}}
+                        {{-- ── ACTIVE: it went to all responders when it was approved.
+                             The admin can notify specific teams: "no one has
+                             accepted yet", or asking a team to help once
+                             someone is on it. ($needsTeam: approved while
+                             approving didn't send it anywhere — send it.) ── --}}
                         @if($needsTeam)
                             <div class="notice notice-pending">
                                 <i class="bi bi-people-fill"></i>
                                 <span>
-                                    Approved{{ $incident->reviewedBy ? ' by ' . $incident->reviewedBy->name : '' }}{{ $incident->reviewed_at ? ' ' . $incident->reviewed_at->format('M d, g:i A') : '' }}.
-                                    <strong>Assign the response team</strong> — no one is notified until you do.
+                                    Approved{{ $incident->reviewedBy ? ' by ' . $incident->reviewedBy->name : '' }}{{ $incident->reviewed_at ? ' ' . $incident->reviewed_at->format('M d, g:i A') : '' }}, but not sent yet.
+                                    <strong>Send it to the responders</strong> — no one is notified until you do.
                                 </span>
                             </div>
                         @elseif($isReturned)
                             <div class="notice notice-returned">
                                 <i class="bi bi-arrow-return-left"></i>
-                                <span>Report sent back: <strong>{{ rtrim($incident->report_return_reason, '. ') }}</strong>. Waiting for the team to send it again.</span>
+                                <span>
+                                    Report sent back: <strong>{{ rtrim($incident->report_return_reason, '. ') }}</strong>. Waiting for the team to send it again.
+                                    @if($notifiedHelp && $notifiedAt) Asked {{ $teamList($notifiedTeams) }} to help {{ $ago($notifiedAt) }}. @endif
+                                </span>
                             </div>
                         @elseif($teamOnIt->isEmpty())
                             <div class="notice notice-pending">
                                 <i class="bi bi-broadcast"></i>
                                 <span>
-                                    @if($notifiedAgainAt)
-                                        Sent{{ $incident->assigned_at ? ' ' . $ago($incident->assigned_at) : '' }}, and again to <strong>{{ $teamList($assigned) }}</strong> {{ $ago($notifiedAgainAt) }}.
-                                    @else
-                                        Sent to <strong>{{ $assigned ? $teamList($assigned) : 'the responders' }}</strong>{{ $incident->assigned_at ? ' ' . $ago($incident->assigned_at) : '' }}.
-                                    @endif
+                                    Sent to <strong>{{ $sentTo }}</strong>{{ $incident->assigned_at ? ' ' . $ago($incident->assigned_at) : '' }}.
+                                    @if($notifiedAt) Notified {{ $teamList($notifiedTeams) }} again {{ $ago($notifiedAt) }}. @endif
                                     @if($declinedBy->isNotEmpty())
                                         {{ $declinedBy->map(fn ($r) => "{$r->full_name} ({$r->agency})")->join(', ', ' and ') }} declined it.
                                     @endif
@@ -1043,7 +1051,10 @@
                         @else
                             <div class="notice notice-info">
                                 <i class="bi bi-lightning-charge-fill"></i>
-                                <span>{{ $teamOnIt->first()->full_name }} {{ $teamOnIt->count() > 1 ? 'and ' . ($teamOnIt->count() - 1) . ' more are' : 'is' }} responding. You'll see their report here when they send it.</span>
+                                <span>
+                                    {{ $teamOnIt->first()->full_name }} {{ $teamOnIt->count() > 1 ? 'and ' . ($teamOnIt->count() - 1) . ' more are' : 'is' }} responding. You'll see their report here when they send it.
+                                    @if($notifiedHelp && $notifiedAt) Asked {{ $teamList($notifiedTeams) }} to help {{ $ago($notifiedAt) }}. @endif
+                                </span>
                             </div>
                         @endif
 
@@ -1066,60 +1077,50 @@
                             </div>
 
                             @if($needsTeam)
-                                <div class="field">
-                                    <span class="field-label">Assign response team <span class="req">(required)</span></span>
-                                    @include('partials.team-choices', ['checked' => $checkedTeams, 'previous' => null])
-                                    <div class="field-help">Suggested for {{ $isSos ? ($incident->sos_emergency_type ?: 'an SOS') : $incident->emergency_type }}: {{ $teamList($suggested) }}. Only the teams you tick are notified and can accept it.</div>
-                                </div>
-                            @elseif($noOneYet)
-                                <div class="field">
-                                    <span class="field-label">Response team</span>
-                                    @include('partials.team-choices', ['checked' => $checkedTeams, 'previous' => null])
-                                    <div class="field-help">
-                                        Notify Again sends the alert again to every team ticked here. Tick another team to add it.
-                                        @if($declinedBy->isNotEmpty()) Anyone on a ticked team who declined gets it back in their list. @endif
-                                    </div>
-                                </div>
-                            @else
-                                <div class="field">
-                                    <span class="field-label">Response team</span>
-                                    @include('partials.team-choices', ['checked' => $checkedTeams, 'previous' => $assigned ?: $suggested])
-                                    <div class="field-help">Tick another team to send it as backup — it's notified right away.</div>
-                                </div>
-                            @endif
-
-                            <div class="field">
-                                <label class="field-label" for="assignment_notes">Notes for the team <span class="opt">(optional)</span></label>
-                                <textarea name="assignment_notes" id="assignment_notes" rows="2" maxlength="500" class="f-input"
-                                          placeholder="e.g. Proceed via the market road.">{{ old('assignment_notes', $incident->assignment_notes) }}</textarea>
-                                @if($needsTeam)<div class="field-help">The team sees this in the app.</div>@endif
-                            </div>
-
-                            @if($needsTeam)
                                 <button type="submit" class="btn-x btn-primary-x btn-block" id="assignmentSubmit">
-                                    <i class="bi bi-send-check"></i> Assign &amp; Notify Team
+                                    <i class="bi bi-send-check"></i> Send to All Responders
                                 </button>
                                 <div class="why-disabled" id="assignmentHint" hidden></div>
                                 <div class="action-help">
                                     <i class="bi bi-info-circle"></i>
-                                    The teams you tick get a notification and can accept it in the app.
+                                    Every response team gets a notification and any of them can accept it.
                                     {{ $incident->citizen_id ? 'The resident is told it was approved and sent.' : '' }}
                                 </div>
-                            @elseif($noOneYet)
-                                <input type="hidden" name="notify_again" value="1">
+                            @else
+                                <div class="field">
+                                    <span class="field-label">Notify specific responders</span>
+                                    @include('partials.team-choices', ['checked' => $checkedTeams, 'previous' => null])
+                                    <div class="field-help">
+                                        @if($teamOnIt->isEmpty())
+                                            Tick the teams to notify again.
+                                            @if($toAll || $incident->assigned_teams === null) Every team can already see it and accept it. @else A team it wasn't sent to is added and can accept it. @endif
+                                            Usually needed for {{ $isSos ? ($incident->sos_emergency_type ?: 'an SOS') : $incident->emergency_type }}: {{ $teamList($suggested) }}.
+                                            @if($declinedBy->isNotEmpty()) Anyone on a ticked team who declined gets it back in their list. @endif
+                                        @else
+                                            Tick a team to ask it to help — it's notified and can join the responders on it.
+                                        @endif
+                                    </div>
+                                </div>
+
+                                <div class="field">
+                                    <label class="field-label" for="assignment_notes">Notes for the team <span class="opt">(optional)</span></label>
+                                    <textarea name="assignment_notes" id="assignment_notes" rows="2" maxlength="500" class="f-input"
+                                              placeholder="e.g. Proceed via the market road.">{{ old('assignment_notes', $incident->assignment_notes) }}</textarea>
+                                    <div class="field-help">Sent with the notification. The teams see it in the app.</div>
+                                </div>
+
                                 <button type="submit" class="btn-x btn-primary-x btn-block" id="assignmentSubmit">
-                                    <i class="bi bi-bell-fill"></i> Notify Again
+                                    <i class="bi bi-bell-fill"></i> Notify Selected
                                 </button>
                                 <div class="why-disabled" id="assignmentHint" hidden></div>
                                 <div class="action-help">
                                     <i class="bi bi-info-circle"></i>
-                                    For when no one has accepted it: the ticked teams get the alert again, marked "no one has accepted yet".
+                                    @if($teamOnIt->isEmpty())
+                                        The ticked teams get the alert again, marked "no one has accepted yet".
+                                    @else
+                                        The ticked teams get "MDRRMO needs your team" and can accept it as backup.
+                                    @endif
                                 </div>
-                            @else
-                                <button type="submit" class="btn-x btn-primary-x btn-block" id="assignmentSubmit">
-                                    <i class="bi bi-save"></i> Save Assignment
-                                </button>
-                                <div class="why-disabled" id="assignmentHint" hidden></div>
                             @endif
                         </form>
                     @endif
@@ -1144,7 +1145,9 @@
                             @elseif($incident->needs_review || $isDeclined)
                                 <span class="muted">—</span>
                             @elseif($needsTeam)
-                                <span class="warn">Not assigned yet</span>
+                                <span class="warn">Not sent yet</span>
+                            @elseif($toAll)
+                                All responders <span class="muted">({{ $teamList($assigned) }})</span>
                             @elseif($assigned)
                                 {{ $teamList($assigned) }}
                             @else
@@ -1385,8 +1388,8 @@
     });
 
     // Approve: stays off until a priority is chosen (reports).
-    // Assign & Notify Team / Save Assignment: needs a team; Save Assignment
-    // marks the teams that will be notified as "new".
+    // Notify Selected: stays off until a team is ticked. (Send to All
+    // Responders has no teams to tick.)
     function wireAssignmentForm(formId, submitId, hintId, needsPriority, needsTeam) {
         const form = document.getElementById(formId);
         if (!form) return;
@@ -1397,7 +1400,7 @@
             if (needsPriority && form.querySelector('input[name="priority"]') && !form.querySelector('input[name="priority"]:checked')) {
                 missing.push('a priority');
             }
-            if (needsTeam && !form.querySelector('input[name="teams[]"]:checked')) {
+            if (needsTeam && form.querySelector('input[name="teams[]"]') && !form.querySelector('input[name="teams[]"]:checked')) {
                 missing.push('at least one team');
             }
             submit.disabled = missing.length > 0;

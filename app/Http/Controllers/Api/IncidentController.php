@@ -376,13 +376,14 @@ class IncidentController extends Controller
             ->whereDoesntHave('declinedBy', function ($q) use ($responder) {
                 $q->where('responders.id', $responder->id);
             })
-            // Only the team(s) MDRRMO assigned (Admin\IncidentController::
-            // updateAssignment(), after approving it) — plus anyone already
-            // on it, and incidents approved before teams were assigned (no
-            // team list at all). An approved incident whose team isn't
-            // assigned yet has an empty list, so no team sees it. MSWD keeps
-            // seeing everything: its Incident Locations map is for
-            // awareness only (it can't accept).
+            // The team(s) it was sent to — approving sends it to every
+            // response team (Admin\IncidentController::approve()); older
+            // incidents may list only some — plus anyone already on it, and
+            // incidents approved before teams were assigned (no team list at
+            // all). One approved without being sent anywhere (item 36) has
+            // an empty list, so no team sees it. MSWD keeps seeing
+            // everything: its Incident Locations map is for awareness only
+            // (it can't accept).
             ->when($responder->agency !== 'MSWD', function ($q) use ($responder) {
                 $q->where(function ($q) use ($responder) {
                     $q->whereNull('assigned_teams')
@@ -483,21 +484,22 @@ class IncidentController extends Controller
             ], 409);
         }
 
-        // Approved, but MDRRMO hasn't assigned the team yet — no one was
-        // sent, so there's nothing to accept.
+        // Approved, but MDRRMO hasn't sent it to the responders yet — so
+        // there's nothing to accept.
         if ($incident->awaitingTeam()) {
             return response()->json([
-                'message' => "MDRRMO hasn't assigned a response team to this incident yet.",
+                'message' => "MDRRMO hasn't sent this incident to the responders yet.",
             ], 409);
         }
 
-        // MDRRMO sent it to other team(s). Joining as backup needs MDRRMO
-        // to add this team first (Incident Details → Response Assignment).
+        // An older incident MDRRMO sent to other team(s) only. Joining needs
+        // MDRRMO to notify this team first (Incident Details → Notify
+        // specific responders), which adds it.
         if (! $incident->isAssignedTo($responder->agency)
             && ! $incident->responders()->where('responder_id', $responder->id)->exists()) {
             $teams = implode(', ', $incident->assignedTeamCodes());
             return response()->json([
-                'message' => "MDRRMO assigned this incident to {$teams}. Ask MDRRMO to add your team if you need to respond.",
+                'message' => "MDRRMO sent this incident to {$teams}. Ask MDRRMO to notify your team if you need to respond.",
             ], 403);
         }
 

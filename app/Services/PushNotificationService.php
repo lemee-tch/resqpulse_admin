@@ -156,10 +156,14 @@ class PushNotificationService
 
     /**
      * Sends the incident to the responders — called when the admin approves
-     * it (Admin\IncidentController::approve()), with $onlyAgencies when the
-     * admin adds a team later (only that team is notified), and with
-     * $again when no one has accepted yet and the admin notifies the teams
-     * again ("… — no one has accepted yet").
+     * it (Admin\IncidentController::approve(): every response team), and
+     * with $onlyAgencies when the admin notifies specific teams later
+     * (updateAssignment()). $kind picks the title:
+     *
+     *   new    "🚨 New Fire Report — High priority" (approving)
+     *   again  "🚨 Fire report — no one has accepted yet"
+     *   help   "🚨 Fire — MDRRMO needs your team" (someone is on it; the
+     *          team is asked to help)
      *
      * Goes to the teams the admin assigned (assigned_teams). Incidents
      * approved before teams were assigned fall back to the usual routing
@@ -167,7 +171,7 @@ class PushNotificationService
      * caller, since a notification failure should never undo a saved
      * report.
      */
-    public function dispatchToRespondersForIncident(Incident $incident, ?array $onlyAgencies = null, bool $again = false): void
+    public function dispatchToRespondersForIncident(Incident $incident, ?array $onlyAgencies = null, string $kind = 'new'): void
     {
         try {
             if ($onlyAgencies !== null) {
@@ -193,10 +197,10 @@ class PushNotificationService
             if (! $isSos && $incident->priority) {
                 $title .= ' — ' . ucfirst($incident->priority) . ' priority';
             }
-            if ($again) {
+            if ($kind === 'again') {
                 $title = ($isSos ? '🆘 SOS' : "🚨 {$incident->emergency_type} report") . ' — no one has accepted yet';
-            } elseif ($onlyAgencies !== null) {
-                $title = ($isSos ? '🆘 SOS' : "🚨 {$incident->emergency_type}") . ' — your team was added';
+            } elseif ($kind === 'help') {
+                $title = ($isSos ? '🆘 SOS' : "🚨 {$incident->emergency_type}") . ' — MDRRMO needs your team';
             }
 
             $bodyParts = [$incident->location];

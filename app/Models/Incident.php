@@ -84,9 +84,8 @@ class Incident extends Model
      * Incidents page:
      *
      *   pending     waiting for an admin to approve or decline it
-     *   active      approved: waiting for the admin to assign the response
-     *               team (awaitingTeam()), for a responder to accept, or
-     *               being responded to
+     *   active      approved and sent to all responders: waiting for one
+     *               to accept, or being responded to
      *   for_review  the responders sent their Final report; the admin
      *               checks it before it counts as resolved
      *   resolved    resolved — or declined (shown on the same tab)
@@ -117,10 +116,10 @@ class Incident extends Model
     }
 
     /**
-     * Approved, but no team was sent: an empty team list ([]). Approving
-     * now sends it to the usual teams right away, so this is only an
+     * Approved, but not sent to anyone: an empty team list ([]). Approving
+     * now sends it to all responders right away, so this is only an
      * incident approved while approving didn't send it anywhere (item 36).
-     * The admin assigns the team on Incident Details
+     * The admin sends it from Incident Details
      * (Admin\IncidentController::updateAssignment()).
      *
      * Told apart from an incident approved before teams were assigned at
@@ -146,10 +145,9 @@ class Incident extends Model
     }
 
     /**
-     * The teams suggested for this kind of incident (Fire → BFP + SARS…),
-     * pre-ticked when the admin assigns the team. The AI's reading of an
-     * SOS photo wins over the type the person picked, same as the push
-     * routing.
+     * The teams usually needed for this kind of incident (Fire → BFP +
+     * SARS…), named as a hint when the admin notifies specific teams. The
+     * AI's reading of an SOS photo wins over the type the person picked.
      */
     public function defaultTeams(): array
     {
@@ -167,6 +165,12 @@ class Incident extends Model
         $teams = is_array($this->assigned_teams) ? $this->assigned_teams : [];
 
         return array_values(array_intersect(array_keys(self::TEAMS), $teams));
+    }
+
+    /** Sent to every response team — what approving does. */
+    public function sentToAllTeams(): bool
+    {
+        return $this->assignedTeamCodes() === array_keys(self::TEAMS);
     }
 
     /**

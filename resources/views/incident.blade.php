@@ -365,10 +365,10 @@
             //   Pending     every new report waits here until an admin
             //               approves or declines it on Incident Details (the
             //               table only has View)
-            //   Active      approved and sent to the usual teams: waiting for
-            //               one to accept (the admin can notify them again),
-            //               or being responded to. "Needs Team" only on
-            //               incidents approved without a team (item 36)
+            //   Active      approved and sent to all responders: waiting for
+            //               one to accept (the admin can notify specific
+            //               teams), or being responded to. "Needs Team" only
+            //               on incidents approved without being sent (item 36)
             //   For Review  the responders sent their Final report; the admin
             //               marks it resolved or sends it back
             //   Resolved    resolved, declined (badged "Declined"), and
@@ -443,7 +443,7 @@
         <div id="tab-pending" class="tab-panel active">
             <div class="tab-note tab-note--pending">
                 <i class="bi bi-info-circle"></i>
-                <span>Every new report waits here for your review. Open <strong>View</strong> to check the photos, description and reporter, then approve or decline it there. Approving sends it to the usual response teams right away; if no one accepts, you can notify them again from its page on <strong>Active</strong>.</span>
+                <span>Every new report waits here for your review. Open <strong>View</strong> to check the photos, description and reporter, then approve or decline it there. Approving sends it to all responders right away; you can notify specific teams from its page on <strong>Active</strong>.</span>
             </div>
 
             <div class="table-card">
@@ -574,9 +574,9 @@
                             </td>
                             <td class="td-location">{{ $inc->location ?: '—' }}</td>
                             <td>
-                                <span class="{{ $statusBadge }}" @if($inc->awaitingTeam()) title="Approved. Open View to assign the response team." @endif>{{ $statusLabel }}</span>
+                                <span class="{{ $statusBadge }}" @if($inc->awaitingTeam()) title="Approved but not sent yet. Open View to send it to the responders." @endif>{{ $statusLabel }}</span>
                                 @if($inc->assignedTeamCodes())
-                                    <div class="row-teams" title="Response team"><i class="bi bi-people"></i> {{ implode(' · ', $inc->assignedTeamCodes()) }}</div>
+                                    <div class="row-teams" title="Sent to"><i class="bi bi-people"></i> {{ $inc->sentToAllTeams() ? 'All teams' : implode(' · ', $inc->assignedTeamCodes()) }}</div>
                                 @endif
                             </td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
