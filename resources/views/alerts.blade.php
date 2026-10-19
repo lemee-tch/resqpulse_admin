@@ -416,7 +416,6 @@
             <div class="list-head">
                 <div>
                     <div class="section-title">In the apps now <span class="count-pill">{{ $showingAlerts->count() }}</span></div>
-                    <div class="list-sub">Each alert clears itself from the apps after the time picked when it was sent. Clear it sooner when it's over.</div>
                 </div>
                 @if($showingAlerts->count() > 1)
                     <form method="POST" action="{{ route('alerts.clear-all') }}" class="clear-all-form" data-count="{{ $showingAlerts->count() }}">

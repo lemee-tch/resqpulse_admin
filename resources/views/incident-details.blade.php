@@ -1071,7 +1071,6 @@
                                 @else
                                     <span class="fixed-value fixed-{{ $priority ?: 'unset' }}">
                                         <i class="bi bi-lock-fill"></i> {{ $priority ? ucfirst($priority) : 'Not set' }}
-                                        <span class="fixed-note">— set when it was approved</span>
                                     </span>
                                 @endif
                             </div>
@@ -1106,7 +1105,6 @@
                                     <label class="field-label" for="assignment_notes">Notes for the team <span class="opt">(optional)</span></label>
                                     <textarea name="assignment_notes" id="assignment_notes" rows="2" maxlength="500" class="f-input"
                                               placeholder="e.g. Proceed via the market road.">{{ old('assignment_notes', $incident->assignment_notes) }}</textarea>
-                                    <div class="field-help">Sent with the notification. The teams see it in the app.</div>
                                 </div>
 
                                 <button type="submit" class="btn-x btn-primary-x btn-block" id="assignmentSubmit">
