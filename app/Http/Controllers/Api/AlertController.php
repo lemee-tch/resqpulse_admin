@@ -16,6 +16,11 @@ class AlertController extends Controller
      * get Citizens/Both; a Responder token gets Responders/Both. Before
      * this fix it was hardcoded to Citizens/Both for everyone, which
      * meant a responder-only broadcast was invisible to every responder.
+     *
+     * Only alerts that are still showing: a past alert clears itself when
+     * its time is up (expires_at, picked by the admin when sending) or
+     * when an admin clears it early — see Alert::scopeShowing(). The apps
+     * can also hide alerts on the phone; that's kept on the phone.
      */
     public function index(Request $request)
     {
@@ -24,9 +29,11 @@ class AlertController extends Controller
             : ['Citizens', 'Both'];
 
         return response()->json(
-            Alert::whereIn('type', $audiences)
+            Alert::showing()
+                ->whereIn('type', $audiences)
                 ->orderByDesc('created_at')
                 ->get()
+                ->makeHidden(['user_id', 'cleared_at', 'cleared_by'])
         );
     }
 

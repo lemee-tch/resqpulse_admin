@@ -60,8 +60,8 @@
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 250px; flex: 1; display: flex; flex-direction: column; }
-        .content { padding: 32px 36px; flex: 1; }
+        .main-wrap { margin-left: 250px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        .content { padding: 32px 36px; flex: 1; min-width: 0; }
 
         .page-title {
             font-family: 'Barlow', sans-serif; font-weight: 800;
@@ -124,9 +124,52 @@
         }
         .alert-desc { font-size: .8rem; color: #6b7280; line-height: 1.5; margin-bottom: 4px; }
         .alert-time { font-size: .73rem; color: #9ca3af; }
+        .alert-time .clears { color: #6b7280; font-weight: 600; }
 
         .empty-state {
             text-align: center; padding: 40px; color: #9ca3af; font-size: .85rem;
+        }
+
+        /* ── CLEARING PAST ALERTS (panel #22) ── */
+        .list-head {
+            display: flex; align-items: flex-start; justify-content: space-between;
+            gap: 12px; margin-bottom: 14px;
+        }
+        .list-head .section-title { margin-bottom: 2px; display: flex; align-items: center; gap: 8px; }
+        .list-sub { font-size: .78rem; color: #6b7280; line-height: 1.45; }
+        .count-pill {
+            font-family: 'Inter', sans-serif; font-size: .7rem; font-weight: 700;
+            background: #e0e7ff; color: #1a3c8f; padding: 2px 9px; border-radius: 20px;
+        }
+        .btn-quiet {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #fff; color: #374151;
+            border: 1.5px solid #d1d5db; border-radius: 8px;
+            padding: 7px 14px; font-size: .78rem; font-weight: 600;
+            cursor: pointer; white-space: nowrap;
+            transition: border-color .2s, color .2s, background .2s;
+        }
+        .btn-quiet:hover { border-color: #dc2626; color: #dc2626; background: #fef2f2; }
+        .btn-quiet.sm { padding: 5px 11px; font-size: .74rem; }
+        .alert-card form { margin: 0; flex-shrink: 0; }
+
+        .status-note { font-size: .7rem; color: #9ca3af; margin-top: 3px; white-space: nowrap; }
+        .badge-showing { background: #d1fae5; color: #065f46; font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+        .badge-cleared { background: #f3f4f6; color: #6b7280; font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+        .history-table tr.is-cleared td { color: #9ca3af; }
+        .history-table tr.is-cleared td:first-child { color: #6b7280 !important; }
+        .row-act {
+            background: none; border: 1px solid #e5e7eb; border-radius: 7px;
+            padding: 4px 10px; font-size: .74rem; font-weight: 600; color: #374151;
+            cursor: pointer; white-space: nowrap;
+        }
+        .row-act:hover { border-color: #dc2626; color: #dc2626; background: #fef2f2; }
+        .history-table td form { margin: 0; }
+
+        @media (max-width: 560px) {
+            .list-head { flex-direction: column; }
+            .alert-card { flex-wrap: wrap; }
+            .alert-card form { margin-left: 60px; }
         }
 
         /* ── QUICK BROADCAST ── */
@@ -203,8 +246,7 @@
         .history-table tr:last-child td { border-bottom: none; }
         .history-table tr:hover td { background: #f9fafb; }
 
-        .badge-sent { background: #d1fae5; color: #065f46; font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-        .badge-audience { font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; color: #1f2937; }
+        .badge-audience { font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; color: #1f2937; white-space: nowrap; }
 
         /* Toast */
         .toast-wrap {
@@ -368,9 +410,23 @@
 
         <!-- ══ TAB: ACTIVE ALERTS ══ -->
         <div id="tab-active" class="tab-panel active">
-            <div class="section-title">Recent Broadcasts</div>
+            {{-- What the apps show right now. Each alert clears itself when
+                 its time is up (picked when sending); Clear removes it
+                 sooner. Cleared alerts stay in Broadcast History. --}}
+            <div class="list-head">
+                <div>
+                    <div class="section-title">In the apps now <span class="count-pill">{{ $showingAlerts->count() }}</span></div>
+                    <div class="list-sub">Each alert clears itself from the apps after the time picked when it was sent. Clear it sooner when it's over.</div>
+                </div>
+                @if($showingAlerts->count() > 1)
+                    <form method="POST" action="{{ route('alerts.clear-all') }}" class="clear-all-form" data-count="{{ $showingAlerts->count() }}">
+                        @csrf
+                        <button type="submit" class="btn-quiet"><i class="bi bi-x-circle"></i> Clear all</button>
+                    </form>
+                @endif
+            </div>
 
-           @forelse($recentAlerts->take(5) as $alert)
+            @forelse($showingAlerts as $alert)
                 @php $meta = $audienceMeta[$alert->type] ?? $audienceMeta['Citizens']; @endphp
                 <div class="alert-card">
                     <div class="alert-icon" style="background: {{ $meta['bg'] }};">
@@ -382,11 +438,23 @@
                             <div class="alert-desc" style="font-weight:600;color:#374151;">{{ $alert->subtitle }}</div>
                         @endif
                         <div class="alert-desc">{{ $alert->body }}</div>
-                        <div class="alert-time">{{ $alert->created_at->format('M d, Y g:i A') }} · Sent to {{ $meta['label'] }}</div>
+                        <div class="alert-time">
+                            {{ $alert->created_at->format('M d, Y g:i A') }} · Sent to {{ $meta['label'] }}
+                            @if($alert->clearsIn())
+                                · <span class="clears" title="Clears from the apps {{ $alert->expires_at->format('M d, Y g:i A') }}">Clears in {{ $alert->clearsIn() }}</span>
+                            @endif
+                        </div>
                     </div>
+                    <form method="POST" action="{{ route('alerts.clear', $alert) }}" class="clear-form"
+                          data-title="{{ $alert->title }}" data-apps="{{ $alert->appsLabel() }}">
+                        @csrf
+                        <button type="submit" class="btn-quiet sm" title="Clear it from the apps now"><i class="bi bi-x-lg"></i> Clear</button>
+                    </form>
                 </div>
             @empty
-                <div class="empty-state">No broadcasts sent yet. Use the form below to send your first one.</div>
+                <div class="empty-state">
+                    {{ $alerts->isEmpty() ? 'No broadcasts sent yet. Use the form below to send your first one.' : 'No alerts in the apps right now. Past alerts are in Broadcast History.' }}
+                </div>
             @endforelse
 
             <!-- Quick Broadcast -->
@@ -473,6 +541,18 @@
                             <input type="text" id="locationCustom" class="form-input-s custom-field"
                                    placeholder="Enter custom location">
                         </div>
+
+                        {{-- Panel #22: past alerts clear themselves from the apps. --}}
+                        <div class="form-group">
+                            <label class="form-label-s" for="clearAfter">Clears from the apps after</label>
+                            <select name="clear_after" id="clearAfter" class="form-input-s">
+                                @foreach($clearAfterDays as $days)
+                                    <option value="{{ $days }}" {{ (int) old('clear_after', $defaultClearAfter) === $days ? 'selected' : '' }}>
+                                        {{ $days === 1 ? '1 day' : $days . ' days' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
                     </div>
 
                     <label class="form-label-s">Quick Message Template (optional)</label>
@@ -494,7 +574,7 @@
 
                     <div class="push-note">
                         <i class="bi bi-info-circle"></i>
-                        This sends a real push notification to whichever audience you select above, and adds it to their Alerts feed.
+                        This sends a real push notification to whichever audience you select above and adds it to their Alerts. It clears from their Alerts by itself after the time you pick.
                     </div>
                 </form>
             </div>
@@ -502,7 +582,12 @@
 
         <!-- ══ TAB: BROADCAST HISTORY ══ -->
         <div id="tab-history" class="tab-panel">
-            <div class="section-title">Broadcast History</div>
+            <div class="list-head">
+                <div>
+                    <div class="section-title">Broadcast History</div>
+                    <div class="list-sub">Every broadcast sent. Cleared ones no longer show in the apps; delete one to remove it from this list too.</div>
+                </div>
+            </div>
             <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
                 <table class="history-table">
                     <thead>
@@ -513,12 +598,16 @@
                             <th>Sent By</th>
                             <th>Date &amp; Time</th>
                             <th>Status</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($alerts as $alert)
-                        @php $meta = $audienceMeta[$alert->type] ?? $audienceMeta['Citizens']; @endphp
-                        <tr>
+                        @php
+                            $meta    = $audienceMeta[$alert->type] ?? $audienceMeta['Citizens'];
+                            $showing = $alert->isShowing();
+                        @endphp
+                        <tr class="{{ $showing ? '' : 'is-cleared' }}">
                             <td style="font-weight:600;color:#111827;">{{ $alert->title }}</td>
                             <td>{{ \Illuminate\Support\Str::limit($alert->body, 60) }}</td>
                             <td>
@@ -528,11 +617,38 @@
                             </td>
                             <td>{{ $alert->user->name ?? 'MDRRMO Admin' }}</td>
                             <td>{{ $alert->created_at->format('M d, Y g:i A') }}</td>
-                            <td><span class="badge-sent">Sent</span></td>
+                            <td>
+                                @if($showing)
+                                    <span class="badge-showing">In the apps</span>
+                                    @if($alert->expires_at)
+                                        <div class="status-note" title="{{ $alert->expires_at->format('M d, Y g:i A') }}">clears {{ $alert->expires_at->format('M d') }}</div>
+                                    @endif
+                                @else
+                                    <span class="badge-cleared">Cleared</span>
+                                    <div class="status-note" title="{{ $alert->clearedOn()?->format('M d, Y g:i A') }}">
+                                        {{ $alert->clearedAutomatically() ? 'by itself' : 'by ' . ($alert->clearedBy->name ?? 'an admin') }}, {{ $alert->clearedOn()?->format('M d') }}
+                                    </div>
+                                @endif
+                            </td>
+                            <td>
+                                @if($showing)
+                                    <form method="POST" action="{{ route('alerts.clear', $alert) }}" class="clear-form"
+                                          data-title="{{ $alert->title }}" data-apps="{{ $alert->appsLabel() }}">
+                                        @csrf
+                                        <button type="submit" class="row-act" title="Clear it from the apps now">Clear</button>
+                                    </form>
+                                @else
+                                    <form method="POST" action="{{ route('alerts.destroy', $alert) }}" class="delete-form" data-title="{{ $alert->title }}">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="row-act" title="Delete it from Broadcast History"><i class="bi bi-trash3"></i> Delete</button>
+                                    </form>
+                                @endif
+                            </td>
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="6" class="empty-state">No broadcast history yet.</td>
+                            <td colspan="7" class="empty-state">No broadcast history yet.</td>
                         </tr>
                         @endforelse
                     </tbody>
@@ -545,9 +661,9 @@
 
 <!-- Toast -->
 <div class="toast-wrap">
-    <div id="toastMsg" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div id="toastMsg" class="toast align-items-center {{ session('error') ? 'text-bg-danger' : 'text-bg-success' }} border-0" role="alert" aria-live="assertive" aria-atomic="true">
         <div class="d-flex">
-            <div class="toast-body fw-semibold" id="toastText">{{ session('success') }}</div>
+            <div class="toast-body fw-semibold" id="toastText">{{ session('error') ?: session('success') }}</div>
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
         </div>
     </div>
@@ -589,7 +705,7 @@
         document.getElementById('messageBody').value = template;
     }
 
-    @if(session('success'))
+    @if(session('success') || session('error'))
         document.addEventListener('DOMContentLoaded', function () {
             const toast = new bootstrap.Toast(document.getElementById('toastMsg'));
             toast.show();
@@ -606,11 +722,14 @@
         const audienceLabel = audience === 'Both'
             ? 'citizens and responders'
             : audience.toLowerCase();
+        const clearAfter = this.querySelector('select[name="clear_after"]');
+        const clearLabel = clearAfter ? clearAfter.options[clearAfter.selectedIndex].text.trim() : '';
 
         Swal.fire({
             icon: 'question',
             title: 'Send this broadcast?',
-            text: `This will send a real push notification to ${audienceLabel}.`,
+            text: `This will send a real push notification to ${audienceLabel}.`
+                + (clearLabel ? ` It clears from the apps after ${clearLabel}.` : ''),
             showCancelButton: true,
             confirmButtonText: 'Yes, Send',
             cancelButtonText: 'Cancel',
@@ -622,6 +741,45 @@
             }
         });
     });
+
+    // Clearing past alerts (panel #22): Clear, Clear all, and Delete ask first.
+    function confirmThenSubmit(form, options) {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            Swal.fire(Object.assign({
+                icon: 'question',
+                showCancelButton: true,
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#6b7280',
+                reverseButtons: true,
+            }, options(form))).then(result => {
+                if (result.isConfirmed) {
+                    form.querySelectorAll('button').forEach(b => b.disabled = true);
+                    form.submit();
+                }
+            });
+        });
+    }
+
+    document.querySelectorAll('.clear-form').forEach(form => confirmThenSubmit(form, f => ({
+        title: 'Clear this alert?',
+        text: `"${f.dataset.title}" will no longer show in ${f.dataset.apps}. It stays in Broadcast History.`,
+        confirmButtonText: 'Clear',
+    })));
+
+    document.querySelectorAll('.clear-all-form').forEach(form => confirmThenSubmit(form, f => ({
+        title: `Clear all ${f.dataset.count} alerts?`,
+        text: 'They will no longer show in the apps. They stay in Broadcast History.',
+        confirmButtonText: 'Clear all',
+    })));
+
+    document.querySelectorAll('.delete-form').forEach(form => confirmThenSubmit(form, f => ({
+        icon: 'warning',
+        title: 'Delete this broadcast?',
+        text: `"${f.dataset.title}" will be removed from Broadcast History for good. The Audit Log keeps a line about it.`,
+        confirmButtonText: 'Delete',
+    })));
 </script>
 <script>
 (function () {

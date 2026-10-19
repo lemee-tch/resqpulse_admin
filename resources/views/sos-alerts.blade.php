@@ -156,182 +156,104 @@
         @media (max-width: 560px) { .tab-btn { padding: 10px 12px; } }
 
         /* ── SOS CARD (partials/sos-card.blade.php) ──
-           Type, who, where, team │ time + View. No photo: it's on SOS
-           Details. The buttons for the tab (Approve / Decline, Mark as
-           Resolved / Return, Delete) run along the bottom. On phones: the
-           text, then the buttons, then the time and View. */
+           A plain row: the type, then who / number / where / time, then
+           (when there is one) the team or the decline reason. All the
+           buttons sit together on the right; on phones they go under the
+           text. A small dot says where the alert stands. */
         .sos-card {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            grid-template-areas: "main side";
-            column-gap: 18px;
-            align-items: start;
+            display: flex; align-items: center; gap: 20px;
             background: #fff;
-            border: 1px solid #e5e7eb;
-            border-left: 5px solid #dc2626;
-            border-radius: 14px;
-            padding: 16px 18px;
-            margin-bottom: 14px;
+            border: 1px solid #e8eaf0;
+            border-radius: 12px;
+            padding: 14px 16px 14px 18px;
+            margin-bottom: 10px;
             cursor: pointer;
-            box-shadow: 0 1px 3px rgba(0,0,0,.04);
-            transition: box-shadow .2s, transform .15s;
+            transition: border-color .15s, box-shadow .15s;
         }
-        .sos-card.has-foot { grid-template-areas: "main side" "foot foot"; }
-        .sos-card:hover { box-shadow: 0 8px 24px rgba(17,24,39,.1); transform: translateY(-1px); }
+        .sos-card:hover { border-color: #cfd6e4; box-shadow: 0 4px 14px rgba(17,24,39,.06); }
 
-        /* Left edge: what the alert needs. Waiting for review = amber (same
-           as the banner); sent but nobody accepted yet = red; responding =
-           blue; For Review = purple; resolved = green; declined = dark red. */
-        .sos-card--review     { border-left-color: #f59e0b; }
-        .sos-card--pending    { border-left-color: #dc2626; background: linear-gradient(to right, #fff5f5, #fff 110px); }
-        .sos-card--responding,
-        .sos-card--acknowledged { border-left-color: #2563eb; }
-        .sos-card--for_review { border-left-color: #7c3aed; }
-        .sos-card--resolved   { border-left-color: #10b981; }
-        .sos-card--declined   { border-left-color: #991b1b; background: #fcfcfd; }
+        .sos-info { flex: 1; min-width: 0; }
+        .sos-line1 { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+        .sos-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: #9ca3af; }
+        /* Where it stands: waiting for review = amber; sent, nobody accepted
+           yet = red; responding = blue; For Review = purple; resolved =
+           green; declined = grey. */
+        .sos-card--review     .sos-dot { background: #f59e0b; box-shadow: 0 0 0 3px #fef3c7; }
+        .sos-card--pending    .sos-dot { background: #dc2626; box-shadow: 0 0 0 3px #fee2e2; }
+        .sos-card--responding .sos-dot,
+        .sos-card--acknowledged .sos-dot { background: #2563eb; box-shadow: 0 0 0 3px #dbeafe; }
+        .sos-card--for_review .sos-dot { background: #7c3aed; box-shadow: 0 0 0 3px #ede9fe; }
+        .sos-card--resolved   .sos-dot { background: #10b981; box-shadow: 0 0 0 3px #d1fae5; }
+        .sos-card--declined   .sos-dot { background: #9ca3af; box-shadow: 0 0 0 3px #f3f4f6; }
 
-        /* Type, status, facts */
-        .sos-main { grid-area: main; min-width: 0; }
-        .sos-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin-bottom: 10px; }
         .sos-title {
-            font-family: 'Barlow', sans-serif; font-weight: 800; font-size: 1.06rem; line-height: 1.25;
-            color: #111827; margin: 0; display: inline-flex; align-items: center; gap: 7px;
+            font-family: 'Barlow', sans-serif; font-weight: 700; font-size: 1.02rem; line-height: 1.3;
+            color: #111827; margin: 0;
         }
-        .sos-title i { color: #dc2626; font-size: .95rem; }
-
-        .badge-status { font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
-        .badge-pending      { background: #fef3c7; color: #92400e; }   /* Active: Awaiting Responder */
-        .badge-acknowledged { background: #dbeafe; color: #1e40af; }
-        .badge-responding   { background: #e0f2fe; color: #0369a1; }
-        .badge-resolved     { background: #d1fae5; color: #065f46; }
-        .badge-review       { background: #fef3c7; color: #92400e; }
-        .badge-declined     { background: #fee2e2; color: #991b1b; }
-        .badge-forreview    { background: #ede9fe; color: #5b21b6; }
-
-        /* Each fact takes the room it needs and wraps to the next line when
-           the card is narrow. */
-        .sos-facts { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 7px 26px; }
-        .sos-facts li { display: flex; align-items: flex-start; gap: 8px; min-width: 0; max-width: 100%; font-size: .82rem; line-height: 1.45; color: #374151; }
-        .sos-facts li > i { width: 16px; flex-shrink: 0; margin-top: 1px; text-align: center; font-size: .88rem; color: #9ca3af; }
-        .sos-facts li > span { min-width: 0; overflow-wrap: anywhere; }
-        .sos-facts li.wide { flex-basis: 100%; }
-        .sos-facts .muted { color: #9ca3af; }
-        .sos-facts .warn-text { color: #b45309; font-weight: 600; }
-        .sos-facts strong { color: #111827; }
-
-        .sos-reporter { font-weight: 700; color: #111827; }
-        .tag-guest, .tag-resident {
-            display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 20px;
-            font-size: .68rem; font-weight: 700; letter-spacing: .3px; vertical-align: 1px;
+        .sos-state { font-size: .74rem; font-weight: 600; color: #6b7280; }
+        .sos-card--pending .sos-state { color: #b91c1c; }
+        .sos-card--responding .sos-state { color: #1d4ed8; }
+        .sos-flag {
+            font-size: .7rem; font-weight: 700; color: #c2410c; background: #fff7ed;
+            padding: 1px 8px; border-radius: 20px;
         }
-        .tag-guest    { background: #fff7ed; color: #c2410c; }
-        .tag-resident { background: #ecfdf5; color: #047857; }
-        .tag-outside {
-            display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; white-space: nowrap;
-            padding: 1px 8px; border-radius: 20px; border: 1px solid #fecaca;
-            background: #fef2f2; color: #b91c1c; font-size: .68rem; font-weight: 700; vertical-align: 1px;
-        }
-        .call-pill {
-            display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; white-space: nowrap;
-            padding: 2px 10px; border-radius: 20px; background: #eef2ff; color: #1a3c8f;
-            font-size: .78rem; font-weight: 700; text-decoration: none; transition: background .2s, color .2s;
-        }
-        .call-pill:hover { background: #1a3c8f; color: #fff; }
-        .call-link { margin-left: 4px; color: #1a3c8f; font-weight: 600; text-decoration: none; white-space: nowrap; }
-        .call-link:hover { text-decoration: underline; }
-        .place-link { color: #1a3c8f; font-weight: 600; text-decoration: none; }
-        .place-link:hover { text-decoration: underline; }
 
-        /* Time + View */
-        .sos-side { grid-area: side; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; text-align: right; }
-        .sos-when .ago { font-size: .8rem; font-weight: 700; color: #374151; white-space: nowrap; }
-        .sos-when .ago.waiting { color: #b45309; }
-        .sos-when .ago.late { color: #dc2626; }
-        .sos-when .at { margin-top: 2px; font-size: .72rem; color: #9ca3af; white-space: nowrap; }
-        .btn-view {
+        .sos-line2 { margin: 5px 0 0 19px; font-size: .82rem; line-height: 1.55; color: #6b7280; overflow-wrap: anywhere; }
+        .sos-line2 .sos-sep { margin: 0 6px; color: #d1d5db; }
+        .sos-who { color: #111827; font-weight: 600; }
+        .sos-guest {
+            margin-left: 6px; font-size: .68rem; font-weight: 700; letter-spacing: .3px;
+            color: #c2410c; background: #fff7ed; padding: 1px 7px; border-radius: 20px; vertical-align: 1px;
+        }
+        .sos-tel { color: #1a3c8f; font-weight: 600; text-decoration: none; white-space: nowrap; }
+        .sos-tel i { margin-right: 4px; font-size: .8em; }
+        .sos-tel:hover { text-decoration: underline; }
+        .sos-outside { color: #b91c1c; font-weight: 700; margin-right: 4px; }
+        .sos-place { color: #374151; text-decoration: none; }
+        a.sos-place:hover { color: #1a3c8f; text-decoration: underline; }
+        .sos-time { font-size: .78rem; color: #6b7280; white-space: nowrap; }
+        .sos-time.waiting { color: #b45309; font-weight: 600; }
+        .sos-time.late { color: #dc2626; font-weight: 700; }
+        .sos-time::before { content: "·"; margin-right: 10px; color: #d1d5db; font-weight: 400; }
+        .sos-line3 { margin: 3px 0 0 19px; font-size: .8rem; color: #6b7280; }
+        .sos-line3.warn { color: #b45309; font-weight: 600; }
+
+        /* All the buttons, together. */
+        .sos-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .sos-actions form { margin: 0; display: flex; }
+        .act {
             display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
-            background: #fff; color: #1a3c8f; border: 1.5px solid #c7d2fe; border-radius: 8px;
-            padding: 7px 16px; font-size: .8rem; font-weight: 700; text-decoration: none;
-            transition: background .2s, color .2s, border-color .2s;
+            height: 36px; padding: 0 14px; border-radius: 9px;
+            background: #fff; color: #374151; border: 1px solid #d9dee8;
+            font-size: .8rem; font-weight: 600; text-decoration: none; cursor: pointer;
+            transition: background .15s, border-color .15s, color .15s;
         }
-        .btn-view i { font-size: .95rem; }
-        .btn-view:hover, .btn-view:focus-visible { background: #1a3c8f; border-color: #1a3c8f; color: #fff; outline: none; }
+        .act i { font-size: .9rem; }
+        .act:hover, .act:focus-visible { background: #f5f7fb; border-color: #c3cad9; color: #111827; outline: none; }
+        .act--primary { background: #16a34a; border-color: #16a34a; color: #fff; }
+        .act--primary:hover, .act--primary:focus-visible { background: #15803d; border-color: #15803d; color: #fff; }
+        .act--danger { color: #dc2626; border-color: #f5c2c2; }
+        .act--danger:hover, .act--danger:focus-visible { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
+        .act--warn { color: #b45309; border-color: #f3d9a4; }
+        .act--warn:hover, .act--warn:focus-visible { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
 
-        /* Buttons along the bottom */
-        .sos-foot {
-            grid-area: foot; min-width: 0;
-            margin-top: 14px; padding-top: 12px; border-top: 1px dashed #e5e7eb;
-            display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px;
-        }
-        .foot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-        .foot-actions form { margin: 0; display: flex; }
-        .sos-foot .declined-reason-note { flex: 1; min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px; }
-        .sos-foot form.delete-form { margin: 0; display: flex; }
-
-        @media (max-width: 720px) {
-            .sos-card {
-                grid-template-columns: minmax(0, 1fr);
-                grid-template-areas: "main" "side";
-                padding: 14px;
-            }
-            .sos-card.has-foot { grid-template-areas: "main" "foot" "side"; }
-            .sos-facts { flex-direction: column; }
-            .sos-side {
-                flex-direction: row; align-items: center; justify-content: space-between; text-align: left;
-                margin-top: 12px; padding-top: 10px; border-top: 1px solid #f1f2f6;
-            }
-            .sos-foot { flex-direction: column; align-items: stretch; }
-            .foot-actions { flex-direction: column; }
-            .foot-actions > *, .foot-actions form { width: 100%; }
-            .foot-actions button, .foot-actions a { width: 100%; justify-content: center; padding-top: 10px; padding-bottom: 10px; }
-            .sos-foot .declined-reason-note { flex: none; }
-            .sos-foot form.delete-form .btn-delete { width: 100%; justify-content: center; padding-top: 10px; padding-bottom: 10px; }
+        @media (max-width: 760px) {
+            .sos-card { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
+            .sos-line2, .sos-line3 { margin-left: 0; }
+            .sos-time::before { display: none; } /* it may start a new line */
+            /* The main action first, full width; the others share a row. */
+            .sos-actions { flex-wrap: wrap; }
+            .sos-actions > a, .sos-actions > button, .sos-actions > form { flex: 1 1 0; }
+            .sos-actions form .act, .sos-actions .act { width: 100%; height: 40px; }
+            .sos-actions > form:has(.act--primary) { flex-basis: 100%; order: -1; }
         }
 
         .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
         .empty-state i { font-size: 2.4rem; display: block; margin-bottom: 12px; color: #d1d5db; }
 
-        .btn-approve {
-            background: #10b981; color: #fff; border: none; border-radius: 8px;
-            padding: 8px 16px; font-size: .8rem; font-weight: 700; cursor: pointer;
-            display: inline-flex; align-items: center; gap: 6px; transition: background .2s;
-        }
-        .btn-approve:hover { background: #059669; }
-        .btn-decline {
-            background: #fff; color: #dc2626; border: 1.5px solid #dc2626; border-radius: 8px;
-            padding: 8px 16px; font-size: .8rem; font-weight: 700; cursor: pointer;
-            display: inline-flex; align-items: center; gap: 6px; transition: background .2s, color .2s;
-        }
-        .btn-decline:hover { background: #dc2626; color: #fff; }
-        .review-banner {
-            background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;
-            font-size:.82rem;color:#92400e;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;
-        }
-        .review-banner--report { background: #f5f3ff; border-color: #ddd6fe; color: #5b21b6; }
-        /* For Review actions: the report PDF, Return. */
-        .btn-pdf {
-            display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
-            background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; border-radius: 8px;
-            padding: 7px 14px; font-size: .8rem; font-weight: 700; text-decoration: none;
-            transition: background .2s, border-color .2s;
-        }
-        .btn-pdf:hover { background: #fef2f2; border-color: #f87171; color: #991b1b; }
-        .btn-return {
-            background: #fff; color: #b45309; border: 1.5px solid #f59e0b; border-radius: 8px;
-            padding: 8px 16px; font-size: .8rem; font-weight: 700; cursor: pointer;
-            display: inline-flex; align-items: center; gap: 6px; transition: background .2s, color .2s;
-        }
-        .btn-return:hover { background: #f59e0b; color: #fff; }
-        .tag-returned {
-            display: inline-flex; align-items: center; gap: 3px;
-            padding: 1px 8px; border-radius: 20px; font-size: .66rem; font-weight: 700;
-            background: #fff7ed; color: #c2410c;
-        }
-        .tag-resent {
-            display: inline-flex; align-items: center; gap: 3px;
-            padding: 1px 8px; border-radius: 20px; font-size: .66rem; font-weight: 700;
-            background: #f5f3ff; color: #6d28d9;
-        }
+        /* One quiet line of help above a tab's list. */
+        .review-banner { font-size: .8rem; color: #6b7280; margin: -4px 0 14px; display: flex; gap: 8px; align-items: flex-start; }
+        .review-banner i { color: #9ca3af; }
         /* Decline-reason modal — same dropdown pattern as the Residents
            Verification rejection modal. */
         .form-label-m { font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 5px; display: block; }
@@ -353,16 +275,6 @@
             background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px;
             font-size: .8rem; color: #991b1b;
         }
-        .declined-reason-note {
-            margin-top: 8px; font-size: .8rem; color: #991b1b; font-style: italic;
-            background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px;
-        }
-        .btn-delete {
-            background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; border-radius: 8px;
-            padding: 6px 14px; font-size: .8rem; font-weight: 700; cursor: pointer; white-space: nowrap;
-            display: inline-flex; align-items: center; gap: 6px; transition: background .2s, color .2s, border-color .2s;
-        }
-        .btn-delete:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn {
@@ -566,7 +478,7 @@
         <div id="tab-for-review" class="tab-panel">
             <div class="review-banner review-banner--report">
                 <i class="bi bi-clipboard2-check" style="margin-top:1px;"></i>
-                <span>The team sent their <strong>Final report</strong>. Check it, then <strong>Mark as Resolved</strong>, or <strong>Return</strong> it with what needs fixing.</span>
+                <span>The team sent their Final report. Check it, then mark it resolved or return it with what needs fixing.</span>
             </div>
 
             @forelse($forReviewSos as $sos)
@@ -584,7 +496,7 @@
         <div id="tab-pending" class="tab-panel active">
             <div class="review-banner">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>Call the number to confirm the emergency, then approve it. Responders are notified only after you approve. To see the photo, change the team or add notes, click <strong>View</strong>.</span>
+                <span>Call to confirm the emergency, then approve. Responders are notified only after you approve. View has the photo, the map and the team.</span>
             </div>
 
             @forelse($pendingReviewSos as $sos)

@@ -150,6 +150,11 @@
             font-size: .88rem; cursor: pointer; transition: background .2s;
         }
         .btn-reject-confirm:hover { background: #dc2626; }
+        /* Reject: "Other" reason box, the check under it, the note. */
+        textarea.form-control-m { resize: vertical; min-height: 78px; line-height: 1.45; }
+        .reject-other-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 5px; font-size: .74rem; color: #6b7280; }
+        .reject-error { margin-top: 10px; padding: 8px 11px; border-radius: 8px; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; font-size: .8rem; font-weight: 600; }
+        .reject-note { margin: 12px 0 0; font-size: .76rem; color: #6b7280; display: flex; gap: 6px; align-items: flex-start; }
         .id-preview-img { width: 100%; border-radius: 10px; border: 1px solid #e5e7eb; }
         .id-unavailable {
             padding: 28px 16px; text-align: center; font-size: .85rem; color: #6b7280;
@@ -295,6 +300,13 @@
             <div class="page-title">Residents Verification</div>
         </div>
         <div class="page-sub">Review uploaded IDs and confirm residency before marking accounts verified.</div>
+
+        {{-- A rejection the server refused, e.g. "Other" with no reason typed. --}}
+        @if($errors->any())
+            <div class="alert alert-danger" style="border-radius:10px;font-size:.85rem;margin-bottom:16px;">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i> {{ $errors->first() }}
+            </div>
+        @endif
 
         @php
             // Rejected citizens are deleted immediately in the controller
@@ -516,8 +528,8 @@
                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                             </div>
                             <div class="modal-body pt-3">
-                                <label class="form-label-m">Reason for rejection</label>
-                                <select name="rejection_reason" class="form-control-m">
+                                <label class="form-label-m" for="rejectReason{{ $citizen->id }}">Reason for rejection</label>
+                                <select name="rejection_reason" id="rejectReason{{ $citizen->id }}" class="form-control-m reject-reason">
                                     <option value="" disabled selected style="color:#9ca3af;">Select a reason...</option>
                                     <option value="Address on ID does not match registered locality">Address on ID does not match registered locality</option>
                                     <option value="ID photo/text is blurry or unreadable">ID photo/text is blurry or unreadable</option>
@@ -525,7 +537,28 @@
                                     <option value="Invalid ID type (Document not accepted)">Invalid ID type (Document not accepted)</option>
                                     <option value="Suspected fraudulent or edited document">Suspected fraudulent or edited document</option>
                                     <option value="Name on ID does not match registered account name">Name on ID does not match registered account name</option>
+                                    <option value="Other">Other (type the reason)</option>
                                 </select>
+
+                                {{-- "Other": the admin types the reason. It's what the resident is sent. --}}
+                                <div class="reject-other" style="display:none;">
+                                    <label class="form-label-m" for="rejectOther{{ $citizen->id }}" style="margin-top:12px;">Type the reason</label>
+                                    <textarea name="rejection_reason_other" id="rejectOther{{ $citizen->id }}"
+                                              class="form-control-m reject-other-text" rows="3" maxlength="255"
+                                              placeholder="e.g. The address on the ID is cut off in the photo."></textarea>
+                                    <div class="reject-other-meta">
+                                        <span>Write it for the resident. They'll read it.</span>
+                                        <span class="reject-count">0/255</span>
+                                    </div>
+                                </div>
+
+                                <div class="reject-error" role="alert" style="display:none;"></div>
+
+                                <p class="reject-note">
+                                    <i class="bi bi-info-circle"></i>
+                                    The account is removed, and the reason is sent to the resident
+                                    {{ $citizen->isMobileAccount() ? 'by text message' : 'by email' }}.
+                                </p>
                             </div>
                             <div class="modal-footer border-0 pt-0">
                                 <button type="submit" class="btn-reject-confirm">Reject</button>
@@ -579,36 +612,74 @@
         });
     });
 
-    // Reject — the Bootstrap modal already collects a reason via <select>;
-    // close that modal first, THEN show the SweetAlert (firing Swal while a
-    // Bootstrap modal is still open can cause stacking/focus-trap issues),
-    // and do one final destructive-action confirm before the account is
-    // deleted and tokens revoked.
+    // Reject — the Bootstrap modal collects a reason: one from the list, or
+    // "Other" with the reason typed in the box. A missing reason is shown
+    // inside the modal. Then the modal closes, THEN the SweetAlert shows
+    // (firing Swal while a Bootstrap modal is still open can cause
+    // stacking/focus-trap issues), for one final destructive-action
+    // confirm, with the reason, before the account is deleted and tokens
+    // revoked.
     document.querySelectorAll('.reject-form').forEach(form => {
+        const reasonSelect = form.querySelector('select[name="rejection_reason"]');
+        const otherBox     = form.querySelector('.reject-other');
+        const otherText    = form.querySelector('.reject-other-text');
+        const counter      = form.querySelector('.reject-count');
+        const errorBox     = form.querySelector('.reject-error');
+
+        const showError = message => {
+            errorBox.textContent = message || '';
+            errorBox.style.display = message ? '' : 'none';
+        };
+
+        // "Other" shows the box for typing the reason.
+        reasonSelect.addEventListener('change', () => {
+            const other = reasonSelect.value === 'Other';
+            otherBox.style.display = other ? '' : 'none';
+            showError('');
+            if (other) otherText.focus();
+        });
+        otherText.addEventListener('input', () => {
+            counter.textContent = otherText.value.length + '/255';
+            showError('');
+        });
+
         form.addEventListener('submit', function (e) {
             e.preventDefault();
 
-            const reasonSelect = form.querySelector('select[name="rejection_reason"]');
             if (!reasonSelect.value) {
-                Swal.fire({
-                    ...swalTheme,
-                    icon: 'warning',
-                    title: 'Reason required',
-                    text: 'Please select a reason for rejection before continuing.',
-                    confirmButtonText: 'OK',
-                });
+                showError('Select a reason for rejecting the ID.');
+                reasonSelect.focus();
                 return;
             }
 
+            let reason = reasonSelect.value;
+            if (reason === 'Other') {
+                reason = otherText.value.trim().replace(/\s+/g, ' ');
+                if (reason.length < 5) {
+                    showError(reason
+                        ? 'The reason is too short. Say what\'s wrong with the ID.'
+                        : 'Type the reason for rejecting the ID.');
+                    otherText.focus();
+                    return;
+                }
+            }
+            showError('');
+
             const parentModalEl = form.closest('.modal');
             const bsModal = parentModalEl ? bootstrap.Modal.getOrCreateInstance(parentModalEl) : null;
+
+            // The reason, as text (never as HTML), for the confirm box.
+            const reasonEl = document.createElement('div');
+            reasonEl.textContent = reason;
 
             const confirmReject = () => {
                 Swal.fire({
                     ...swalTheme,
                     icon: 'warning',
                     title: 'Reject this account?',
-                    html: 'This will <strong>permanently delete</strong> this citizen\'s account and revoke their login immediately. This cannot be undone.',
+                    html: 'This will <strong>permanently delete</strong> this citizen\'s account and revoke their login immediately. This cannot be undone.'
+                        + '<div style="margin-top:12px;text-align:left;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px;color:#7f1d1d;font-size:.9em;">'
+                        + '<strong>Reason the resident will see:</strong><br>' + reasonEl.innerHTML + '</div>',
                     showCancelButton: true,
                     confirmButtonText: 'Yes, Reject & Delete',
                     cancelButtonText: 'Cancel',

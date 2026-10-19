@@ -190,7 +190,10 @@ class IncidentController extends Controller
      *                         Details sends choose_teams=1, so there at
      *                         least one team must be ticked.
      *   assignment_notes      instructions for the team (optional)
-     *   responders_on_record  who went, for the record (optional)
+     *
+     * Who went is in "Accepted by" (the responders who accepted it in the
+     * app) and in the team's MDRRMC report, so there's no field to type
+     * it. The responders_on_record column is no longer used.
      *
      * A logged-in citizen also gets a push saying their report was
      * approved; a guest has no account to notify.
@@ -215,13 +218,12 @@ class IncidentController extends Controller
 
         $oldPriority = $incident->priority;
         $changes = [
-            'needs_review'         => false,
-            'reviewed_at'          => now(),
-            'reviewed_by'          => auth('web')->id(),
-            'assigned_teams'       => $teams,
-            'assignment_notes'     => $this->cleanText($request->input('assignment_notes')),
-            'responders_on_record' => $this->cleanText($request->input('responders_on_record')),
-            'assigned_at'          => now(),
+            'needs_review'     => false,
+            'reviewed_at'      => now(),
+            'reviewed_by'      => auth('web')->id(),
+            'assigned_teams'   => $teams,
+            'assignment_notes' => $this->cleanText($request->input('assignment_notes')),
+            'assigned_at'      => now(),
         ];
         if (! $isSos) {
             $changes['priority'] = $request->priority;
@@ -272,10 +274,9 @@ class IncidentController extends Controller
 
     /**
      * Incident Details → Response Assignment, while the incident is
-     * Active: change the priority, the team(s), the notes for the team and
-     * the responders on record. A team that's added is notified right
-     * away (as backup); a team that's removed stops seeing it, unless it
-     * already accepted.
+     * Active: change the priority, the team(s) and the notes for the team.
+     * A team that's added is notified right away (as backup); a team
+     * that's removed stops seeing it, unless it already accepted.
      */
     public function updateAssignment(Request $request, Incident $incident, PushNotificationService $push)
     {
@@ -299,7 +300,6 @@ class IncidentController extends Controller
         $removed  = array_values(array_diff($oldTeams, $newTeams));
 
         $notes    = $this->cleanText($request->input('assignment_notes'));
-        $onRecord = $this->cleanText($request->input('responders_on_record'));
         $priority = $isSos ? $incident->priority : $request->priority;
 
         $what = [];
@@ -315,27 +315,22 @@ class IncidentController extends Controller
         if ($notes !== $incident->assignment_notes) {
             $what[] = 'the notes for the team';
         }
-        if ($onRecord !== $incident->responders_on_record) {
-            $what[] = 'the responders on record';
-        }
 
         if ($what === [] && $incident->assignedTeamCodes() !== []) {
             return back()->with('success', 'Nothing was changed.');
         }
 
         $old = [
-            'priority'             => $incident->priority,
-            'teams'                => $incident->assignedTeamCodes(),
-            'assignment_notes'     => $incident->assignment_notes,
-            'responders_on_record' => $incident->responders_on_record,
+            'priority'         => $incident->priority,
+            'teams'            => $incident->assignedTeamCodes(),
+            'assignment_notes' => $incident->assignment_notes,
         ];
 
         $incident->update([
-            'priority'             => $priority,
-            'assigned_teams'       => $newTeams,
-            'assignment_notes'     => $notes,
-            'responders_on_record' => $onRecord,
-            'assigned_at'          => ($added || $removed) ? now() : ($incident->assigned_at ?? now()),
+            'priority'         => $priority,
+            'assigned_teams'   => $newTeams,
+            'assignment_notes' => $notes,
+            'assigned_at'      => ($added || $removed) ? now() : ($incident->assigned_at ?? now()),
         ]);
 
         if ($added) {
@@ -349,37 +344,34 @@ class IncidentController extends Controller
             $incident,
             $old,
             [
-                'priority'             => $priority,
-                'teams'                => $newTeams,
-                'assignment_notes'     => $notes,
-                'responders_on_record' => $onRecord,
+                'priority'         => $priority,
+                'teams'            => $newTeams,
+                'assignment_notes' => $notes,
             ]
         );
 
         return back()->with('success', 'Response assignment saved.' . ($added ? " {$this->teamList($added)} notified." : ''));
     }
 
-    /** Validation for the team, the notes and the responders on record. */
+    /** Validation for the team and the notes for the team. */
     private function assignmentRules(bool $teamsRequired): array
     {
         return [
-            'teams'                => [$teamsRequired ? 'required' : 'nullable', 'array', 'min:1'],
-            'teams.*'              => ['string', Rule::in(array_keys(Incident::TEAMS))],
-            'assignment_notes'     => ['nullable', 'string', 'max:500'],
-            'responders_on_record' => ['nullable', 'string', 'max:500'],
+            'teams'            => [$teamsRequired ? 'required' : 'nullable', 'array', 'min:1'],
+            'teams.*'          => ['string', Rule::in(array_keys(Incident::TEAMS))],
+            'assignment_notes' => ['nullable', 'string', 'max:500'],
         ];
     }
 
     private function assignmentMessages(): array
     {
         return [
-            'priority.required'        => 'Choose a priority (Critical, High or Low) before approving the report.',
-            'priority.in'              => 'Choose a priority (Critical, High or Low) before approving the report.',
-            'teams.required'           => 'Choose at least one response team.',
-            'teams.min'                => 'Choose at least one response team.',
-            'teams.*.in'               => 'Choose the response team from the list.',
-            'assignment_notes.max'     => 'Keep the notes for the team under 500 characters.',
-            'responders_on_record.max' => 'Keep the responders on record under 500 characters.',
+            'priority.required'    => 'Choose a priority (Critical, High or Low) before approving the report.',
+            'priority.in'          => 'Choose a priority (Critical, High or Low) before approving the report.',
+            'teams.required'       => 'Choose at least one response team.',
+            'teams.min'            => 'Choose at least one response team.',
+            'teams.*.in'           => 'Choose the response team from the list.',
+            'assignment_notes.max' => 'Keep the notes for the team under 500 characters.',
         ];
     }
 

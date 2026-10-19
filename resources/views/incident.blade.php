@@ -1116,8 +1116,8 @@
             e.preventDefault();
 
             const type = form.dataset.type || 'report';
-            // The usual team(s) for this type. Other teams, notes for the
-            // team and the responders on record are on Incident Details.
+            // The usual team(s) for this type. Other teams and notes for
+            // the team are on Incident Details.
             const teams = form.dataset.teams || 'the responders';
             const priorityField = form.querySelector('input[name="priority"]');
             const current = priorityField.value;

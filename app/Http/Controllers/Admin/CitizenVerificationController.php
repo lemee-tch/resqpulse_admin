@@ -53,18 +53,36 @@ class CitizenVerificationController extends Controller
         return back()->with('success', "{$citizen->full_name} has been verified.");
     }
 
+    /**
+     * Rejects the ID: the resident gets the reason (email, or a text for a
+     * resident who signed up with a mobile number) and the account is
+     * removed.
+     *
+     * The reason is one from the list, or "Other" with the reason the admin
+     * typed in rejection_reason_other (panel revision: Reject Action > add
+     * "Other" and a field to type the reason).
+     */
     public function reject(Request $request, Citizen $citizen, SmsService $sms)
     {
         $request->validate([
-            'rejection_reason' => ['required', 'string', 'max:255'],
+            'rejection_reason'       => ['required', 'string', 'max:255'],
+            'rejection_reason_other' => ['nullable', 'required_if:rejection_reason,Other', 'string', 'min:5', 'max:255'],
+        ], [
+            'rejection_reason.required'          => 'Choose a reason for rejecting the ID.',
+            'rejection_reason_other.required_if' => 'Type the reason for rejecting the ID, or choose one from the list.',
+            'rejection_reason_other.min'         => 'The reason is too short. Say what\'s wrong with the ID.',
+            'rejection_reason_other.max'         => 'Keep the reason under 255 characters.',
         ]);
 
         $name = $citizen->full_name;
         $email = $citizen->email;
         $mobile = $citizen->mobile;
-        $reason = $request->rejection_reason;
+        $reason = $request->input('rejection_reason') === 'Other'
+            ? trim((string) preg_replace('/\s+/u', ' ', (string) $request->input('rejection_reason_other')))
+            : (string) $request->input('rejection_reason');
 
-        AuditLogService::log('rejected', "Rejected citizen {$name}'s ID — {$reason}.");
+        // A typed reason may already end with a full stop.
+        AuditLogService::log('rejected', "Rejected citizen {$name}'s ID — " . rtrim($reason, '. ') . '.');
 
         // Revoke any active login tokens before deleting, so any session
         // currently logged in on the phone gets immediately invalidated.

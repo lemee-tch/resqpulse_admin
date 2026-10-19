@@ -70,6 +70,12 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/alerts', [AlertController::class, 'index'])->name('alerts');
     Route::post('/alerts', [AlertController::class, 'store'])->name('alerts.store');
+    // Clearing past alerts (panel #22): clear all, clear one, or delete one
+    // that's no longer in the apps. Alerts also clear themselves — see
+    // Alert::scopeShowing().
+    Route::post('/alerts/clear-all', [AlertController::class, 'clearAll'])->name('alerts.clear-all');
+    Route::post('/alerts/{alert}/clear', [AlertController::class, 'clear'])->name('alerts.clear');
+    Route::delete('/alerts/{alert}', [AlertController::class, 'destroy'])->name('alerts.destroy');
     Route::get('/mapview', [MapViewController::class, 'index'])->name('mapview');
     Route::post('/mapview/refresh-boundaries', [MapViewController::class, 'refreshBoundaries'])->name('mapview.refresh-boundaries');
 
@@ -78,7 +84,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('/incidents/{incident}/note', [IncidentController::class, 'updateNote'])->name('incident.note');
     Route::post('/incidents/{incident}/approve', [IncidentController::class, 'approve'])->name('incident.approve');
     Route::post('/incidents/{incident}/decline', [IncidentController::class, 'decline'])->name('incident.decline');
-    // Active: change the team(s), the notes for the team, the responders on record.
+    // Active: change the priority, the team(s) and the notes for the team.
     Route::patch('/incidents/{incident}/assignment', [IncidentController::class, 'updateAssignment'])->name('incident.assignment');
     // For Review: accept the responders' Final report, or send it back.
     Route::post('/incidents/{incident}/confirm-resolved', [IncidentController::class, 'confirmResolved'])->name('incident.confirm-resolved');

@@ -878,14 +878,6 @@
                                 <div class="field-help">The team sees this in the app.</div>
                             </div>
 
-                            <div class="field">
-                                <label class="field-label" for="responders_on_record">Responders on record <span class="opt">(optional)</span></label>
-                                <input type="text" name="responders_on_record" id="responders_on_record" maxlength="500" class="f-input"
-                                       value="{{ old('responders_on_record', $incident->responders_on_record) }}"
-                                       placeholder="e.g. SFO2 Juan Dela Cruz, FO1 Pedro Reyes">
-                                <div class="field-help">Who was sent, for the record. You can add it later too.</div>
-                            </div>
-
                             <div class="action-buttons">
                                 <button type="submit" class="btn-x btn-primary-x" id="approveSubmit">
                                     <i class="bi bi-check2-circle"></i> Verify &amp; Assign
@@ -967,7 +959,7 @@
                         @endif
 
                     @else
-                        {{-- ── ACTIVE: change the team, notes, people on record ── --}}
+                        {{-- ── ACTIVE: change the priority, the team and the notes ── --}}
                         @if($isReturned)
                             <div class="notice notice-returned">
                                 <i class="bi bi-arrow-return-left"></i>
@@ -1014,13 +1006,6 @@
                                 <label class="field-label" for="assignment_notes">Notes for the team <span class="opt">(optional)</span></label>
                                 <textarea name="assignment_notes" id="assignment_notes" rows="2" maxlength="500" class="f-input"
                                           placeholder="e.g. Proceed via the market road.">{{ old('assignment_notes', $incident->assignment_notes) }}</textarea>
-                            </div>
-
-                            <div class="field">
-                                <label class="field-label" for="responders_on_record">Responders on record <span class="opt">(optional)</span></label>
-                                <input type="text" name="responders_on_record" id="responders_on_record" maxlength="500" class="f-input"
-                                       value="{{ old('responders_on_record', $incident->responders_on_record) }}"
-                                       placeholder="e.g. SFO2 Juan Dela Cruz, FO1 Pedro Reyes">
                             </div>
 
                             <button type="submit" class="btn-x btn-primary-x btn-block" id="assignmentSubmit">
@@ -1071,9 +1056,6 @@
                                     <span class="muted">—</span>
                                 @endforelse
                             </dd>
-
-                            <dt>On record</dt>
-                            <dd>{!! $incident->responders_on_record ? e($incident->responders_on_record) : '<span class="muted">—</span>' !!}</dd>
 
                             <dt>Notes</dt>
                             <dd>{!! $incident->assignment_notes ? e($incident->assignment_notes) : '<span class="muted">—</span>' !!}</dd>
