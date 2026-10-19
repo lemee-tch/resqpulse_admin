@@ -601,7 +601,8 @@ class IncidentController extends Controller
         $push->notifyResponders(
             $incident->responders,
             'Report accepted by MDRRMO',
-            "{$incident->display_type} — {$incident->location}: your Final report was accepted. The incident is now resolved."
+            "{$incident->display_type} — {$incident->location}: your Final report was accepted. The incident is now resolved.",
+            $incident
         );
 
         AuditLogService::log(
@@ -665,7 +666,8 @@ class IncidentController extends Controller
         $push->notifyResponders(
             $incident->responders,
             'Report sent back by MDRRMO',
-            "{$incident->display_type} — {$incident->location}: " . rtrim($reason, '. ') . '. Update the report and submit it as Final again.'
+            "{$incident->display_type} — {$incident->location}: " . rtrim($reason, '. ') . '. Update the report and submit it as Final again.',
+            $incident
         );
 
         AuditLogService::log(

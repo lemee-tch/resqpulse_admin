@@ -21,6 +21,31 @@ class Responder extends Authenticatable
 
     protected $hidden = ['password', 'remember_token'];
 
+    /** Every phone signed in to this (shared) account — see ResponderPushToken. */
+    public function pushTokens()
+    {
+        return $this->hasMany(ResponderPushToken::class);
+    }
+
+    /**
+     * Where to send this account's pushes: every phone signed in to it,
+     * plus the single token saved before phones were kept separately.
+     *
+     * @return list<string>
+     */
+    public function pushTargets(): array
+    {
+        $tokens = $this->relationLoaded('pushTokens')
+            ? $this->pushTokens->pluck('token')->all()
+            : $this->pushTokens()->pluck('token')->all();
+
+        if (filled($this->fcm_token)) {
+            $tokens[] = $this->fcm_token;
+        }
+
+        return array_values(array_unique($tokens));
+    }
+
     protected function casts(): array
     {
         return [

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Responder;
+use App\Models\ResponderPushToken;
 use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -62,10 +63,21 @@ class ResponderAuthController extends Controller
         return response()->json($request->user());
     }
 
+    /**
+     * Signs this phone out. The app sends the phone's push token
+     * (fcm_token) so the phone stops getting the team's incident alerts —
+     * other phones signed in to the same account keep getting them.
+     */
     public function logout(Request $request)
     {
         $responder = $request->user();
         $responder->currentAccessToken()->delete();
+
+        $pushToken = trim((string) $request->input('fcm_token'));
+        if ($responder instanceof Responder && $pushToken !== '') {
+            ResponderPushToken::where('token', $pushToken)->delete();
+            Responder::where('fcm_token', $pushToken)->update(['fcm_token' => null]);
+        }
 
         if ($responder instanceof Responder) {
             AuditLogService::responder($responder, 'logout', 'Logged out of the responder app.');

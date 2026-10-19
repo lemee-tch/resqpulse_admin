@@ -5,14 +5,33 @@ namespace App\Services;
 use App\Models\Citizen;
 use App\Models\Incident;
 use App\Models\Responder;
+use App\Models\ResponderPushToken;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Kreait\Firebase\Messaging\AndroidConfig;
 use Kreait\Firebase\Messaging\CloudMessage;
 use Kreait\Firebase\Messaging\Notification;
 use Kreait\Laravel\Firebase\Facades\Firebase;
 
+/**
+ * Pushes to the residents and responders apps.
+ *
+ * Responder pushes say what they're about in their data, so the app knows
+ * which ones ring (IncidentAlertService in the responder app):
+ *
+ *   type=incident  a report or SOS sent to the team — rings, with
+ *                  incident_id (and kind: new / again / help)
+ *   type=report    MDRRMO accepted or sent back the team's Final report
+ *   type=alert     a disaster alert from Alerts & Broadcast
+ *
+ * Incident pushes also go on the app's ringing Android channel
+ * (INCIDENT_CHANNEL), so they ring even when the app is closed.
+ */
 class PushNotificationService
 {
+    /** The responder app's ringing notification channel — see IncidentAlertService. */
+    public const INCIDENT_CHANNEL = 'incident_alerts_v2';
+
     /**
      * Which responder agency (or agencies) gets notified for each emergency
      * type. SARS is the general-purpose responder agency (Search and
@@ -86,42 +105,39 @@ class PushNotificationService
      * Notifies the responders on one incident — e.g. when MDRRMO sends
      * their Final report back for changes, or confirms it as resolved.
      * Best-effort like the rest: never throws back to the caller, and
-     * responders with no fcm_token (or a deactivated account) are skipped.
+     * responders with no phone signed in (or a deactivated account) are
+     * skipped. Every phone signed in to their accounts gets it.
      *
      * @param  iterable<Responder>  $responders
      */
-    public function notifyResponders(iterable $responders, string $title, string $body): void
+    public function notifyResponders(iterable $responders, string $title, string $body, ?Incident $incident = null): void
     {
         try {
-            $tokens = collect($responders)
-                ->filter(fn ($r) => $r instanceof Responder && $r->status === 'active' && $r->fcm_token)
-                ->pluck('fcm_token')
-                ->unique()
-                ->values()
-                ->all();
+            $tokens = $this->tokensOf(
+                collect($responders)->filter(fn ($r) => $r instanceof Responder && $r->status === 'active')
+            );
 
             Log::info('FCM incident-team send attempt', [
                 'title' => $title,
                 'token_count' => count($tokens),
             ]);
 
-            $this->sendToTokens($tokens, $title, $body, 'incident team');
+            $this->sendToTokens($tokens, $title, $body, 'incident team', array_filter([
+                'type'        => 'report',
+                'incident_id' => $incident ? (string) $incident->id : null,
+            ]));
         } catch (\Throwable $e) {
             Log::error('FCM incident-team send failed', ['error' => $e->getMessage()]);
         }
     }
 
     /**
-     * Notifies every active responder in a given agency (PNP/BFP/SARS)
-     * who has an FCM token registered.
+     * Notifies every phone signed in to an active responder account of an
+     * agency (PNP/BFP/SARS/HCU). $data and $channel: see the class comment.
      */
-    public function broadcastToAgency(string $agency, string $title, string $body): void
+    public function broadcastToAgency(string $agency, string $title, string $body, array $data = [], ?string $channel = null): void
     {
-        $tokens = Responder::where('agency', $agency)
-            ->where('status', 'active')
-            ->whereNotNull('fcm_token')
-            ->pluck('fcm_token')
-            ->toArray();
+        $tokens = $this->tokensOf(Responder::where('agency', $agency)->where('status', 'active')->with('pushTokens')->get());
 
         Log::info('FCM agency dispatch attempt', [
             'agency' => $agency,
@@ -129,7 +145,7 @@ class PushNotificationService
             'token_count' => count($tokens),
         ]);
 
-        $this->sendToTokens($tokens, $title, $body, "agency dispatch ({$agency})");
+        $this->sendToTokens($tokens, $title, $body, "agency dispatch ({$agency})", $data, $channel);
     }
 
     /**
@@ -141,17 +157,29 @@ class PushNotificationService
      */
     public function broadcastToAllResponders(string $title, string $body): void
     {
-        $tokens = Responder::where('status', 'active')
-            ->whereNotNull('fcm_token')
-            ->pluck('fcm_token')
-            ->toArray();
+        $tokens = $this->tokensOf(Responder::where('status', 'active')->with('pushTokens')->get());
 
         Log::info('FCM broadcast attempt', [
             'title' => $title,
             'token_count' => count($tokens),
         ]);
 
-        $this->sendToTokens($tokens, $title, $body, 'responder broadcast');
+        $this->sendToTokens($tokens, $title, $body, 'responder broadcast', ['type' => 'alert']);
+    }
+
+    /**
+     * Every phone signed in to these responder accounts.
+     *
+     * @param  iterable<Responder>  $responders
+     * @return list<string>
+     */
+    private function tokensOf(iterable $responders): array
+    {
+        return collect($responders)
+            ->flatMap(fn (Responder $responder) => $responder->pushTargets())
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**
@@ -213,12 +241,15 @@ class PushNotificationService
             }
             $body = implode(' — ', $bodyParts);
 
+            // Tells the app it's an incident (it rings) and which one.
+            $data = ['type' => 'incident', 'kind' => $kind, 'incident_id' => (string) $incident->id];
+
             foreach (array_unique($agencies) as $agency) {
                 // Isolated per agency — one agency's dispatch failing
                 // (for whatever reason) should never stop the others
                 // from being notified.
                 try {
-                    $this->broadcastToAgency($agency, $title, $body);
+                    $this->broadcastToAgency($agency, $title, $body, $data, self::INCIDENT_CHANNEL);
                 } catch (\Throwable $e) {
                     Log::error("Responder dispatch failed for agency ({$agency})", [
                         'incident_id' => $incident->id,
@@ -241,8 +272,13 @@ class PushNotificationService
      * Shared multicast-send logic used by both citizen broadcasts and
      * agency dispatches — chunks tokens into FCM's 500-per-call limit and
      * logs successes/failures per chunk.
+     *
+     * $data travels with the push (see the class comment); $channel puts it
+     * on that Android notification channel, at high priority. Tokens
+     * Firebase no longer knows (the app was uninstalled, or the phone got a
+     * new token) are forgotten, so they aren't tried again.
      */
-    private function sendToTokens(array $tokens, string $title, string $body, string $context): void
+    protected function sendToTokens(array $tokens, string $title, string $body, string $context, array $data = [], ?string $channel = null): void
     {
         if (empty($tokens)) {
             Log::warning("FCM send skipped: no fcm_tokens found for {$context}.");
@@ -265,11 +301,25 @@ class PushNotificationService
         }
 
         foreach (array_chunk($tokens, 500) as $chunk) {
-            $message = CloudMessage::new()->withNotification(
-                Notification::create($title, $body)
-            );
-
             try {
+                $message = CloudMessage::new()->withNotification(
+                    Notification::create($title, $body)
+                );
+                if ($data !== []) {
+                    $message = $message->withData($data);
+                }
+                if ($channel !== null) {
+                    $message = $message->withAndroidConfig(AndroidConfig::fromArray([
+                        'priority'     => 'high',
+                        'notification' => [
+                            'channel_id'            => $channel,
+                            'sound'                 => 'alarm_sound',
+                            'notification_priority' => 'PRIORITY_MAX',
+                            'visibility'            => 'PUBLIC',
+                        ],
+                    ]));
+                }
+
                 $report = $messaging->sendMulticast($message, $chunk);
 
                 Log::info("FCM send result ({$context})", [
@@ -283,11 +333,36 @@ class PushNotificationService
                         'error'  => $failure->error()->getMessage(),
                     ]);
                 }
+
+                $this->forgetTokens(array_merge($report->unknownTokens(), $report->invalidTokens()));
             } catch (\Throwable $e) {
                 Log::error("FCM send exception ({$context})", [
                     'message' => $e->getMessage(),
                 ]);
             }
+        }
+    }
+
+    /**
+     * Forgets push tokens Firebase no longer accepts, so they aren't tried
+     * again on every push.
+     *
+     * @param  list<string>  $tokens
+     */
+    protected function forgetTokens(array $tokens): void
+    {
+        $tokens = array_values(array_unique(array_filter($tokens)));
+        if ($tokens === []) {
+            return;
+        }
+
+        try {
+            ResponderPushToken::whereIn('token', $tokens)->delete();
+            Responder::whereIn('fcm_token', $tokens)->update(['fcm_token' => null]);
+            Citizen::whereIn('fcm_token', $tokens)->update(['fcm_token' => null]);
+            Log::info('FCM tokens forgotten', ['count' => count($tokens)]);
+        } catch (\Throwable $e) {
+            Log::error('FCM tokens could not be forgotten', ['error' => $e->getMessage()]);
         }
     }
 }

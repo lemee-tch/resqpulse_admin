@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Alert;
 use App\Models\Responder;
+use App\Models\ResponderPushToken;
 use Illuminate\Http\Request;
 
 class AlertController extends Controller
@@ -37,11 +38,29 @@ class AlertController extends Controller
         );
     }
 
+    /**
+     * The phone's push token, sent by both apps after signing in and on
+     * every start. A resident has one phone per account. A responder
+     * account is shared by a whole team, so each phone signed in to it is
+     * kept (ResponderPushToken) — before, the last phone to open the app
+     * replaced the others and was the only one that got incident alerts.
+     */
     public function updateToken(Request $request)
     {
-        $request->validate(['fcm_token' => ['required', 'string']]);
+        $request->validate(['fcm_token' => ['required', 'string', 'max:512']]);
 
-        $request->user()->update(['fcm_token' => $request->fcm_token]);
+        $user  = $request->user();
+        $token = $request->fcm_token;
+
+        $user->update(['fcm_token' => $token]);
+
+        if ($user instanceof Responder) {
+            // This phone now belongs to this account. If it was signed in
+            // to another team's account before, it stops getting that
+            // team's alerts.
+            ResponderPushToken::updateOrCreate(['token' => $token], ['responder_id' => $user->id]);
+            Responder::where('fcm_token', $token)->whereKeyNot($user->id)->update(['fcm_token' => null]);
+        }
 
         return response()->json(['message' => 'Token saved']);
     }
