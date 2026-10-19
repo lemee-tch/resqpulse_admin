@@ -176,29 +176,22 @@ class IncidentController extends Controller
     }
 
     /**
-     * "Verify & Assign": approves a report or SOS waiting in Pending and
-     * sends it to the response team(s) the admin picked (panel comments
-     * #6 and #13).
+     * Approve — Incident Details → Administrative Actions, while it's
+     * Pending. The lists only have View: an admin approves or declines
+     * after checking the photos, the map and the reporter on the details
+     * page (Lem: "while still pending, it should only show view action…
+     * it should only show on details").
      *
-     *   priority              reports only — Critical, High or Low. Nothing
-     *                         sets it automatically. SOS is always Critical.
-     *   teams[]               BFP / PNP / SARS / HCU. Only these are notified,
-     *                         and only they see and can accept it in the
-     *                         responder app. Without it (the quick Approve
-     *                         on the lists) the usual teams for the type are
-     *                         used (Incident::defaultTeams()). Incident
-     *                         Details sends choose_teams=1, so there at
-     *                         least one team must be ticked.
-     *   assignment_notes      instructions for the team (optional)
+     *   priority  reports only — Critical, High or Low. Nothing sets it
+     *             automatically. SOS is always Critical.
      *
-     * Who went is in "Accepted by" (the responders who accepted it in the
-     * app) and in the team's MDRRMC report, so there's no field to type
-     * it. The responders_on_record column is no longer used.
-     *
-     * A logged-in citizen also gets a push saying their report was
-     * approved; a guest has no account to notify.
+     * Approving notifies no one yet. The incident moves to Active, where
+     * the admin assigns the response team (updateAssignment()) — "it can
+     * only assign when it's already accepted by the admin". The empty team
+     * list saved here marks it as waiting for a team
+     * (Incident::awaitingTeam()).
      */
-    public function approve(Request $request, Incident $incident, PushNotificationService $push)
+    public function approve(Request $request, Incident $incident)
     {
         if (! $incident->needs_review) {
             return back()->with('success', 'This report was already approved.');
@@ -206,101 +199,94 @@ class IncidentController extends Controller
 
         $isSos = $incident->isSos();
 
-        $rules = $this->assignmentRules($request->boolean('choose_teams'));
         if (! $isSos) {
-            $rules['priority'] = ['required', 'in:critical,high,low'];
+            $request->validate(['priority' => ['required', 'in:critical,high,low']], $this->assignmentMessages());
         }
-        $request->validate($rules, $this->assignmentMessages());
-
-        $teams = $request->filled('teams')
-            ? $this->orderedTeams($request->input('teams'))
-            : $incident->defaultTeams();
 
         $oldPriority = $incident->priority;
         $changes = [
             'needs_review'     => false,
             'reviewed_at'      => now(),
             'reviewed_by'      => auth('web')->id(),
-            'assigned_teams'   => $teams,
-            'assignment_notes' => $this->cleanText($request->input('assignment_notes')),
-            'assigned_at'      => now(),
+            // No team yet — see Incident::awaitingTeam().
+            'assigned_teams'   => [],
+            'assignment_notes' => null,
+            'assigned_at'      => null,
         ];
         if (! $isSos) {
             $changes['priority'] = $request->priority;
         }
         $incident->update($changes);
 
-        $push->dispatchToRespondersForIncident($incident);
-
-        // Only a logged-in citizen's report can be told apart from a pure
-        // guest submission — a guest has no citizen_id and therefore no
-        // account to push a notification to.
-        if ($incident->citizen_id && $incident->citizen) {
-            $push->notifyCitizen(
-                $incident->citizen,
-                'Report Approved',
-                $isSos
-                    ? 'Your SOS alert has been approved and sent to responders.'
-                    : "Your {$incident->emergency_type} report has been approved and sent to responders."
-            );
-        }
-
-        $teamList = $this->teamList($teams);
+        // Back on the details page, where the team is assigned next.
+        $details = redirect()->route($isSos ? 'sos.detail' : 'incident.detail', $incident);
+        $next    = 'Now assign the response team — no one is notified until you do.';
 
         if ($isSos) {
-            AuditLogService::log(
-                'approved',
-                "Approved the {$this->describeIncident($incident)} — sent to {$teamList}.",
-                $incident,
-                null,
-                ['teams' => $teams]
-            );
+            AuditLogService::log('approved', "Approved the {$this->describeIncident($incident)}.", $incident);
 
-            return back()->with('success', "SOS approved and sent to {$teamList}.");
+            return $details->with('success', "SOS approved. {$next}");
         }
 
         $priorityLabel = ucfirst($incident->priority);
 
         AuditLogService::log(
             'approved',
-            "Approved the {$this->describeIncident($incident)} as {$priorityLabel} priority — sent to {$teamList}.",
+            "Approved the {$this->describeIncident($incident)} as {$priorityLabel} priority.",
             $incident,
             ['priority' => $oldPriority],
-            ['priority' => $incident->priority, 'teams' => $teams]
+            ['priority' => $incident->priority]
         );
 
-        return back()->with('success', "Report approved as {$priorityLabel} priority and sent to {$teamList}.");
+        return $details->with('success', "Report approved as {$priorityLabel} priority. {$next}");
     }
 
     /**
-     * Incident Details → Response Assignment, while the incident is
-     * Active: change the priority, the team(s) and the notes for the team.
-     * A team that's added is notified right away (as backup); a team
-     * that's removed stops seeing it, unless it already accepted.
+     * Incident Details → Assign response team, once the incident is
+     * approved (Active):
+     *
+     *   priority          reports only; it can still be changed here
+     *   teams[]           BFP / PNP / SARS / HCU — only these are notified,
+     *                     and only they see it and can accept it in the
+     *                     responder app
+     *   assignment_notes  instructions for the team (optional)
+     *
+     * The first time (Incident::awaitingTeam()), every ticked team is
+     * notified, and a resident is told their report was approved and sent
+     * to the responders. After that, the admin can change the priority, the
+     * team(s) and the notes: a team that's added is notified right away (as
+     * backup); a team that's removed stops seeing it, unless it already
+     * accepted.
      */
     public function updateAssignment(Request $request, Incident $incident, PushNotificationService $push)
     {
         if ($incident->stage !== 'active') {
-            return back()->withErrors(['assignment' => 'The response team can only be changed while the incident is active.']);
+            return back()->withErrors(['assignment' => $incident->needs_review
+                ? 'Approve it first. The response team is assigned once it\'s approved.'
+                : 'The response team can only be changed while the incident is active.']);
         }
 
         $isSos = $incident->isSos();
 
-        $rules = $this->assignmentRules(true);
+        $rules = $this->assignmentRules();
         if (! $isSos) {
             $rules['priority'] = ['required', 'in:critical,high,low'];
         }
         $request->validate($rules, $this->assignmentMessages());
 
         $newTeams = $this->orderedTeams($request->input('teams'));
+        $notes    = $this->cleanText($request->input('assignment_notes'));
+        $priority = $isSos ? $incident->priority : $request->priority;
+
+        if ($incident->awaitingTeam()) {
+            return $this->assignFirstTeam($incident, $newTeams, $notes, $priority, $push);
+        }
+
         // Incidents approved before teams were assigned went to the usual
         // teams for their type — count those as already notified.
         $oldTeams = $incident->assignedTeamCodes() ?: $incident->defaultTeams();
         $added    = array_values(array_diff($newTeams, $oldTeams));
         $removed  = array_values(array_diff($oldTeams, $newTeams));
-
-        $notes    = $this->cleanText($request->input('assignment_notes'));
-        $priority = $isSos ? $incident->priority : $request->priority;
 
         $what = [];
         if ($priority !== $incident->priority) {
@@ -353,11 +339,53 @@ class IncidentController extends Controller
         return back()->with('success', 'Response assignment saved.' . ($added ? " {$this->teamList($added)} notified." : ''));
     }
 
+    /**
+     * The first team assignment after approving: the team(s) get the
+     * incident, and a resident is told it was approved and sent to the
+     * responders (a guest has no account to notify).
+     */
+    private function assignFirstTeam(Incident $incident, array $teams, ?string $notes, ?string $priority, PushNotificationService $push)
+    {
+        $oldPriority = $incident->priority;
+
+        $incident->update([
+            'priority'         => $priority,
+            'assigned_teams'   => $teams,
+            'assignment_notes' => $notes,
+            'assigned_at'      => now(),
+        ]);
+
+        $push->dispatchToRespondersForIncident($incident->fresh());
+
+        if ($incident->citizen_id && $incident->citizen) {
+            $push->notifyCitizen(
+                $incident->citizen,
+                'Report Approved',
+                $incident->isSos()
+                    ? 'Your SOS alert has been approved and sent to responders.'
+                    : "Your {$incident->emergency_type} report has been approved and sent to responders."
+            );
+        }
+
+        $teamList = $this->teamList($teams);
+
+        AuditLogService::log(
+            'updated',
+            "Assigned {$teamList} to the {$this->describeIncident($incident)}"
+                . ($priority !== $oldPriority ? ' and set it to ' . ucfirst((string) $priority) . ' priority' : '') . '.',
+            $incident,
+            ['priority' => $oldPriority, 'teams' => []],
+            ['priority' => $priority, 'teams' => $teams, 'assignment_notes' => $notes]
+        );
+
+        return back()->with('success', "Sent to {$teamList}. They've been notified.");
+    }
+
     /** Validation for the team and the notes for the team. */
-    private function assignmentRules(bool $teamsRequired): array
+    private function assignmentRules(): array
     {
         return [
-            'teams'            => [$teamsRequired ? 'required' : 'nullable', 'array', 'min:1'],
+            'teams'            => ['required', 'array', 'min:1'],
             'teams.*'          => ['string', Rule::in(array_keys(Incident::TEAMS))],
             'assignment_notes' => ['nullable', 'string', 'max:500'],
         ];

@@ -155,10 +155,10 @@ class PushNotificationService
     }
 
     /**
-     * Sends the incident to the responders — called when the admin
-     * verifies it (Admin\IncidentController::approve()), and again with
-     * $onlyAgencies when the admin adds a team later (updateAssignment()),
-     * so only the newly added team is notified.
+     * Sends the incident to the responders — called when the admin assigns
+     * the response team after approving it (Admin\IncidentController::
+     * updateAssignment()), and again with $onlyAgencies when the admin adds
+     * a team later, so only the newly added team is notified.
      *
      * Goes to the teams the admin assigned (assigned_teams). Incidents
      * approved before teams were assigned fall back to the usual routing

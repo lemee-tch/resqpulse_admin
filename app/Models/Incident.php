@@ -84,8 +84,9 @@ class Incident extends Model
      * Incidents page:
      *
      *   pending     waiting for an admin to approve or decline it
-     *   active      approved and sent to the responders (waiting for one
-     *               to accept, or being responded to)
+     *   active      approved: waiting for the admin to assign the response
+     *               team (awaitingTeam()), for a responder to accept, or
+     *               being responded to
      *   for_review  the responders sent their Final report; the admin
      *               checks it before it counts as resolved
      *   resolved    resolved — or declined (shown on the same tab)
@@ -110,8 +111,27 @@ class Incident extends Model
             $this->status === 'for_review'   => 'For Review',
             $this->status === 'resolved'     => 'Resolved',
             $this->status === 'responding'   => 'Responding',
+            $this->awaitingTeam()            => 'Needs Team',
             default                          => 'Awaiting Responder',
         };
+    }
+
+    /**
+     * Approved, but the admin hasn't assigned the response team yet. The
+     * team is assigned on Incident Details once the incident is approved
+     * and Active (Admin\IncidentController::updateAssignment()) — no one
+     * is notified before that.
+     *
+     * Approving saves an empty team list ([]), which is how this is told
+     * apart from an incident approved before teams were assigned at all
+     * (no list, NULL): those stay open to every team.
+     */
+    public function awaitingTeam(): bool
+    {
+        return ! $this->needs_review
+            && ! $this->declined_at
+            && $this->assigned_teams === []
+            && ! in_array($this->status, ['for_review', 'resolved'], true);
     }
 
     /** An incident handled outside the app that MDRRMO added by hand. */
@@ -127,8 +147,9 @@ class Incident extends Model
 
     /**
      * The teams suggested for this kind of incident (Fire → BFP + SARS…),
-     * pre-ticked when the admin verifies it. The AI's reading of an SOS
-     * photo wins over the type the person picked, same as the push routing.
+     * pre-ticked when the admin assigns the team. The AI's reading of an
+     * SOS photo wins over the type the person picked, same as the push
+     * routing.
      */
     public function defaultTeams(): array
     {
@@ -149,12 +170,16 @@ class Incident extends Model
     }
 
     /**
-     * Whether this agency's responders may see and accept it. Incidents
-     * approved before teams were assigned (no teams saved) stay open to
-     * every team.
+     * Whether this agency's responders may see and accept it. Nobody may
+     * while the team isn't assigned yet. Incidents approved before teams
+     * were assigned (no team list saved) stay open to every team.
      */
     public function isAssignedTo(?string $agency): bool
     {
+        if ($this->awaitingTeam()) {
+            return false;
+        }
+
         $teams = $this->assignedTeamCodes();
 
         return $teams === [] || in_array($agency, $teams, true);

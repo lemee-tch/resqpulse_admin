@@ -8,9 +8,13 @@
 
       left   Incident Summary & Reporter · Location · Description &
              Attachments · Responders' Report · Activity Timeline
-      right  Administrative Actions (changes with the stage: Verify &
-             Assign / Response Assignment / Review the Final report /
-             resolved / declined) · Response Assignment · Internal Note
+      right  Administrative Actions (changes with the stage: Approve or
+             Decline / Assign response team, once approved / change the
+             assignment / review the Final report / resolved / declined) ·
+             Response Assignment · Internal Note
+
+    The lists (Incidents, SOS Alerts) only have View for Pending: approving,
+    declining and assigning the team are done here.
 --}}
 @php
     $isSos = $isSos ?? $incident->isSos();
@@ -286,6 +290,11 @@
             font-size: .88rem; cursor: pointer; transition: background .2s;
         }
         .btn-decline-confirm:hover { background: #b91c1c; }
+        .decline-outside {
+            display: flex; gap: 8px; align-items: flex-start;
+            background: #fef2f2; color: #991b1b; border-radius: 8px;
+            padding: 8px 10px; font-size: .78rem; line-height: 1.45; margin-bottom: 12px;
+        }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn { display: none; }
@@ -391,6 +400,7 @@
         $isDeclined                    => ['Declined', 'chip-declined'],
         $stage === 'for_review'        => ['For Review', 'chip-review'],
         $stage === 'resolved'          => ['Resolved', 'chip-resolved'],
+        $incident->awaitingTeam()      => ['Active · Needs Team', 'chip-pending'],
         default                        => ['Active · ' . $incident->status_label, 'chip-active'],
     };
 
@@ -444,7 +454,9 @@
     }
     $isReturned = $incident->status === 'responding' && $incident->report_returned_at && $incident->report_return_reason;
 
-    // Response team.
+    // Response team. It's assigned once the incident is approved (Active);
+    // until then $needsTeam is true and no one is notified.
+    $needsTeam    = $incident->awaitingTeam();
     $teamOnIt     = $incident->responders->sortBy(fn ($r) => (string) $r->pivot->accepted_at)->values();
     $assigned     = $incident->assignedTeamCodes();
     $suggested    = $incident->defaultTeams();
@@ -553,7 +565,7 @@
                                 <span class="chip chip-prio-{{ $priority }}">{{ ucfirst($priority) }}</span>
                                 @if($isSos) <span class="small-note">every SOS is Critical</span> @endif
                             @else
-                                <span class="muted">Not set — you choose it when you verify the report.</span>
+                                <span class="muted">Not set — you choose it when you approve the report.</span>
                             @endif
                         </dd>
                     </dl>
@@ -731,7 +743,7 @@
                                 <li class="current">
                                     <span class="dot"></span>
                                     <div class="tl-label">Reviewed — waiting for you</div>
-                                    <div class="tl-sub">Verify it and assign a team, or decline it.</div>
+                                    <div class="tl-sub">Approve it or decline it.</div>
                                 </li>
                             @elseif($isDeclined)
                                 <li class="bad">
@@ -742,7 +754,7 @@
                             @else
                                 <li class="done">
                                     <span class="dot"><i class="bi bi-check"></i></span>
-                                    <div class="tl-label">Verified <span class="tl-time">{{ $incident->reviewed_at?->format('M d, g:i A') }}</span></div>
+                                    <div class="tl-label">Approved <span class="tl-time">{{ $incident->reviewed_at?->format('M d, g:i A') }}</span></div>
                                     <div class="tl-sub">{{ $incident->reviewedBy ? 'By ' . $incident->reviewedBy->name : 'Approved by MDRRMO' }}{{ $priority ? ' · ' . ucfirst($priority) . ' priority' : '' }}.</div>
                                 </li>
                             @endif
@@ -750,13 +762,22 @@
                             @unless($isDeclined)
                                 @if($incident->needs_review)
                                     <li class="todo"><span class="dot"></span><div class="tl-label">Assigned · Accepted · Report · Resolved — not yet</div></li>
+                                @elseif($needsTeam)
+                                    {{-- 3. Approved, the team not assigned yet. --}}
+                                    <li class="current">
+                                        <span class="dot"></span>
+                                        <div class="tl-label">Assigned — waiting for you</div>
+                                        <div class="tl-sub">Choose the response team in Administrative Actions.</div>
+                                    </li>
+                                    <li class="todo"><span class="dot"></span><div class="tl-label">Accepted · Report · Resolved — not yet</div></li>
                                 @else
-                                    {{-- 3. Assigned — when it was verified; a later team change
-                                         (Response Assignment) is mentioned, so the times stay in order. --}}
+                                    {{-- 3. Assigned — when the team was set. A team changed after a
+                                         responder accepted is mentioned, so the times stay in order. --}}
                                     @php
-                                        $assignedAt    = $incident->reviewed_at ?? $incident->assigned_at;
-                                        $teamChangedAt = ($assignedAt && $incident->assigned_at && $incident->assigned_at->gt($assignedAt->copy()->addMinute()))
-                                            ? $incident->assigned_at : null;
+                                        $changedLater  = $incident->assigned_at && $firstAccepted
+                                            && $incident->assigned_at->gt(\Illuminate\Support\Carbon::parse($firstAccepted));
+                                        $assignedAt    = $changedLater ? $incident->reviewed_at : ($incident->assigned_at ?? $incident->reviewed_at);
+                                        $teamChangedAt = $changedLater ? $incident->assigned_at : null;
                                     @endphp
                                     <li class="done">
                                         <span class="dot"><i class="bi bi-check"></i></span>
@@ -836,19 +857,19 @@
                     <div class="card-title">Administrative Actions</div>
 
                     @if($incident->needs_review)
-                        {{-- ── PENDING: Verify & Assign, or Decline ── --}}
+                        {{-- ── PENDING: Approve or Decline. The team is assigned after
+                             approving, while it's Active (see below). ── --}}
                         <div class="notice notice-pending">
                             <i class="bi bi-hourglass-split"></i>
                             <span>
                                 Check the details, photos and location first.
                                 @if($mobile) Call <a href="tel:{{ $mobile }}" class="call-link">{{ $mobile }}</a> to confirm. @endif
-                                The team is <strong>not</strong> notified until you verify it.
+                                No one is notified until you approve it and assign the response team.
                             </span>
                         </div>
 
                         <form action="{{ route('incident.approve', $incident->id) }}" method="POST" id="approveForm">
                             @csrf
-                            <input type="hidden" name="choose_teams" value="1">
 
                             <div class="field">
                                 <span class="field-label">Priority level @unless($isSos)<span class="req">(required)</span>@endunless</span>
@@ -865,22 +886,9 @@
                                 @endif
                             </div>
 
-                            <div class="field">
-                                <span class="field-label">Assign response team <span class="req">(required)</span></span>
-                                @include('partials.team-choices', ['checked' => $checkedTeams, 'previous' => null])
-                                <div class="field-help">Suggested for {{ $isSos ? ($incident->sos_emergency_type ?: 'an SOS') : $incident->emergency_type }}: {{ $teamList($suggested) }}. Only the teams you tick are notified and can accept it.</div>
-                            </div>
-
-                            <div class="field">
-                                <label class="field-label" for="assignment_notes">Notes for the team <span class="opt">(optional)</span></label>
-                                <textarea name="assignment_notes" id="assignment_notes" rows="2" maxlength="500" class="f-input"
-                                          placeholder="e.g. Proceed via the market road.">{{ old('assignment_notes', $incident->assignment_notes) }}</textarea>
-                                <div class="field-help">The team sees this in the app.</div>
-                            </div>
-
                             <div class="action-buttons">
                                 <button type="submit" class="btn-x btn-primary-x" id="approveSubmit">
-                                    <i class="bi bi-check2-circle"></i> Verify &amp; Assign
+                                    <i class="bi bi-check2-circle"></i> Approve
                                 </button>
                                 <button type="button" class="btn-x btn-danger-x" data-bs-toggle="modal" data-bs-target="#declineModal">
                                     <i class="bi bi-x-circle"></i> Decline
@@ -889,8 +897,7 @@
                             <div class="why-disabled" id="approveHint" hidden></div>
                             <div class="action-help">
                                 <i class="bi bi-info-circle"></i>
-                                <strong>Verify &amp; Assign</strong> → the {{ $isSos ? 'SOS' : 'report' }} moves to <strong>Active</strong>, the team(s) you ticked are notified, and it's written in the Audit Log.
-                                {{ $incident->citizen_id ? 'The resident is told it was approved.' : '' }}
+                                <strong>Approve</strong> → the {{ $isSos ? 'SOS' : 'report' }} moves to <strong>Active</strong>. Then you assign the response team here, and the team is notified.
                             </div>
                         </form>
 
@@ -959,8 +966,17 @@
                         @endif
 
                     @else
-                        {{-- ── ACTIVE: change the priority, the team and the notes ── --}}
-                        @if($isReturned)
+                        {{-- ── ACTIVE: assign the response team (it's approved), or
+                             change the priority, the team and the notes ── --}}
+                        @if($needsTeam)
+                            <div class="notice notice-pending">
+                                <i class="bi bi-people-fill"></i>
+                                <span>
+                                    Approved{{ $incident->reviewedBy ? ' by ' . $incident->reviewedBy->name : '' }}{{ $incident->reviewed_at ? ' ' . $incident->reviewed_at->format('M d, g:i A') : '' }}.
+                                    <strong>Assign the response team</strong> — no one is notified until you do.
+                                </span>
+                            </div>
+                        @elseif($isReturned)
                             <div class="notice notice-returned">
                                 <i class="bi bi-arrow-return-left"></i>
                                 <span>Report sent back: <strong>{{ rtrim($incident->report_return_reason, '. ') }}</strong>. Waiting for the team to send it again.</span>
@@ -996,22 +1012,43 @@
                                 @endif
                             </div>
 
-                            <div class="field">
-                                <span class="field-label">Response team</span>
-                                @include('partials.team-choices', ['checked' => $checkedTeams, 'previous' => $assigned ?: $suggested])
-                                <div class="field-help">Tick another team to send it as backup — it's notified right away.</div>
-                            </div>
+                            @if($needsTeam)
+                                <div class="field">
+                                    <span class="field-label">Assign response team <span class="req">(required)</span></span>
+                                    @include('partials.team-choices', ['checked' => $checkedTeams, 'previous' => null])
+                                    <div class="field-help">Suggested for {{ $isSos ? ($incident->sos_emergency_type ?: 'an SOS') : $incident->emergency_type }}: {{ $teamList($suggested) }}. Only the teams you tick are notified and can accept it.</div>
+                                </div>
+                            @else
+                                <div class="field">
+                                    <span class="field-label">Response team</span>
+                                    @include('partials.team-choices', ['checked' => $checkedTeams, 'previous' => $assigned ?: $suggested])
+                                    <div class="field-help">Tick another team to send it as backup — it's notified right away.</div>
+                                </div>
+                            @endif
 
                             <div class="field">
                                 <label class="field-label" for="assignment_notes">Notes for the team <span class="opt">(optional)</span></label>
                                 <textarea name="assignment_notes" id="assignment_notes" rows="2" maxlength="500" class="f-input"
                                           placeholder="e.g. Proceed via the market road.">{{ old('assignment_notes', $incident->assignment_notes) }}</textarea>
+                                @if($needsTeam)<div class="field-help">The team sees this in the app.</div>@endif
                             </div>
 
-                            <button type="submit" class="btn-x btn-primary-x btn-block" id="assignmentSubmit">
-                                <i class="bi bi-save"></i> Save Assignment
-                            </button>
-                            <div class="why-disabled" id="assignmentHint" hidden></div>
+                            @if($needsTeam)
+                                <button type="submit" class="btn-x btn-primary-x btn-block" id="assignmentSubmit">
+                                    <i class="bi bi-send-check"></i> Assign &amp; Notify Team
+                                </button>
+                                <div class="why-disabled" id="assignmentHint" hidden></div>
+                                <div class="action-help">
+                                    <i class="bi bi-info-circle"></i>
+                                    The teams you tick get a notification and can accept it in the app.
+                                    {{ $incident->citizen_id ? 'The resident is told it was approved and sent.' : '' }}
+                                </div>
+                            @else
+                                <button type="submit" class="btn-x btn-primary-x btn-block" id="assignmentSubmit">
+                                    <i class="bi bi-save"></i> Save Assignment
+                                </button>
+                                <div class="why-disabled" id="assignmentHint" hidden></div>
+                            @endif
                         </form>
                     @endif
                 </section>
@@ -1034,6 +1071,8 @@
                                 @endforelse
                             @elseif($incident->needs_review || $isDeclined)
                                 <span class="muted">—</span>
+                            @elseif($needsTeam)
+                                <span class="warn">Not assigned yet</span>
                             @elseif($assigned)
                                 {{ $teamList($assigned) }}
                             @else
@@ -1064,7 +1103,7 @@
                         <dt>Status</dt>
                         <dd>
                             @if($incident->needs_review)
-                                <span class="warn">Not assigned yet</span>
+                                <span class="warn">Waiting for approval</span>
                             @else
                                 <span class="chip {{ $stageClass }}">{{ $incident->status_label }}</span>
                             @endif
@@ -1162,6 +1201,12 @@
                         The responders will NOT be notified.
                         {{ $incident->citizen_id ? 'The reporter gets a notification with this reason.' : 'It was sent by a guest, so there is no account to notify.' }}
                     </p>
+                    @if(str_contains((string) $incident->location, 'Outside Rosales'))
+                        <div class="decline-outside">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                            <span>The GPS pin is outside Rosales. If MDRRMO Rosales can't respond there, choose "Location is outside Rosales / MDRRMO service area".</span>
+                        </div>
+                    @endif
                     <label class="form-label-m" for="declineReason">Reason for declining</label>
                     <select name="decline_reason" id="declineReason" class="form-control-m" required>
                         <option value="" disabled selected>Select a reason...</option>
@@ -1267,9 +1312,10 @@
         });
     });
 
-    // Verify & Assign: stays off until the priority (reports) and a team are chosen.
-    // Save Assignment: needs a team; marks the teams that will be notified as "new".
-    function wireAssignmentForm(formId, submitId, hintId, needsPriority) {
+    // Approve: stays off until a priority is chosen (reports).
+    // Assign & Notify Team / Save Assignment: needs a team; Save Assignment
+    // marks the teams that will be notified as "new".
+    function wireAssignmentForm(formId, submitId, hintId, needsPriority, needsTeam) {
         const form = document.getElementById(formId);
         if (!form) return;
         const submit = document.getElementById(submitId);
@@ -1279,7 +1325,7 @@
             if (needsPriority && form.querySelector('input[name="priority"]') && !form.querySelector('input[name="priority"]:checked')) {
                 missing.push('a priority');
             }
-            if (!form.querySelector('input[name="teams[]"]:checked')) {
+            if (needsTeam && !form.querySelector('input[name="teams[]"]:checked')) {
                 missing.push('at least one team');
             }
             submit.disabled = missing.length > 0;
@@ -1298,8 +1344,8 @@
         });
         sync();
     }
-    wireAssignmentForm('approveForm', 'approveSubmit', 'approveHint', {{ $isSos ? 'false' : 'true' }});
-    wireAssignmentForm('assignmentForm', 'assignmentSubmit', 'assignmentHint', {{ $isSos ? 'false' : 'true' }});
+    wireAssignmentForm('approveForm', 'approveSubmit', 'approveHint', {{ $isSos ? 'false' : 'true' }}, false);
+    wireAssignmentForm('assignmentForm', 'assignmentSubmit', 'assignmentHint', {{ $isSos ? 'false' : 'true' }}, true);
 
     // Decline: a reason is required, then one last confirmation.
     (function () {

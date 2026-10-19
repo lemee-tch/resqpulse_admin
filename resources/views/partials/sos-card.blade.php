@@ -15,8 +15,9 @@
       3. the team (Active, For Review, Resolved) or the decline reason.
 
     All the buttons are together on the right — on phones, under the text:
-      pending     View · Decline · Approve & Send to <teams>
-      active      View
+      pending     View (approve or decline on SOS Details)
+      active      View (an approved SOS with no team yet says so; the team
+                  is assigned on SOS Details)
       for-review  View · Report · Return · Mark as Resolved
       resolved    View
       declined    View · Delete
@@ -54,13 +55,17 @@
         ? $lead->full_name . ($lead->agency ? " ({$lead->agency})" : '') . ($onIt->count() > 1 ? ' +' . ($onIt->count() - 1) . ' more' : '')
         : null;
 
+    // Approved, but the response team isn't assigned yet.
+    $needsTeam = $tab === 'active' && $sos->awaitingTeam();
+
     // Where it stands: the dot's colour.
-    $variant = match ($tab) {
-        'pending'    => 'review',
-        'for-review' => 'for_review',
-        'resolved'   => 'resolved',
-        'declined'   => 'declined',
-        default      => $sos->status, // pending = nobody accepted yet, responding
+    $variant = match (true) {
+        $tab === 'pending'    => 'review',
+        $tab === 'for-review' => 'for_review',
+        $tab === 'resolved'   => 'resolved',
+        $tab === 'declined'   => 'declined',
+        $needsTeam            => 'needs_team',
+        default               => $sos->status, // pending = nobody accepted yet, responding
     };
 
     // The time that matters on this tab.
@@ -79,19 +84,20 @@
     $late = $tab === 'pending' && $whenAt->lt(now()->subMinutes(10));
 
     // Third line: the team, or why it was declined.
-    [$detail, $detailWarn] = match ($tab) {
-        'active' => [
+    [$detail, $detailWarn] = match (true) {
+        $needsTeam => ['No team yet — open View to assign the response team', true],
+        $tab === 'active' => [
             ($teams ? implode(' · ', $teams) : 'Responders') . ' — '
                 . ($leadText ? $leadText . ' responding' : 'no one has accepted yet'),
             ! $leadText,
         ],
-        'for-review' => [$leadText ? 'Final report from ' . $leadText : 'Final report sent', false],
-        'resolved'   => [
+        $tab === 'for-review' => [$leadText ? 'Final report from ' . $leadText : 'Final report sent', false],
+        $tab === 'resolved'   => [
             ($leadText ? 'Handled by ' . $leadText : ($teams ? 'Sent to ' . implode(' · ', $teams) : 'Sent to the responders'))
                 . ($sos->resolvedBy ? ' · reviewed by ' . $sos->resolvedBy->name : ''),
             false,
         ],
-        'declined'   => [
+        $tab === 'declined'   => [
             ($sos->reviewedBy ? 'Declined by ' . $sos->reviewedBy->name : 'Declined') . ': '
                 . \Illuminate\Support\Str::limit($sos->decline_reason ?: 'No reason given', 120),
             false,
@@ -154,26 +160,7 @@
             <i class="bi bi-eye"></i> View
         </a>
 
-        @if($tab === 'pending')
-            @php
-                // Quick Approve sends it to the usual team(s) for the type. To
-                // pick others or add notes, the admin opens View.
-                $usualTeams = $sos->defaultTeams() ?: ['SARS'];
-                $usualTeamText = count($usualTeams) > 1
-                    ? implode(', ', array_slice($usualTeams, 0, -1)) . ' and ' . end($usualTeams)
-                    : $usualTeams[0];
-            @endphp
-            <button type="button" class="act act--danger" data-bs-toggle="modal" data-bs-target="#declineModal{{ $sos->id }}">
-                <i class="bi bi-x-lg"></i> Decline
-            </button>
-            <form action="{{ route('incident.approve', $sos->id) }}" method="POST">
-                @csrf
-                <button type="submit" class="act act--primary"
-                        title="Sends it to {{ $usualTeamText }}. To choose other teams or add notes, click View.">
-                    <i class="bi bi-check-lg"></i> Approve &amp; Send to {{ implode(' + ', $usualTeams) }}
-                </button>
-            </form>
-        @elseif($tab === 'for-review')
+        @if($tab === 'for-review')
             @if($sos->report_data)
                 <a href="{{ route('incident.report-pdf', $sos) }}" target="_blank" class="act">
                     <i class="bi bi-file-earmark-pdf"></i> Report

@@ -404,7 +404,7 @@
                         @empty
                         <tr>
                             <td colspan="7" class="empty-state">
-                                No citizens waiting for review right now.
+                                No Residents waiting for review right now.
                             </td>
                         </tr>
                         @endforelse
@@ -419,7 +419,7 @@
                 <table class="evac-table">
                     <thead>
                         <tr>
-                            <th>Citizen</th>
+                            <th>Resident</th>
                             <th>Contact</th>
                             <th>Municipality / Barangay</th>
                             <th>Valid ID</th>
@@ -477,7 +477,7 @@
                         @empty
                         <tr>
                             <td colspan="7" class="empty-state">
-                                No verified citizens yet.
+                                No verified Residents yet.
                             </td>
                         </tr>
                         @endforelse
@@ -489,7 +489,7 @@
         {{-- Modals live OUTSIDE the tables on purpose — see the original
              note: a <form> placed directly inside <tbody> is invalid HTML
              and browsers "foster parent" it, breaking the form's internal
-             structure. Loop over ALL citizens once here so both tabs'
+             structure. Loop over ALL Residents once here so both tabs'
              rows can open the right modal by id. --}}
         @foreach($citizens as $citizen)
             <div class="modal fade" id="idModal{{ $citizen->id }}" tabindex="-1">
@@ -601,7 +601,7 @@
             Swal.fire({
                 ...swalTheme,
                 icon: 'question',
-                title: 'Approve this citizen?',
+                title: 'Approve this Resident?',
                 text: 'This confirms their identity and unlocks full access to the app.',
                 showCancelButton: true,
                 confirmButtonText: 'Yes',
@@ -677,7 +677,7 @@
                     ...swalTheme,
                     icon: 'warning',
                     title: 'Reject this account?',
-                    html: 'This will <strong>permanently delete</strong> this citizen\'s account and revoke their login immediately. This cannot be undone.'
+                    html: 'This will <strong>permanently delete</strong> this resident\'s account and revoke their login immediately. This cannot be undone.'
                         + '<div style="margin-top:12px;text-align:left;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px;color:#7f1d1d;font-size:.9em;">'
                         + '<strong>Reason the resident will see:</strong><br>' + reasonEl.innerHTML + '</div>',
                     showCancelButton: true,

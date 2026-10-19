@@ -122,6 +122,8 @@
         .badge-review       { background: #fef3c7; color: #92400e; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
         .badge-forreview    { background: #ede9fe; color: #5b21b6; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
         .badge-pending      { white-space: nowrap; }
+        /* Active, approved but the team isn't assigned yet (Incident Details assigns it). */
+        .badge-needsteam    { background: #ffedd5; color: #9a3412; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
 
         /* Inline dropdowns */
         .inline-select {
@@ -143,12 +145,6 @@
             display: inline-flex; align-items: center; gap: 6px; transition: background .2s;
         }
         .btn-approve:hover { background: #059669; }
-        .btn-decline {
-            background: #fff; color: #dc2626; border: 1.5px solid #dc2626; border-radius: 6px;
-            padding: 5px 13px; font-size: .78rem; font-weight: 700; cursor: pointer;
-            display: inline-flex; align-items: center; gap: 6px; transition: background .2s, color .2s;
-        }
-        .btn-decline:hover { background: #dc2626; color: #fff; }
         .review-actions { display: flex; gap: 8px; }
         .review-actions { align-items: center; white-space: nowrap; }
         .td-location { max-width: 360px; }
@@ -175,48 +171,6 @@
         .guest-note { font-size: .74rem; color: #92400e; font-style: italic; }
         .badge-declined { background: #fee2e2; color: #991b1b; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 
-        /* Decline-reason modal — same dropdown pattern as the Residents
-           Verification rejection modal. */
-        .form-label-m { font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 5px; display: block; }
-        .form-control-m {
-            width: 100%; border: 1.5px solid #d1d5db; border-radius: 8px;
-            padding: 9px 13px; font-size: .85rem; font-family: 'Inter', sans-serif;
-            color: #374151; background: #fafafa; transition: border-color .2s;
-        }
-        .form-control-m:focus { outline: none; border-color: #1a3c8f; background: #fff; }
-        .btn-decline-confirm {
-            background: #dc2626; color: #fff; border: none; border-radius: 8px;
-            padding: 9px 22px; font-family: 'Barlow', sans-serif; font-weight: 700;
-            font-size: .88rem; cursor: pointer; transition: background .2s;
-        }
-        .btn-decline-confirm:hover { background: #b91c1c; }
-
-        /* Priority choice in the Approve dialog — the admin picks it. */
-        .prio-choices { display: flex; gap: 8px; margin: 14px 0 12px; }
-        .prio-input { position: absolute; opacity: 0; pointer-events: none; }
-        .prio-choice {
-            flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
-            margin: 0; padding: 11px 6px; border-radius: 10px; border: 2px solid currentColor;
-            background: #fff; cursor: pointer; user-select: none;
-            font-family: 'Barlow', sans-serif; font-weight: 800; font-size: .95rem;
-            transition: background .15s, color .15s;
-        }
-        .prio-choice i { display: none; }
-        .prio-choice.prio-critical { color: #dc2626; }
-        .prio-choice.prio-high     { color: #f97316; }
-        .prio-choice.prio-low      { color: #3b82f6; }
-        .prio-choice.prio-critical:hover { background: #fef2f2; }
-        .prio-choice.prio-high:hover     { background: #fff7ed; }
-        .prio-choice.prio-low:hover      { background: #eff6ff; }
-        .prio-input:checked + .prio-choice { color: #fff; }
-        .prio-input:checked + .prio-choice i { display: inline; }
-        .prio-input:checked + .prio-choice.prio-critical { background: #dc2626; border-color: #dc2626; }
-        .prio-input:checked + .prio-choice.prio-high     { background: #f97316; border-color: #f97316; }
-        .prio-input:checked + .prio-choice.prio-low      { background: #3b82f6; border-color: #3b82f6; }
-        .prio-input:focus-visible + .prio-choice { outline: 3px solid #1a3c8f; outline-offset: 2px; }
-        .approve-intro { font-size: .9rem; color: #374151; }
-        .approve-note  { font-size: .8rem; color: #6b7280; }
-        .approve-team  { font-size: .82rem; color: #374151; background: #f3f4f6; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
         /* Active tab: the team(s) it was sent to, under the status. */
         .row-teams { font-size: .72rem; color: #6b7280; margin-top: 4px; white-space: nowrap; font-weight: 600; }
 
@@ -417,17 +371,22 @@
         @php
             // One list per tab — see Incident::getStageAttribute():
             //   Pending     every new report waits here until an admin
-            //               approves it (only then are responders notified,
-            //               Admin\IncidentController::approve()) or declines it
-            //   Active      approved and sent to the responders: waiting for
-            //               one to accept, or being responded to
+            //               approves or declines it on Incident Details (the
+            //               table only has View)
+            //   Active      approved: waiting for the admin to assign the
+            //               response team ("Needs Team" — only then are the
+            //               responders notified), for one to accept, or
+            //               being responded to
             //   For Review  the responders sent their Final report; the admin
             //               marks it resolved or sends it back
             //   Resolved    resolved, declined (badged "Declined"), and
             //               incidents handled outside the app that MDRRMO
             //               added with "Add Resolved Report"
             $pendingIncidents   = $incidents->filter(fn ($inc) => $inc->stage === 'pending')->values();
-            $activeIncidents    = $incidents->filter(fn ($inc) => $inc->stage === 'active')->values();
+            // Active: the ones still needing a team first (stable, so the
+            // priority / newest order is kept inside each group).
+            $activeIncidents    = $incidents->filter(fn ($inc) => $inc->stage === 'active')
+                ->sortBy(fn ($inc) => $inc->awaitingTeam() ? 0 : 1)->values();
             $forReviewIncidents = $incidents->filter(fn ($inc) => $inc->stage === 'for_review')->values();
             $resolvedIncidents  = $incidents->filter(fn ($inc) => $inc->stage === 'resolved')->values();
 
@@ -456,6 +415,7 @@
                     'For Review'     => 'badge-forreview',
                     'Resolved'       => 'badge-resolved',
                     'Responding'     => 'badge-responding',
+                    'Needs Team'     => 'badge-needsteam',
                     default          => 'badge-pending',
                 };
                 // Not shown in the tables (it's on the Incident Details page),
@@ -491,7 +451,7 @@
         <div id="tab-pending" class="tab-panel active">
             <div class="tab-note tab-note--pending">
                 <i class="bi bi-info-circle"></i>
-                <span>Every new report waits here for your review. When you approve it, you choose its priority (Critical, High or Low) and the responders are notified. Open <strong>View</strong> to check the photos, description and reporter first.</span>
+                <span>Every new report waits here for your review. Open <strong>View</strong> to check the photos, description and reporter, then approve or decline it there. Once approved it moves to <strong>Active</strong>, where you assign the response team — the team is notified then.</span>
             </div>
 
             <div class="table-card">
@@ -501,7 +461,7 @@
                             <th>Type</th>
                             <th>Location</th>
                             <th>Submitted</th>
-                            <th>Action</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -519,27 +479,8 @@
                                 @endif
                             </td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
-                            <td onclick="event.stopPropagation()">
-                                <div class="review-actions">
-                                    <form action="{{ route('incident.approve', $inc->id) }}" method="POST" class="approve-form"
-                                          data-type="{{ $inc->emergency_type }}"
-                                          data-reporter="{{ $reporterName }}"
-                                          data-teams="{{ implode(', ', $inc->defaultTeams()) }}"
-                                          data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
-                                        @csrf
-                                        {{-- Filled in by the Approve dialog (Critical / High / Low). --}}
-                                        <input type="hidden" name="priority" value="{{ $inc->priority }}">
-                                        <button type="submit" class="btn-approve" title="Set priority and notify responders">
-                                            <i class="bi bi-check-lg"></i> Approve
-                                        </button>
-                                    </form>
-                                    <button type="button" class="btn-decline" title="Decline this report"
-                                            data-bs-toggle="modal" data-bs-target="#declineModal{{ $inc->id }}">
-                                        <i class="bi bi-x-lg"></i> Decline
-                                    </button>
-                                    <a href="{{ route('incident.detail', $inc->id) }}" class="btn-view" onclick="event.stopPropagation()">View <i class="bi bi-chevron-right"></i></a>
-                                </div>
-                            </td>
+                            {{-- View only: approve, decline and assign the team on Incident Details. --}}
+                            <td class="td-action"><a href="{{ route('incident.detail', $inc->id) }}" class="btn-view" onclick="event.stopPropagation()">View <i class="bi bi-chevron-right"></i></a></td>
                         </tr>
 
                         @empty
@@ -556,46 +497,6 @@
                 </table>
             </div>
 
-            {{-- Decline dialogs. Kept outside the table: a <form> inside a
-                 table row ends up empty in the browser (its fields are
-                 left outside it), so the reason could never be read. --}}
-            @foreach($pendingIncidents as $inc)
-                <div class="modal fade" id="declineModal{{ $inc->id }}" tabindex="-1">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content" style="border-radius:14px;border:none;">
-                            <form action="{{ route('incident.decline', $inc->id) }}" method="POST" class="decline-form"
-                                  data-type="{{ $inc->emergency_type }}"
-                                  data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
-                                @csrf
-                                <div class="modal-header border-0 pb-0">
-                                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1.1rem;">Decline this report?</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                </div>
-                                <div class="modal-body pt-3">
-                                    <p style="font-size:.82rem;color:#6b7280;margin-bottom:12px;">
-                                        Declining the <strong>{{ $inc->emergency_type }}</strong> report — responders will NOT be dispatched.
-                                        {{ $inc->citizen_id ? 'The reporter will get a notification with this reason.' : 'This report was submitted by a guest, so there is no account to notify.' }}
-                                    </p>
-                                    <label class="form-label-m">Reason for declining</label>
-                                    <select name="decline_reason" class="form-control-m" required>
-                                        <option value="" disabled selected>Select a reason...</option>
-                                        <option value="Duplicate of another report already received">Duplicate of another report already received</option>
-                                        <option value="Spam, prank, or test submission">Spam, prank, or test submission</option>
-                                        <option value="Insufficient details to dispatch responders">Insufficient details to dispatch responders</option>
-                                        <option value="Location is outside Rosales / MDRRMO service area">Location is outside Rosales / MDRRMO service area</option>
-                                        <option value="Unable to verify — no credible evidence of an emergency">Unable to verify — no credible evidence of an emergency</option>
-                                        <option value="Reported by mistake (accidental submission)">Reported by mistake (accidental submission)</option>
-                                    </select>
-                                </div>
-                                <div class="modal-footer border-0 pt-0">
-                                    <button type="submit" class="btn-decline-confirm">Decline Report</button>
-                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            @endforeach
         </div>
 
         <!-- ══ TAB: ACTIVE (approved — for the responders to accept and respond) ══ -->
@@ -613,6 +514,7 @@
 
                 <select class="filter-select" id="filterStatus">
                     <option value="">All Status</option>
+                    <option value="needs_team">Needs Team</option>
                     <option value="pending">Awaiting Responder</option>
                     <option value="responding">Responding</option>
                 </select>
@@ -664,7 +566,7 @@
                         <tr
                             class="incident-row"
                             data-priority="{{ $priorityVal }}"
-                            data-status="{{ $inc->status }}"
+                            data-status="{{ $inc->awaitingTeam() ? 'needs_team' : $inc->status }}"
                             data-type="{{ $inc->emergency_type }}"
                             data-date="{{ $inc->created_at->format('Y-m-d') }}"
                             data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
@@ -692,7 +594,7 @@
                             </td>
                             <td class="td-location">{{ $inc->location ?: '—' }}</td>
                             <td>
-                                <span class="{{ $statusBadge }}">{{ $statusLabel }}</span>
+                                <span class="{{ $statusBadge }}" @if($inc->awaitingTeam()) title="Approved. Open View to assign the response team." @endif>{{ $statusLabel }}</span>
                                 @if($inc->assignedTeamCodes())
                                     <div class="row-teams" title="Response team"><i class="bi bi-people"></i> {{ implode(' · ', $inc->assignedTeamCodes()) }}</div>
                                 @endif
@@ -1103,119 +1005,6 @@
         div.textContent = text;
         return div.innerHTML;
     }
-
-    // Approve — SweetAlert2 dialog where the admin chooses the priority
-    // (Critical / High / Low) before the report goes to the responders.
-    // Nothing sets priority automatically: the choice goes into the
-    // form's hidden "priority" field, and the server refuses an approval
-    // without one.
-    const PRIORITY_CHOICES = [['critical', 'Critical'], ['high', 'High'], ['low', 'Low']];
-
-    document.querySelectorAll('.approve-form').forEach(form => {
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-
-            const type = form.dataset.type || 'report';
-            // The usual team(s) for this type. Other teams and notes for
-            // the team are on Incident Details.
-            const teams = form.dataset.teams || 'the responders';
-            const priorityField = form.querySelector('input[name="priority"]');
-            const current = priorityField.value;
-            const notifiesCitizen = form.dataset.notifiesCitizen === '1';
-            const notifyLine = notifiesCitizen
-                ? 'The reporter will also get a notification that their report was approved.'
-                : 'This report was submitted by a guest, so there is no account to notify.';
-
-            const choices = PRIORITY_CHOICES.map(([value, label]) => `
-                <input class="prio-input" type="radio" name="swalPriority" id="swalPrio-${value}" value="${value}"${current === value ? ' checked' : ''}>
-                <label class="prio-choice prio-${value}" for="swalPrio-${value}"><i class="bi bi-check-lg"></i>${label}</label>`).join('');
-
-            Swal.fire({
-                title: 'Approve this report?',
-                html: `<div class="approve-intro">Choose the priority of this <strong>${escapeHtml(type)}</strong> report. The responders will see it.</div>
-                       <div class="prio-choices" role="radiogroup" aria-label="Priority">${choices}</div>
-                       <div class="approve-team">Goes to <strong>${escapeHtml(teams)}</strong>. To choose other teams or add notes for the team, open <strong>View</strong>.</div>
-                       <div class="approve-note">${notifyLine}</div>`,
-                showCancelButton: true,
-                confirmButtonText: 'Approve &amp; Send',
-                cancelButtonText: 'Cancel',
-                confirmButtonColor: '#10b981',
-                focusConfirm: false,
-                didOpen: (popup) => {
-                    popup.querySelectorAll('input[name="swalPriority"]').forEach(input => {
-                        input.addEventListener('change', () => Swal.resetValidationMessage());
-                    });
-                },
-                preConfirm: () => {
-                    const picked = Swal.getPopup().querySelector('input[name="swalPriority"]:checked');
-                    if (!picked) {
-                        Swal.showValidationMessage('Choose a priority first.');
-                        return false;
-                    }
-                    return picked.value;
-                },
-            }).then(result => {
-                if (result.isConfirmed) {
-                    priorityField.value = result.value;
-                    form.submit();
-                }
-            });
-        });
-    });
-
-    // Decline confirmation — the reason is picked from the dropdown inside
-    // the Bootstrap modal (not free text), same pattern as the Residents
-    // Verification rejection modal. Validates a reason was selected,
-    // closes the modal (firing a SweetAlert while a Bootstrap modal is
-    // still open can cause stacking/focus-trap issues), then asks for one
-    // final confirmation before submitting.
-    document.querySelectorAll('.decline-form').forEach(form => {
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-
-            const reasonSelect = form.elements['decline_reason'];
-            if (!reasonSelect.value) {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Reason required',
-                    text: 'Please select a reason for declining before continuing.',
-                    confirmButtonText: 'OK',
-                    confirmButtonColor: '#1a3c8f',
-                });
-                return;
-            }
-
-            const type = form.dataset.type || 'report';
-            const notifiesCitizen = form.dataset.notifiesCitizen === '1';
-            const notifyLine = notifiesCitizen
-                ? 'The reporter will get a notification with this reason.'
-                : 'This report was submitted by a guest, so there is no account to notify.';
-
-            const parentModalEl = form.closest('.modal');
-            const bsModal = parentModalEl ? bootstrap.Modal.getOrCreateInstance(parentModalEl) : null;
-
-            const confirmDecline = () => {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Decline this report?',
-                    html: `<div style="text-align:left;font-size:.85em;color:#6b7280;">Declining the <strong>${escapeHtml(type)}</strong> report — responders will NOT be dispatched.<br>${notifyLine}</div>`,
-                    showCancelButton: true,
-                    confirmButtonText: 'Yes, decline',
-                    cancelButtonText: 'Cancel',
-                    confirmButtonColor: '#dc2626',
-                }).then(result => {
-                    if (result.isConfirmed) form.submit();
-                });
-            };
-
-            if (bsModal && parentModalEl.classList.contains('show')) {
-                parentModalEl.addEventListener('hidden.bs.modal', confirmDecline, { once: true });
-                bsModal.hide();
-            } else {
-                confirmDecline();
-            }
-        });
-    });
 
     // Delete (declined reports only) — asks first, since it can't be undone.
     document.querySelectorAll('.delete-form').forEach(form => {

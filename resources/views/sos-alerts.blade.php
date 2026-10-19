@@ -175,10 +175,11 @@
         .sos-info { flex: 1; min-width: 0; }
         .sos-line1 { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
         .sos-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: #9ca3af; }
-        /* Where it stands: waiting for review = amber; sent, nobody accepted
-           yet = red; responding = blue; For Review = purple; resolved =
-           green; declined = grey. */
+        /* Where it stands: waiting for review = amber; approved, no team
+           yet = orange; sent, nobody accepted yet = red; responding = blue;
+           For Review = purple; resolved = green; declined = grey. */
         .sos-card--review     .sos-dot { background: #f59e0b; box-shadow: 0 0 0 3px #fef3c7; }
+        .sos-card--needs_team .sos-dot { background: #ea580c; box-shadow: 0 0 0 3px #ffedd5; }
         .sos-card--pending    .sos-dot { background: #dc2626; box-shadow: 0 0 0 3px #fee2e2; }
         .sos-card--responding .sos-dot,
         .sos-card--acknowledged .sos-dot { background: #2563eb; box-shadow: 0 0 0 3px #dbeafe; }
@@ -192,6 +193,7 @@
         }
         .sos-state { font-size: .74rem; font-weight: 600; color: #6b7280; }
         .sos-card--pending .sos-state { color: #b91c1c; }
+        .sos-card--needs_team .sos-state { color: #c2410c; }
         .sos-card--responding .sos-state { color: #1d4ed8; }
         .sos-flag {
             font-size: .7rem; font-weight: 700; color: #c2410c; background: #fff7ed;
@@ -254,27 +256,6 @@
         /* One quiet line of help above a tab's list. */
         .review-banner { font-size: .8rem; color: #6b7280; margin: -4px 0 14px; display: flex; gap: 8px; align-items: flex-start; }
         .review-banner i { color: #9ca3af; }
-        /* Decline-reason modal — same dropdown pattern as the Residents
-           Verification rejection modal. */
-        .form-label-m { font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 5px; display: block; }
-        .form-control-m {
-            width: 100%; border: 1.5px solid #d1d5db; border-radius: 8px;
-            padding: 9px 13px; font-size: .85rem; font-family: 'Inter', sans-serif;
-            color: #374151; background: #fafafa; transition: border-color .2s;
-        }
-        .form-control-m:focus { outline: none; border-color: #1a3c8f; background: #fff; }
-        .btn-decline-confirm {
-            background: #dc2626; color: #fff; border: none; border-radius: 8px;
-            padding: 9px 22px; font-family: 'Barlow', sans-serif; font-weight: 700;
-            font-size: .88rem; cursor: pointer; transition: background .2s;
-        }
-        .btn-decline-confirm:hover { background: #b91c1c; }
-        .decline-who { font-size: .85rem; color: #111827; margin-bottom: 6px; }
-        .decline-outside {
-            display: flex; gap: 8px; align-items: flex-start; margin-bottom: 12px;
-            background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px;
-            font-size: .8rem; color: #991b1b;
-        }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn {
@@ -423,7 +404,9 @@
             // ones responders actually resolved.
             // For Review: the responders sent their Final report — the
             // admin marks it resolved or sends it back (same as Incidents).
-            $activeSos    = $sosAlerts->filter(fn ($s) => $s->stage === 'active')->values();
+            // Active: the ones still needing a team first (newest first inside each group).
+            $activeSos    = $sosAlerts->filter(fn ($s) => $s->stage === 'active')
+                ->sortBy(fn ($s) => $s->awaitingTeam() ? 0 : 1)->values();
             $forReviewSos = $sosAlerts->filter(fn ($s) => $s->stage === 'for_review')->values();
             $resolvedSos  = $sosAlerts->filter(fn ($s) => $s->status === 'resolved' && ! $s->declined_at)->values();
             $declinedSos  = $sosAlerts->filter(fn ($s) => (bool) $s->declined_at)->sortByDesc('declined_at')->values();
@@ -496,56 +479,11 @@
         <div id="tab-pending" class="tab-panel active">
             <div class="review-banner">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>Call to confirm the emergency, then approve. Responders are notified only after you approve. View has the photo, the map and the team.</span>
+                <span>Open <strong>View</strong> for the photo and the map, call to confirm, then approve or decline it there. After approving, you assign the response team — it's notified then.</span>
             </div>
 
             @forelse($pendingReviewSos as $sos)
                 @include('partials.sos-card', ['sos' => $sos, 'tab' => 'pending'])
-
-                {{-- Decline: pick a reason (the card's Decline button opens this). --}}
-                <div class="modal fade" id="declineModal{{ $sos->id }}" tabindex="-1">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content" style="border-radius:14px;border:none;">
-                            <form action="{{ route('incident.decline', $sos->id) }}" method="POST" class="decline-form"
-                                  data-notifies-citizen="{{ $sos->citizen_id ? '1' : '0' }}">
-                                @csrf
-                                <div class="modal-header border-0 pb-0">
-                                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1.1rem;">Decline this SOS alert?</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                </div>
-                                <div class="modal-body pt-3">
-                                    <div class="decline-who">
-                                        SOS from <strong>{{ $sos->reporter_name }}</strong>{{ $sos->citizen_id ? '' : ' (guest)' }}, sent {{ $sos->created_at->format('M d, g:i A') }}.
-                                    </div>
-                                    <p style="font-size:.82rem;color:#6b7280;margin-bottom:12px;">
-                                        Responders will NOT be dispatched.
-                                        {{ $sos->citizen_id ? 'The reporter will get a notification with this reason.' : 'This SOS was submitted by a guest, so there is no account to notify.' }}
-                                    </p>
-                                    @if(str_contains((string) $sos->location, 'Outside Rosales'))
-                                        <div class="decline-outside">
-                                            <i class="bi bi-exclamation-triangle-fill"></i>
-                                            <span>The GPS pin is outside Rosales. If MDRRMO Rosales can't respond there, choose "Location is outside Rosales / MDRRMO service area".</span>
-                                        </div>
-                                    @endif
-                                    <label class="form-label-m">Reason for declining</label>
-                                    <select name="decline_reason" class="form-control-m" required>
-                                        <option value="" disabled selected>Select a reason...</option>
-                                        <option value="Duplicate of another report already received">Duplicate of another report already received</option>
-                                        <option value="Spam, prank, or test submission">Spam, prank, or test submission</option>
-                                        <option value="Insufficient details to dispatch responders">Insufficient details to dispatch responders</option>
-                                        <option value="Location is outside Rosales / MDRRMO service area">Location is outside Rosales / MDRRMO service area</option>
-                                        <option value="Unable to verify — no credible evidence of an emergency">Unable to verify — no credible evidence of an emergency</option>
-                                        <option value="Reported by mistake (accidental submission)">Reported by mistake (accidental submission)</option>
-                                    </select>
-                                </div>
-                                <div class="modal-footer border-0 pt-0">
-                                    <button type="submit" class="btn-decline-confirm">Decline Alert</button>
-                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
             @empty
                 <div class="empty-state">
                     <i class="bi bi-check2-circle"></i>
@@ -843,59 +781,6 @@
 
         applyFilters();
     })();
-
-    // Decline confirmation — the reason is picked from the dropdown inside
-    // the Bootstrap modal (not free text), same pattern as the Residents
-    // Verification rejection modal. Validates a reason was selected,
-    // closes the modal (firing a SweetAlert while a Bootstrap modal is
-    // still open can cause stacking/focus-trap issues), then asks for one
-    // final confirmation before submitting.
-    document.querySelectorAll('.decline-form').forEach(form => {
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-
-            const reasonSelect = form.querySelector('select[name="decline_reason"]');
-            if (!reasonSelect.value) {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Reason required',
-                    text: 'Please select a reason for declining before continuing.',
-                    confirmButtonText: 'OK',
-                    confirmButtonColor: '#1a3c8f',
-                });
-                return;
-            }
-
-            const notifiesCitizen = form.dataset.notifiesCitizen === '1';
-            const notifyLine = notifiesCitizen
-                ? 'The reporter will get a notification with this reason.'
-                : 'This SOS was submitted by a guest, so there is no account to notify.';
-
-            const parentModalEl = form.closest('.modal');
-            const bsModal = parentModalEl ? bootstrap.Modal.getOrCreateInstance(parentModalEl) : null;
-
-            const confirmDecline = () => {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Decline this SOS alert?',
-                    html: `<div style="text-align:left;font-size:.85em;color:#6b7280;">Declining this SOS alert — responders will NOT be dispatched.<br>${notifyLine}</div>`,
-                    showCancelButton: true,
-                    confirmButtonText: 'Yes, decline',
-                    cancelButtonText: 'Cancel',
-                    confirmButtonColor: '#dc2626',
-                }).then(result => {
-                    if (result.isConfirmed) form.submit();
-                });
-            };
-
-            if (bsModal && parentModalEl.classList.contains('show')) {
-                parentModalEl.addEventListener('hidden.bs.modal', confirmDecline, { once: true });
-                bsModal.hide();
-            } else {
-                confirmDecline();
-            }
-        });
-    });
 </script>
 @include('partials.sos-alert-overlay')
 <script>

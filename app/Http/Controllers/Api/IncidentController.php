@@ -377,8 +377,10 @@ class IncidentController extends Controller
                 $q->where('responders.id', $responder->id);
             })
             // Only the team(s) MDRRMO assigned (Admin\IncidentController::
-            // approve() / updateAssignment()) — plus anyone already on it,
-            // and incidents approved before teams were assigned. MSWD keeps
+            // updateAssignment(), after approving it) — plus anyone already
+            // on it, and incidents approved before teams were assigned (no
+            // team list at all). An approved incident whose team isn't
+            // assigned yet has an empty list, so no team sees it. MSWD keeps
             // seeing everything: its Incident Locations map is for
             // awareness only (it can't accept).
             ->when($responder->agency !== 'MSWD', function ($q) use ($responder) {
@@ -478,6 +480,14 @@ class IncidentController extends Controller
         if ($incident->declined_at !== null) {
             return response()->json([
                 'message' => 'This report was declined by MDRRMO and cannot be accepted.',
+            ], 409);
+        }
+
+        // Approved, but MDRRMO hasn't assigned the team yet — no one was
+        // sent, so there's nothing to accept.
+        if ($incident->awaitingTeam()) {
+            return response()->json([
+                'message' => "MDRRMO hasn't assigned a response team to this incident yet.",
             ], 409);
         }
 
