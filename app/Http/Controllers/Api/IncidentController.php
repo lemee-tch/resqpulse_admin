@@ -12,6 +12,7 @@ use App\Services\ImageAnalysisService;
 use App\Services\IncidentReportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -820,7 +821,7 @@ class IncidentController extends Controller
      *   photo_path       the report's photo, on the public disk
      *   incident_status  so the app can update its own copy
      */
-    public function reportForResponder(Request $request, Incident $incident)
+    public function reportForResponder(Request $request, Incident $incident, IncidentReportService $reports)
     {
         $responder = $request->user();
 
@@ -838,8 +839,18 @@ class IncidentController extends Controller
         $canEdit     = ! $isFinal && ! $underReview && ! ($incident->status === 'resolved' && $report === null);
         $returned    = $canEdit && $incident->report_returned_at !== null && filled($incident->report_return_reason);
 
+        // The team as the PDF lists it, read live (late backups included).
+        if ($report !== null) {
+            $report['team'] = $reports->currentTeam($incident);
+        }
+
         return response()->json([
             'report'          => $report,
+            // The PDF MDRRMO sees (item 48). The phone opens it in its
+            // browser or PDF viewer, which can't send the sign-in token,
+            // so the link carries its own signature — good for 30 minutes.
+            'pdf_url'         => $report !== null ? $this->reportPdfLink($incident) : null,
+            'submitted_at'    => $incident->report_submitted_at?->toIso8601String(),
             'is_final'        => $isFinal,
             'under_review'    => $underReview,
             'can_edit'        => $canEdit,
@@ -853,5 +864,34 @@ class IncidentController extends Controller
                 default      => 'This incident has already been resolved.',
             },
         ]);
+    }
+
+    /**
+     * A link to the report PDF for reportForResponder(): signed and good for
+     * 30 minutes. Signed on its path only, so it still checks out when the
+     * site sits behind a proxy that changes http/https.
+     */
+    private function reportPdfLink(Incident $incident): string
+    {
+        return url(URL::temporarySignedRoute(
+            'responder.report-pdf',
+            now()->addMinutes(30),
+            ['incident' => $incident->id],
+            false
+        ));
+    }
+
+    /**
+     * GET /api/responder/incidents/{incident}/report-pdf?expires=…&signature=…
+     * The MDRRMC Incident Report PDF, as MDRRMO sees it, for the team on the
+     * incident (item 48). The link comes from reportForResponder(), which
+     * only gives it to a responder on the incident; the route checks the
+     * signature instead of a sign-in token (routes/api.php).
+     */
+    public function reportPdfForResponder(Request $request, Incident $incident, IncidentReportService $reports)
+    {
+        abort_unless(is_array($incident->report_data), 404, 'No report was filed for this incident.');
+
+        return $reports->pdfResponse($incident, $request->boolean('download'));
     }
 }

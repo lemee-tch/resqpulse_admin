@@ -38,6 +38,14 @@ Route::post('/responder/login', [ResponderAuthController::class, 'login']);
 Route::post('/incidents', [IncidentController::class, 'store']);
 Route::post('/incidents/sos', [IncidentController::class, 'sos']);
 
+// ── The report PDF for the responders app (item 48) ────────────────
+// The phone opens it in its browser or PDF viewer, which can't send the
+// sign-in token, so the link itself is the key: reportForResponder() gives
+// a responder on the incident a signed link that works for 30 minutes.
+Route::get('/responder/incidents/{incident}/report-pdf', [IncidentController::class, 'reportPdfForResponder'])
+    ->middleware('signed:relative')
+    ->name('responder.report-pdf');
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();

@@ -112,6 +112,9 @@
             flex: 1;
             display: flex;
             flex-direction: column;
+            /* Lets the tables scroll inside it on a phone instead of
+               widening the whole page (it was 916px wide on a 390px phone). */
+            min-width: 0;
         }
 
         /* ── TOPBAR ── */
@@ -195,6 +198,7 @@
         .content {
             padding: 24px 28px;
             flex: 1;
+            min-width: 0;
         }
 
         /* ── STAT CARDS ── */
@@ -305,6 +309,8 @@
         /* Approved, no one has accepted yet. */
         .status-awaiting { color: #c2410c; font-weight: 600; font-size: .75rem; }
         .status-declined { color: #6b7280; font-weight: 600; font-size: .75rem; }
+        /* Responding, and the team sent an Initial report. */
+        .status-initial  { color: #b45309; font-weight: 700; font-size: .75rem; }
 
         /* ── MAP placeholder ── */
         .map-placeholder {
@@ -636,14 +642,16 @@
                                 $priorityLabel = $inc->priority ? ucfirst($inc->priority) : 'Not Set';
                                 // Where it stands (Incident::progressKey()). "Pending" is
                                 // only for reports waiting for approval; approved with no
-                                // one accepted yet is Active · Awaiting Responder.
+                                // one accepted yet is Active · Awaiting Responder. Once the
+                                // team sends a report, it says so (item 46).
+                                $teamReport = $inc->teamReport();
                                 [$statusLabel, $statusClass] = match ($inc->progressKey()) {
                                     'review'     => ['Pending', 'status-pending'],
                                     'declined'   => ['Declined', 'status-declined'],
                                     'needs_team' => ['Active · Needs Team', 'status-awaiting'],
                                     'awaiting'   => ['Active · Awaiting Responder', 'status-awaiting'],
-                                    'responding' => ['On the way', 'status-onway'],
-                                    'for_review' => ['For Review', 'status-review'],
+                                    'responding' => $teamReport ? ['Initial report sent', 'status-initial'] : ['On the way', 'status-onway'],
+                                    'for_review' => ['For Review · Final report', 'status-review'],
                                     default      => ['Resolved', 'status-resolved'],
                                 };
                             @endphp

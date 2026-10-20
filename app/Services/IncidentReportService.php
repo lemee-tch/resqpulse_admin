@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Incident;
 use App\Models\Responder;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * Builds the official "MDRRMC Incident Report" PDF that a responder files
@@ -168,6 +169,49 @@ class IncidentReportService
      * stores it on the private disk. Returns the stored path, or null when
      * dompdf isn't installed.
      */
+    /**
+     * The responding team as the report shows it: read live, so reports
+     * filed before the field existed (and late backups) still list everyone
+     * on the incident. An incident MDRRMO added by hand has no responder
+     * accounts on it, so the team typed on Add Resolved Report is kept.
+     */
+    public function currentTeam(Incident $incident): array
+    {
+        return $this->team($incident)
+            ?: (is_array($incident->report_data) ? ($incident->report_data['team'] ?? []) : []);
+    }
+
+    /**
+     * The report PDF as a response — built first when it's missing (e.g.
+     * dompdf wasn't installed yet when the report was filed). Opens in the
+     * browser, or downloads with $download. Sent this way to the admin
+     * (Admin\IncidentController::reportPdf()) and to the team on the
+     * incident (Api\IncidentController::reportPdfForResponder()).
+     */
+    public function pdfResponse(Incident $incident, bool $download = false)
+    {
+        $disk = Storage::disk(self::DISK);
+        $path = $incident->report_pdf_path;
+
+        if (! $path || ! $disk->exists($path)) {
+            $path = $this->generate($incident);
+            abort_unless($path, 503, 'PDF generator is not installed (composer require barryvdh/laravel-dompdf).');
+            $incident->update(['report_pdf_path' => $path]);
+        }
+
+        // Named by type and date/time, not the incident's ID number.
+        $filename = 'MDRRMC-Incident-Report_'
+            . Str::slug($incident->emergency_type ?: 'incident')
+            . '_' . $incident->created_at->format('Y-m-d_Hi') . '.pdf';
+
+        return $download
+            ? $disk->download($path, $filename)
+            : response($disk->get($path), 200, [
+                'Content-Type'        => 'application/pdf',
+                'Content-Disposition' => "inline; filename=\"{$filename}\"",
+            ]);
+    }
+
     public function generate(Incident $incident): ?string
     {
         if (! self::available() || ! $incident->report_data) {
@@ -179,7 +223,7 @@ class IncidentReportService
         // incident MDRRMO added by hand has no responder accounts on it,
         // so the team typed on Add Resolved Report is kept.
         $report = $incident->report_data;
-        $report['team'] = $this->team($incident) ?: ($report['team'] ?? []);
+        $report['team'] = $this->currentTeam($incident);
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('incident-report-pdf', [
             'incident' => $incident,

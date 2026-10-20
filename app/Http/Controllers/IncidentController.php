@@ -864,26 +864,7 @@ class IncidentController extends Controller
     {
         abort_unless($incident->report_data, 404, 'No report was filed for this incident.');
 
-        $disk = Storage::disk(IncidentReportService::DISK);
-        $path = $incident->report_pdf_path;
-
-        if (! $path || ! $disk->exists($path)) {
-            $path = $reports->generate($incident);
-            abort_unless($path, 503, 'PDF generator is not installed (composer require barryvdh/laravel-dompdf).');
-            $incident->update(['report_pdf_path' => $path]);
-        }
-
-        // Named by type and date/time, not the incident's ID number.
-        $filename = 'MDRRMC-Incident-Report_'
-            . \Illuminate\Support\Str::slug($incident->emergency_type ?: 'incident')
-            . '_' . $incident->created_at->format('Y-m-d_Hi') . '.pdf';
-
-        return $request->boolean('download')
-            ? $disk->download($path, $filename)
-            : response($disk->get($path), 200, [
-                'Content-Type'        => 'application/pdf',
-                'Content-Disposition' => "inline; filename=\"{$filename}\"",
-            ]);
+        return $reports->pdfResponse($incident, $request->boolean('download'));
     }
 
     public function show(Incident $incident)
