@@ -76,8 +76,10 @@ class Incident extends Model
     // reimplement the same "SOS Alert — {type}" formatting themselves.
     protected $appends = ['display_type'];
 
-    // Keep the private PDF storage path out of API JSON.
-    protected $hidden = ['report_pdf_path'];
+    // Never sent to the apps: the private PDF storage path, and the admins'
+    // Internal Note ("admins only" on Incident Details). The responders app
+    // got the note with every incident before (item 47).
+    protected $hidden = ['report_pdf_path', 'admin_notes'];
 
     /**
      * Where an incident is in MDRRMO's process — one per tab on the
@@ -248,6 +250,89 @@ class Incident extends Model
     public function isForReview(): bool
     {
         return $this->status === 'for_review';
+    }
+
+    /**
+     * The report the responding team sent last, while it's with MDRRMO
+     * (item 46): an Initial report until the Final one comes, a Final
+     * report until MDRRMO reviews it. The Incidents and SOS lists tag it,
+     * Incident Details says so at the top, and every admin page shows a
+     * notice when one comes in (partials/report-alert). Null when there's
+     * nothing from the team: no report yet, the Final report was accepted
+     * (resolved), MDRRMO sent it back and the team hasn't sent it again,
+     * or MDRRMO added the incident itself (Add Resolved Report).
+     *
+     *   type      initial  the incident stays Active; the team can update it
+     *             final    it's on For Review, waiting for MDRRMO
+     *   at        when the team sent it
+     *   revision  how many times the team has sent the report (1 = first)
+     *   again     a Final report sent again after MDRRMO returned it
+     *   key       one value per sending, so a notice the admin has seen
+     *             isn't shown again
+     *
+     * @return array{type: string, at: \Illuminate\Support\Carbon, revision: int, again: bool, key: string}|null
+     */
+    public function teamReport(): ?array
+    {
+        if ($this->isManualRecord() || $this->needs_review || $this->declined_at) {
+            return null;
+        }
+
+        $report = is_array($this->report_data) ? $this->report_data : null;
+
+        if ($this->status === 'for_review') {
+            $type = 'final';
+            // Older app versions finish an incident without a report.
+            $at = $this->report_submitted_at ?? $this->updated_at;
+        } elseif (in_array($this->status, ['pending', 'responding'], true)
+            && $report && ($report['report_type'] ?? 'final') === 'initial') {
+            $type = 'initial';
+            $at = $this->reportSentAt($report) ?? $this->updated_at;
+
+            // Sent back by MDRRMO: Initial again, but not new until the
+            // team sends it again.
+            if ($this->report_returned_at && $at->lte($this->report_returned_at)) {
+                return null;
+            }
+        } else {
+            return null;
+        }
+
+        return [
+            'type'     => $type,
+            'at'       => $at,
+            'revision' => max(1, (int) ($report['revision'] ?? 1)),
+            'again'    => $type === 'final' && $this->report_returned_at !== null,
+            'key'      => $this->id . '-' . $at->getTimestamp(),
+        ];
+    }
+
+    /**
+     * How many Final reports are waiting on For Review — the purple counts
+     * next to Incidents and SOS Alerts in the menu.
+     *
+     * @return array{incidents: int, sos: int}
+     */
+    public static function forReviewCounts(): array
+    {
+        $waiting = static::where('status', 'for_review')->whereNull('declined_at');
+
+        return [
+            'incidents' => (clone $waiting)->where('emergency_type', '!=', 'SOS Emergency')->count(),
+            'sos'       => (clone $waiting)->where('emergency_type', 'SOS Emergency')->count(),
+        ];
+    }
+
+    /** When the team last sent the report (report_data's updated_at). */
+    private function reportSentAt(array $report): ?\Illuminate\Support\Carbon
+    {
+        try {
+            return empty($report['updated_at'])
+                ? null
+                : \Illuminate\Support\Carbon::parse($report['updated_at'])->setTimezone(config('app.timezone'));
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     public function citizen()

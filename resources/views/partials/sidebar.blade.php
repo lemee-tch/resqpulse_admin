@@ -7,13 +7,20 @@
     open. The page's own .sidebar / .sidebar-nav styles still apply;
     only the dropdown's styles live here.
 
-    Uses $pendingIncidentsCount / $pendingSosCount from
-    AppServiceProvider's view composer (the red counts).
+    Uses $pendingIncidentsCount / $pendingSosCount (the red counts: waiting
+    for approval) and $forReviewIncidentsCount / $forReviewSosCount (the
+    purple counts: Final reports waiting for review — tap one to open
+    For Review) from AppServiceProvider's view composer.
+
+    It also brings the "Initial / Final report received" notice
+    (partials/report-alert), so every page with the menu has it. That
+    keeps the purple counts up to date too.
 --}}
 @php
     $navActive = fn (string ...$routes) => request()->routeIs(...$routes) ? 'active' : '';
     $userManagementOpen = request()->routeIs('citizen-verification', 'users', 'responder-accounts');
     $countBadge = 'background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;';
+    $reviewTitle = fn (int $n) => $n === 1 ? '1 Final report waiting for your review' : "{$n} Final reports waiting for your review";
 @endphp
 
 <style>
@@ -40,6 +47,16 @@
 
     .sidebar-nav .nav-sub a { padding: 8px 20px 8px 48px; font-size: .8rem; margin: 1px 10px; }
     .sidebar-nav .nav-sub a::before { content: '\2022'; opacity: .8; }
+
+    /* Final reports waiting for review (purple, next to the red count). */
+    .sidebar-nav .nav-review-count {
+        display: inline-flex; align-items: center; gap: 3px; margin-left: 4px;
+        background: #ede9fe; color: #5b21b6; font-size: .65rem; font-weight: 800; line-height: 1.5;
+        padding: 0 7px; border-radius: 20px; cursor: pointer; white-space: nowrap;
+    }
+    .sidebar-nav .nav-review-count[hidden] { display: none; }
+    .sidebar-nav .nav-review-count i { font-size: .62rem; width: auto; }
+    .sidebar-nav .nav-review-count:hover { background: #fff; }
 </style>
 
 <aside class="sidebar" id="sidebar">
@@ -57,12 +74,20 @@
             @if(($pendingIncidentsCount ?? 0) > 0)
                 <span style="{{ $countBadge }}">{{ $pendingIncidentsCount }}</span>
             @endif
+            <span class="nav-review-count" data-review-count="incidents" data-href="{{ route('incident', ['tab' => 'for-review']) }}"
+                  title="{{ $reviewTitle($forReviewIncidentsCount ?? 0) }}" @if(! ($forReviewIncidentsCount ?? 0)) hidden @endif>
+                <i class="bi bi-clipboard2-check"></i><span>{{ $forReviewIncidentsCount ?? 0 }}</span>
+            </span>
         </a>
         <a href="{{ route('sos-alerts') }}" class="{{ $navActive('sos-alerts', 'sos.detail') }}">
             <i class="bi bi-exclamation-octagon-fill"></i> SOS Alerts
             @if(($pendingSosCount ?? 0) > 0)
                 <span style="{{ $countBadge }}">{{ $pendingSosCount }}</span>
             @endif
+            <span class="nav-review-count" data-review-count="sos" data-href="{{ route('sos-alerts', ['tab' => 'for-review']) }}"
+                  title="{{ $reviewTitle($forReviewSosCount ?? 0) }}" @if(! ($forReviewSosCount ?? 0)) hidden @endif>
+                <i class="bi bi-clipboard2-check"></i><span>{{ $forReviewSosCount ?? 0 }}</span>
+            </span>
         </a>
         <a href="{{ route('mapview') }}" class="{{ $navActive('mapview') }}"><i class="bi bi-geo-alt-fill"></i> Map View</a>
         <a href="{{ route('alerts') }}" class="{{ $navActive('alerts') }}"><i class="bi bi-megaphone-fill"></i> Alerts &amp; Broadcast</a>
@@ -93,3 +118,7 @@
         </form>
     </div>
 </aside>
+
+{{-- Outside the <aside>: on phones the menu slides away (a transform),
+     which would carry the notices with it. --}}
+@include('partials.report-alert')

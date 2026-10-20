@@ -9,8 +9,8 @@
     Kept minimal, on two lines (three when there's a team or a decline
     reason to show):
       1. a coloured dot for where it stands, the type (plus the state on
-         Active, and "Report sent back" / "Sent again") and the time that
-         matters on this tab;
+         Active, and "Initial report" / "Report sent back" / "Sent again")
+         and the time that matters on this tab;
       2. who sent it, their number (tap to call) and where;
       3. the team (Active, For Review, Resolved) or the decline reason.
 
@@ -58,6 +58,9 @@
 
     // Approved, but not sent to the responders yet (item 36).
     $needsTeam = $tab === 'active' && $sos->awaitingTeam();
+
+    // Active: the team's Initial report, if they sent one (item 46).
+    $initialReport = $tab === 'active' ? $sos->teamReport() : null;
 
     // Where it stands: the dot's colour.
     $variant = match (true) {
@@ -129,6 +132,11 @@
             @endif
             @if($tab === 'active' && $sos->report_returned_at && $sos->report_return_reason)
                 <span class="sos-flag" title="Sent back: {{ $sos->report_return_reason }}">Report sent back</span>
+            @endif
+            @if($initialReport)
+                <span class="sos-flag sos-flag--initial" title="{{ $initialReport['revision'] > 1 ? 'Initial report updated' : 'Initial report sent' }} {{ $initialReport['at']->format('M d, g:i A') }} — open View to read it">
+                    <i class="bi bi-file-earmark-text"></i>Initial report · {{ $initialReport['at']->gt(now()->subMinute()) ? 'just now' : $initialReport['at']->diffForHumans() }}
+                </span>
             @elseif($tab === 'for-review' && $sos->report_returned_at)
                 <span class="sos-flag" title="Sent again after you returned it">Sent again</span>
             @endif

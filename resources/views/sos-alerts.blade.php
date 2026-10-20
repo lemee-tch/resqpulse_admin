@@ -199,6 +199,15 @@
             font-size: .7rem; font-weight: 700; color: #c2410c; background: #fff7ed;
             padding: 1px 8px; border-radius: 20px;
         }
+        /* Active: the team sent an Initial report (item 46). */
+        .sos-flag--initial { color: #92400e; background: #fef3c7; }
+        .sos-flag i { margin-right: 3px; }
+
+        /* For Review: Final reports waiting — purple, like the count in the menu. */
+        .tab-count {
+            display: inline-block; min-width: 20px; margin-left: 4px; padding: 1px 7px; border-radius: 20px;
+            background: #7c3aed; color: #fff; font-size: .7rem; font-weight: 800; line-height: 1.5; text-align: center;
+        }
 
         .sos-line2 { margin: 5px 0 0 19px; font-size: .82rem; line-height: 1.55; color: #6b7280; overflow-wrap: anywhere; }
         .sos-line2 .sos-sep { margin: 0 6px; color: #d1d5db; }
@@ -440,7 +449,15 @@
         <div class="tab-bar">
             <button class="tab-btn active" data-tab="pending" onclick="switchTab('pending', this)">Pending ({{ $pendingReviewSos->count() }})</button>
             <button class="tab-btn" data-tab="active" onclick="switchTab('active', this)">Active ({{ $activeSos->count() }})</button>
-            <button class="tab-btn" data-tab="for-review" onclick="switchTab('for-review', this)">For Review ({{ $forReviewSos->count() }})</button>
+            {{-- Purple when Final reports are waiting, like the count in the menu. --}}
+            <button class="tab-btn" data-tab="for-review" onclick="switchTab('for-review', this)">
+                For Review
+                @if($forReviewSos->isNotEmpty())
+                    <span class="tab-count" title="Final reports waiting for your review">{{ $forReviewSos->count() }}</span>
+                @else
+                    (0)
+                @endif
+            </button>
             <button class="tab-btn" data-tab="resolved" onclick="switchTab('resolved', this)">Resolved ({{ $resolvedSos->count() }})</button>
             <button class="tab-btn" data-tab="declined" onclick="switchTab('declined', this)">Declined ({{ $declinedSos->count() }})</button>
         </div>

@@ -83,6 +83,11 @@
         .chip-resolved { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
         .chip-declined { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
         .chip-source   { background: #fff; color: #4b5563; border-color: #d1d5db; }
+        /* The team's latest report (item 46) — goes to the report card. */
+        .chip-initial  { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+        .chip-final    { background: #ede9fe; color: #5b21b6; border-color: #c4b5fd; }
+        a.chip { text-decoration: none; }
+        a.chip:hover { filter: brightness(.96); }
         .chip-prio-critical { background: #dc2626; color: #fff; }
         .chip-prio-high     { background: #f97316; color: #fff; }
         .chip-prio-low      { background: #3b82f6; color: #fff; }
@@ -152,6 +157,14 @@
         .tag { display: inline-block; margin-left: 6px; font-size: .66rem; font-weight: 800; padding: 2px 8px; border-radius: 10px; vertical-align: middle; }
         .tag-initial { background: #fef3c7; color: #92400e; }
         .tag-final   { background: #d1fae5; color: #065f46; }
+        /* The team's latest report stands out: an Initial one until the Final
+           one comes, a Final one until it's reviewed. */
+        .o-report { scroll-margin-top: 16px; }
+        .o-report.is-new-initial { border-color: #fcd34d; box-shadow: inset 4px 0 0 #f59e0b; }
+        .o-report.is-new-final   { border-color: #c4b5fd; box-shadow: inset 4px 0 0 #7c3aed; }
+        .new-pill { font-size: .66rem; font-weight: 800; letter-spacing: .04em; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; }
+        .new-pill.initial { background: #fef3c7; color: #92400e; }
+        .new-pill.final   { background: #ede9fe; color: #5b21b6; }
         .narrative { margin-top: 12px; background: #f9fafb; border-left: 3px solid #10b981; border-radius: 8px; padding: 10px 12px; font-size: .85rem; line-height: 1.6; color: #1f2937; white-space: pre-line; overflow-wrap: anywhere; }
         .count-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
         .count-pill { font-size: .75rem; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: #f3f4f6; color: #374151; }
@@ -164,6 +177,7 @@
         .notice-info     { background: #eff6ff; color: #1e40af; }
         .notice-pending  { background: #fffbeb; color: #92400e; }
         .notice-review   { background: #f5f3ff; color: #5b21b6; }
+        .notice-initial  { background: #fef3c7; color: #78350f; }
         .notice-returned { background: #fff7ed; color: #9a3412; }
         .notice-ok       { background: #ecfdf5; color: #065f46; }
         .notice-bad      { background: #fef2f2; color: #991b1b; }
@@ -461,6 +475,11 @@
         $casualtyCounts[$label] = count(array_filter((array) ($report['casualties'][$key] ?? []), 'is_array'));
     }
     $isReturned = $incident->status === 'responding' && $incident->report_returned_at && $incident->report_return_reason;
+    // The team's latest report (Incident::teamReport(), item 46): said at
+    // the top and in Administrative Actions. Opening this page counts as
+    // seeing it for the "report received" notice (partials/report-alert,
+    // see data-report-seen below).
+    $teamReport = $incident->teamReport();
 
     // Response team. Approving sends it to all responders (every team);
     // on Active the admin can notify specific teams. $needsTeam: approved
@@ -510,6 +529,10 @@
             <a href="{{ $backUrl }}" class="back-link"><i class="bi bi-arrow-left"></i> Back to {{ $isSos ? 'SOS Alerts' : 'Incidents' }}</a>
         </div>
 
+        @if($teamReport)
+            <span hidden data-report-seen="{{ $teamReport['key'] }}"></span>
+        @endif
+
         <!-- HEADER -->
         <div class="incident-head prio-{{ $priority ?: 'unset' }}">
             <div class="head-left">
@@ -518,6 +541,12 @@
                     <h1 class="head-title">{{ $incident->display_type ?: 'Incident' }}</h1>
                     <div class="head-badges">
                         <span class="chip {{ $stageClass }}">{{ $stageText }}</span>
+                        @if($teamReport)
+                            <a href="#report" class="chip chip-{{ $teamReport['type'] }}" title="Sent {{ $teamReport['at']->format('M d, g:i A') }} — go to the report">
+                                <i class="bi {{ $teamReport['type'] === 'final' ? 'bi-clipboard2-check-fill' : 'bi-file-earmark-text-fill' }}"></i>
+                                {{ $teamReport['type'] === 'final' ? 'Final report' : 'Initial report' }} · {{ $ago($teamReport['at']) }}
+                            </a>
+                        @endif
                         <span class="chip chip-source">Source: {{ $incident->source_label }}</span>
                         @if($priority)
                             <span class="chip chip-prio-{{ $priority }}">{{ ucfirst($priority) }} priority</span>
@@ -682,10 +711,12 @@
 
                 <!-- RESPONDERS' REPORT -->
                 @if($report || in_array($incident->status, ['for_review', 'resolved'], true))
-                    <section class="card-x o-report">
+                    <section class="card-x o-report{{ $teamReport ? ' is-new-' . $teamReport['type'] : '' }}" id="report">
                         <div class="card-title">
                             {{ $isManual ? 'MDRRMC Incident Report' : "Responders' Report" }}
-                            @if($reportUpdatedAt)
+                            @if($teamReport)
+                                <span class="new-pill {{ $teamReport['type'] }}">{{ $teamReport['type'] === 'final' ? 'Waiting for your review' : ($teamReport['revision'] > 1 ? 'Updated' : 'Sent') }} · {{ $ago($teamReport['at']) }}</span>
+                            @elseif($reportUpdatedAt)
                                 <span class="title-note">{{ ($report['revision'] ?? 1) > 1 ? 'Last updated' : 'Filed' }} {{ $reportUpdatedAt->format('M d, g:i A') }}</span>
                             @endif
                         </div>
@@ -845,8 +876,13 @@
                                     @elseif($report && $reportIsInitial)
                                         <li class="current">
                                             <span class="dot"></span>
-                                            <div class="tl-label">Report — Initial {{ $isReturned ? '(sent back)' : 'filed' }}</div>
-                                            <div class="tl-sub">The team sends the Final report when they're done.</div>
+                                            @if($isReturned && ! $teamReport)
+                                                <div class="tl-label">Final report — waiting for the team to send it again</div>
+                                                <div class="tl-sub">They fix what you sent it back for, then send it as Final.</div>
+                                            @else
+                                                <div class="tl-label">Initial report {{ ($report['revision'] ?? 1) > 1 ? 'updated' : 'sent' }} <span class="tl-time">{{ $reportUpdatedAt?->format('M d, g:i A') }}</span></div>
+                                                <div class="tl-sub">The team sends the Final report when they're done.</div>
+                                            @endif
                                         </li>
                                     @elseif($teamOnIt->isNotEmpty())
                                         <li class="todo"><span class="dot"></span><div class="tl-label">Final report — not yet</div></li>
@@ -961,7 +997,8 @@
                         <div class="notice notice-review">
                             <i class="bi bi-clipboard2-check"></i>
                             <span>
-                                The team sent their <strong>Final report</strong>{{ $incident->report_submitted_at ? ' on ' . $incident->report_submitted_at->format('M d, g:i A') : '' }}.
+                                <strong>{{ $teamOnIt->first()?->full_name ?? 'The team' }}</strong> sent the <strong>Final report</strong>{{ $teamReport && $teamReport['again'] ? ' again' : '' }}
+                                {{ $teamReport ? $ago($teamReport['at']) : '' }}{{ $incident->report_submitted_at ? ' (' . $incident->report_submitted_at->format('M d, g:i A') . ')' : '' }}.
                                 Open it and check the narrative, casualties, actions taken and photo.
                             </span>
                         </div>
@@ -1021,7 +1058,12 @@
                             <div class="notice notice-returned">
                                 <i class="bi bi-arrow-return-left"></i>
                                 <span>
-                                    Report sent back: <strong>{{ rtrim($incident->report_return_reason, '. ') }}</strong>. Waiting for the team to send it again.
+                                    Report sent back: <strong>{{ rtrim($incident->report_return_reason, '. ') }}</strong>.
+                                    @if($teamReport)
+                                        {{ $teamOnIt->first()?->full_name ?? 'The team' }} updated it {{ $ago($teamReport['at']) }} — it's still Initial, and comes back to For Review when they send it as Final.
+                                    @else
+                                        Waiting for the team to send it again.
+                                    @endif
                                     @if($notifiedHelp && $notifiedAt) Asked {{ $teamList($notifiedTeams) }} to help {{ $ago($notifiedAt) }}. @endif
                                 </span>
                             </div>
@@ -1037,6 +1079,23 @@
                                     <strong>No one has accepted yet.</strong>
                                 </span>
                             </div>
+                        @elseif($teamReport)
+                            {{-- The team sent an Initial report (item 46). --}}
+                            <div class="notice notice-initial">
+                                <i class="bi bi-file-earmark-text-fill"></i>
+                                <span>
+                                    <strong>{{ $teamOnIt->first()->full_name }}</strong> {{ $teamReport['revision'] > 1 ? 'updated the' : 'sent an' }} <strong>Initial report</strong> {{ $ago($teamReport['at']) }}.
+                                    They send the Final report when they're done.
+                                    @if($notifiedHelp && $notifiedAt) Asked {{ $teamList($notifiedTeams) }} to help {{ $ago($notifiedAt) }}. @endif
+                                </span>
+                            </div>
+                            @if($report)
+                                <div class="stack" style="margin-bottom:14px;">
+                                    <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="btn-x btn-amber-x btn-block">
+                                        <i class="bi bi-file-earmark-pdf"></i> Open Initial Report
+                                    </a>
+                                </div>
+                            @endif
                         @else
                             <div class="notice notice-info">
                                 <i class="bi bi-lightning-charge-fill"></i>

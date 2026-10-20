@@ -94,6 +94,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/sos-alerts/latest', [IncidentController::class, 'latestSos'])->name('sos-alerts.latest');
     Route::get('/notifications/incidents', [IncidentController::class, 'latestIncidentNotifications'])->name('notifications.incidents');
+    // The "Initial / Final report received" notice on every page (partials/report-alert).
+    Route::get('/notifications/reports', [IncidentController::class, 'latestReports'])->name('notifications.reports');
     // Must stay AFTER /sos-alerts/latest — {incident} is a wildcard and
     // would otherwise swallow "latest" as if it were an incident ID,
     // breaking the SOS overlay's polling (Laravel matches route

@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RESQPULSE – Alerts & Broadcast</title>
+    <title>RESQPULSE – Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -20,237 +20,380 @@
 
         /* ── SIDEBAR ── */
         .sidebar {
-            width: 250px; min-height: 100vh;
+            width: 250px;
+            min-height: 100vh;
             background: #1a3c8f;
-            display: flex; flex-direction: column;
-            position: fixed; top: 0; left: 0; z-index: 100;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0; left: 0;
+            z-index: 100;
         }
+
         .sidebar-brand {
-            display: flex; align-items: center; gap: 10px;
-            padding: 18px 16px 16px;    
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 18px 16px 16px;
             border-bottom: 1px solid rgba(255,255,255,.12);
         }
+
         .sidebar-brand img {
-            width: 38px; height: 38px; border-radius: 50%;
-            object-fit: cover; border: 2px solid rgba(255,255,255,.3);
+            width: 38px; height: 38px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid rgba(255,255,255,.3);
         }
+
         .sidebar-brand-text .title {
-            font-family: 'Barlow', sans-serif; font-weight: 800;
-            font-size: .85rem; color: #fff; letter-spacing: .5px; line-height: 1.1;
+            font-family: 'Barlow', sans-serif;
+            font-weight: 800;
+            font-size: .85rem;
+            color: #fff;
+            letter-spacing: .5px;
+            line-height: 1.1;
         }
-        .sidebar-brand-text .sub { font-size: .65rem; color: rgba(255,255,255,.6); letter-spacing: .5px; }
-        .sidebar-nav { flex: 1; padding: 18px 0; }
+
+        .sidebar-brand-text .sub {
+            font-size: .65rem;
+            color: rgba(255,255,255,.6);
+            letter-spacing: .5px;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 18px 0;
+        }
+
         .sidebar-nav a {
-            display: block; padding: 10px 20px;
-            font-size: .82rem; font-weight: 500;
-            color: rgba(255,255,255,.75); text-decoration: none;
-            border-left: 3px solid transparent; transition: all .2s;
+            display: block;
+            padding: 10px 20px;
+            font-size: .82rem;
+            font-weight: 500;
+            color: rgba(255,255,255,.75);
+            text-decoration: none;
+            border-left: 3px solid transparent;
+            transition: all .2s;
         }
-        .sidebar-nav a:hover { color: #fff; background: rgba(255,255,255,.08); }
+
+        .sidebar-nav a:hover {
+            color: #fff;
+            background: rgba(255,255,255,.08);
+        }
+
         .sidebar-nav a.active {
-            color: #fff; font-weight: 700;
-            border-left-color: #fff; background: rgba(255,255,255,.1);
+            color: #fff;
+            font-weight: 700;
+            border-left-color: #fff;
+            background: rgba(255,255,255,.1);
         }
-        .sidebar-logout { padding: 16px 20px; border-top: 1px solid rgba(255,255,255,.12); }
+
+        .sidebar-logout {
+            padding: 16px 20px;
+            border-top: 1px solid rgba(255,255,255,.12);
+        }
+
         .sidebar-logout a {
-            display: flex; align-items: center; gap: 8px;
-            font-size: .82rem; color: rgba(255,255,255,.75);
-            text-decoration: none; font-weight: 500; transition: color .2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: .82rem;
+            color: rgba(255,255,255,.75);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color .2s;
         }
+
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 250px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
-        .content { padding: 32px 36px; flex: 1; min-width: 0; }
-
-        .page-title {
-            font-family: 'Barlow', sans-serif; font-weight: 800;
-            font-size: 1.5rem; color: #111827; margin-bottom: 18px;
-        }
-
-        /* ── TABS ── */
-        .tab-bar {
-            display: flex; gap: 0;
-            border-bottom: 2px solid #e5e7eb;
-            margin-bottom: 24px;
-        }
-        .tab-btn {
-            background: none; border: none;
-            padding: 10px 20px;
-            font-size: .85rem; font-weight: 600;
-            color: #6b7280; cursor: pointer;
-            border-bottom: 2px solid transparent;
-            margin-bottom: -2px;
-            transition: color .2s, border-color .2s;
-        }
-        .tab-btn.active { color: #1a3c8f; border-bottom-color: #1a3c8f; }
-        .tab-btn:hover { color: #1a3c8f; }
-
-        /* Tab panels */
-        .tab-panel { display: none; }
-        .tab-panel.active { display: block; }
-
-        /* ── SECTION TITLE ── */
-        .section-title {
-            font-family: 'Barlow', sans-serif; font-weight: 700;
-            font-size: 1rem; color: #111827; margin-bottom: 14px;
-        }
-
-        /* ── ALERT CARDS ── */
-        .alert-card {
-            background: #fff;
-            border: 1px solid #e5e7eb;
-            border-radius: 12px;
-            padding: 16px 20px;
+        .main-wrap {
+            margin-left: 250px  ;
+            flex: 1;
             display: flex;
-            align-items: flex-start;
-            gap: 16px;
-            margin-bottom: 12px;
-            transition: box-shadow .2s;
-        }
-        .alert-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.07); }
-
-        .alert-icon {
-            width: 44px; height: 44px; flex-shrink: 0;
-            border-radius: 10px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.3rem;
+            flex-direction: column;
+            /* Lets the tables scroll inside it on a phone instead of
+               widening the whole page (it was 916px wide on a 390px phone). */
+            min-width: 0;
         }
 
-        .alert-body { flex: 1; }
-        .alert-title {
-            font-weight: 700; font-size: .9rem;
-            color: #111827; margin-bottom: 3px;
-        }
-        .alert-desc { font-size: .8rem; color: #6b7280; line-height: 1.5; margin-bottom: 4px; }
-        .alert-time { font-size: .73rem; color: #9ca3af; }
-        .alert-time .clears { color: #6b7280; font-weight: 600; }
-
-        .empty-state {
-            text-align: center; padding: 40px; color: #9ca3af; font-size: .85rem;
-        }
-
-        /* ── CLEARING PAST ALERTS (panel #22) ── */
-        .list-head {
-            display: flex; align-items: flex-start; justify-content: space-between;
-            gap: 12px; margin-bottom: 14px;
-        }
-        .list-head .section-title { margin-bottom: 2px; display: flex; align-items: center; gap: 8px; }
-        .list-sub { font-size: .78rem; color: #6b7280; line-height: 1.45; }
-        .count-pill {
-            font-family: 'Inter', sans-serif; font-size: .7rem; font-weight: 700;
-            background: #e0e7ff; color: #1a3c8f; padding: 2px 9px; border-radius: 20px;
-        }
-        .btn-quiet {
-            display: inline-flex; align-items: center; gap: 6px;
-            background: #fff; color: #374151;
-            border: 1.5px solid #d1d5db; border-radius: 8px;
-            padding: 7px 14px; font-size: .78rem; font-weight: 600;
-            cursor: pointer; white-space: nowrap;
-            transition: border-color .2s, color .2s, background .2s;
-        }
-        .btn-quiet:hover { border-color: #dc2626; color: #dc2626; background: #fef2f2; }
-        .btn-quiet.sm { padding: 5px 11px; font-size: .74rem; }
-        .alert-card form { margin: 0; flex-shrink: 0; }
-
-        .status-note { font-size: .7rem; color: #9ca3af; margin-top: 3px; white-space: nowrap; }
-        .badge-showing { background: #d1fae5; color: #065f46; font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
-        .badge-cleared { background: #f3f4f6; color: #6b7280; font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
-        .history-table tr.is-cleared td { color: #9ca3af; }
-        .history-table tr.is-cleared td:first-child { color: #6b7280 !important; }
-        .row-act {
-            background: none; border: 1px solid #e5e7eb; border-radius: 7px;
-            padding: 4px 10px; font-size: .74rem; font-weight: 600; color: #374151;
-            cursor: pointer; white-space: nowrap;
-        }
-        .row-act:hover { border-color: #dc2626; color: #dc2626; background: #fef2f2; }
-        .history-table td form { margin: 0; }
-
-        @media (max-width: 560px) {
-            .list-head { flex-direction: column; }
-            .alert-card { flex-wrap: wrap; }
-            .alert-card form { margin-left: 60px; }
-        }
-
-        /* ── QUICK BROADCAST ── */
-        .broadcast-card {
+        /* ── TOPBAR ── */
+        .topbar {
             background: #fff;
-            border: 1px solid #e5e7eb;
-            border-radius: 12px;
-            padding: 20px 22px;
-            margin-top: 24px;
+            padding: 12px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #e5e7eb;
+            position: sticky; top: 0;
+            z-index: 50;
         }
-        .broadcast-title {
-            font-family: 'Barlow', sans-serif; font-weight: 700;
-            font-size: 1rem; color: #111827; margin-bottom: 14px;
-        }
-        .form-row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-        .form-group { flex: 1; min-width: 180px; }
-        .form-label-s { font-size: .8rem; font-weight: 600; color: #374151; margin-bottom: 5px; display: block; }
-        .form-input-s {
-            width: 100%; border: 1.5px solid #d1d5db; border-radius: 8px;
-            padding: 9px 13px; font-size: .85rem; font-family: 'Inter', sans-serif;
-            color: #374151; background: #fafafa; transition: border-color .2s;
-        }
-        .form-input-s:focus { outline: none; border-color: #1a3c8f; background: #fff; }
-        select.form-input-s { cursor: pointer; }
 
-        .custom-field { margin-top: 8px; display: none; }
+        .topbar-title {
+            font-family: 'Barlow', sans-serif;
+            font-weight: 800;
+            font-size: 1.3rem;
+            color: #111827;
+        }
 
-        .broadcast-textarea {
-            width: 100%;
-            border: 1.5px solid #d1d5db;
-            border-radius: 8px;
-            padding: 12px 14px;
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .topbar-bell {
+            font-size: 1.2rem;
+            color: #6b7280;
+            cursor: pointer;
+            position: relative;
+        }
+        .notif-badge {
+            position: absolute; top: -6px; right: -8px;
+            background: #dc2626; color: #fff;
+            font-size: .62rem; font-weight: 800;
+            min-width: 16px; height: 16px; border-radius: 20px;
+            display: none; align-items: center; justify-content: center;
+            padding: 0 4px; line-height: 1;
+        }
+        .notif-dropdown {
+            display: none;
+            position: absolute; top: 32px; right: -10px;
+            width: 320px; max-height: 380px; overflow-y: auto;
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+            box-shadow: 0 12px 32px rgba(0,0,0,.14);
+            z-index: 200; cursor: default;
+        }
+        .notif-dropdown-header {
+            font-family: 'Barlow', sans-serif; font-weight: 800; font-size: .85rem; color: #111827;
+            padding: 12px 16px; border-bottom: 1px solid #f3f4f6;
+        }
+        .notif-item {
+            display: block; padding: 10px 16px; text-decoration: none;
+            border-bottom: 1px solid #f9fafb; transition: background .15s;
+        }
+        .notif-item:hover { background: #f8faff; }
+        .notif-item-type { font-size: .82rem; font-weight: 700; color: #111827; }
+        .notif-item-loc { font-size: .76rem; color: #6b7280; margin-top: 1px; }
+        .notif-item-time { font-size: .7rem; color: #9ca3af; margin-top: 3px; }
+        .notif-empty { padding: 20px 16px; text-align: center; color: #9ca3af; font-size: .82rem; }
+        .notif-view-all {
+            display: block; text-align: center; padding: 10px;
+            font-size: .8rem; font-weight: 700; color: #1a3c8f; text-decoration: none;
+        }
+        .notif-view-all:hover { background: #f8faff; }
+
+        .topbar-user {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             font-size: .85rem;
-            font-family: 'Inter', sans-serif;
+            font-weight: 600;
             color: #374151;
-            resize: vertical;
-            height: 90px;
-            transition: border-color .2s;
-            background: #fafafa;
+        }
+
+        .topbar-user i { font-size: 1.4rem; color: #6b7280; }
+
+        /* ── CONTENT ── */
+        .content {
+            padding: 24px 28px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        /* ── STAT CARDS ── */
+        .stat-card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 18px 20px;
+            border: 1px solid #e5e7eb;
+            transition: box-shadow .2s, border-color .2s;
+        }
+
+        a.stat-card-link {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        a.stat-card-link:hover .stat-card {
+            box-shadow: 0 4px 14px rgba(26,60,143,.12);
+            border-color: #1a3c8f;
+        }
+
+        .stat-label {
+            font-size: .75rem;
+            color: #6b7280;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-family: 'Barlow', sans-serif;
+            font-weight: 800;
+            font-size: 2rem;
+            color: #111827;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+
+        .stat-badge {
+            font-size: .72rem;
+            font-weight: 600;
+        }
+
+        /* ── PANEL CARDS ── */
+        .panel-card {
+            background: #fff;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+            padding: 18px 20px;
+            height: 100%;
+        }
+
+        .panel-title {
+            font-family: 'Barlow', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+            color: #111827;
             margin-bottom: 14px;
         }
-        .broadcast-textarea:focus { outline: none; border-color: #1a3c8f; background: #fff; }
-        .broadcast-textarea::placeholder { color: #9ca3af; }
 
-        .btn-send {
-            background: #1a3c8f; color: #fff;
-            border: none; border-radius: 8px;
-            padding: 10px 24px;
-            font-family: 'Barlow', sans-serif; font-weight: 700;
-            font-size: .88rem; cursor: pointer;
+        .panel-link {
+            font-size: .78rem;
+            color: #1a3c8f;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .panel-link:hover { text-decoration: underline; color: #1a3c8f; }
+
+        /* ── INCIDENT TABLE ── */
+        .incident-table {
+            width: 100%;
+            font-size: .78rem;
+        }
+
+        .incident-table th {
+            font-weight: 600;
+            color: #374151;
+            padding: 6px 10px;
+            border-bottom: 1px solid #f0f0f0;
             white-space: nowrap;
-            transition: background .2s, box-shadow .2s;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .btn-send:hover { background: #152f72; box-shadow: 0 4px 14px rgba(26,60,143,.3); }
-        .btn-send:disabled { background: #9ca3af; cursor: not-allowed; box-shadow: none; }
-
-        .push-note {
-            font-size: .76rem; color: #6b7280; margin-top: 10px;
-            display: flex; align-items: center; gap: 6px;
         }
 
-        /* ── HISTORY TABLE ── */
-        .history-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
-        .history-table th {
-            padding: 12px 16px; font-weight: 700; color: #374151;
-            background: #f9fafb; border-bottom: 1px solid #e5e7eb;
-            text-align: left;
+        .incident-table td {
+            padding: 8px 10px;
+            color: #4b5563;
+            border-bottom: 1px solid #f9fafb;
+            vertical-align: middle;
         }
-        .history-table td {
-            padding: 13px 16px; color: #4b5563;
-            border-bottom: 1px solid #f3f4f6; vertical-align: middle;
+
+        .badge-priority {
+            font-size: .7rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 20px;
         }
-        .history-table tr:last-child td { border-bottom: none; }
-        .history-table tr:hover td { background: #f9fafb; }
 
-        .badge-audience { font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; color: #1f2937; white-space: nowrap; }
+        .priority-critical { color: #dc2626; }
+        .priority-high     { color: #f97316; }
+        .priority-moderate { color: #10b981; }
+        .priority-low      { color: #3b82f6; }
 
-        /* Toast */
-        .toast-wrap {
-            position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+        .status-pending  { color: #f97316; font-weight: 600; font-size: .75rem; }
+        .status-onway    { color: #3b82f6; font-weight: 600; font-size: .75rem; }
+        .status-resolved { color: #10b981; font-weight: 600; font-size: .75rem; }
+        .status-review   { color: #7c3aed; font-weight: 600; font-size: .75rem; }
+        /* Approved, no one has accepted yet. */
+        .status-awaiting { color: #c2410c; font-weight: 600; font-size: .75rem; }
+        .status-declined { color: #6b7280; font-weight: 600; font-size: .75rem; }
+        /* Responding, and the team sent an Initial report. */
+        .status-initial  { color: #b45309; font-weight: 700; font-size: .75rem; }
+
+        /* ── MAP placeholder ── */
+        .map-placeholder {
+            width: 100%;
+            height: 200px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #e8edf5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #9ca3af;
+            font-size: .8rem;
+            position: relative;
+        }
+
+        .map-placeholder iframe,
+        .map-placeholder #dashboardMap {
+            width: 100%; height: 100%;
+            border: none;
+            pointer-events: none; /* clicks fall through to the wrapping link */
+        }
+
+        .map-link-card {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .map-link-card .map-placeholder {
+            transition: box-shadow .2s;
+        }
+
+        .map-link-card:hover .map-placeholder {
+            box-shadow: 0 0 0 2px #1a3c8f inset;
+        }
+
+        .map-link-card:hover .map-overlay-hint {
+            opacity: 1;
+        }
+
+        .map-overlay-hint {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(26,60,143,.55);
+            color: #fff;
+            font-family: 'Barlow', sans-serif;
+            font-weight: 700;
+            font-size: .9rem;
+            gap: 8px;
+            opacity: 0;
+            transition: opacity .2s;
+            pointer-events: none;
+        }
+
+        /* chart containers */
+        .chart-wrap { position: relative; }
+
+        .chart-link-card {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+            transition: box-shadow .2s, border-color .2s;
+            border-radius: 12px;
+        }
+        .chart-link-card:hover {
+            box-shadow: 0 4px 14px rgba(26,60,143,.12);
+        }
+        .chart-link-card:hover .panel-card {
+            border-color: #1a3c8f;
+        }
+
+        .stat-grid-5 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        @media (min-width: 768px) {
+            .stat-grid-5 { grid-template-columns: repeat(5, 1fr); }
         }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
@@ -308,7 +451,7 @@
                 padding-bottom: 88px !important;
             }
         }
-    
+
         /* ── App-style nav polish ── */
         .sidebar-nav a {
             display: flex;
@@ -368,22 +511,10 @@
 </head>
 <body>
 
-@php
-    // Audience the broadcast is targeted at — replaces the old
-    // "Alerts / Updates" category. Determines both who receives the
-    // push notification (see Admin\AlertController::store) and how
-    // it's displayed here.
-    $audienceMeta = [
-        'Citizens'   => ['emoji' => '👥', 'bg' => '#dbeafe', 'label' => 'Citizens'],
-        'Responders' => ['emoji' => '🚨', 'bg' => '#ffedd5', 'label' => 'Responders'],
-        'Both'       => ['emoji' => '📢', 'bg' => '#ede9fe', 'label' => 'Both'],
-    ];
-@endphp
-
-<!-- ════ SIDEBAR ════ -->
+<!-- ════════════ SIDEBAR ════════════ -->
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 <nav class="bottom-tab-bar">
-    <a href="{{ route('dashboard') }}"><i class="bi bi-speedometer2"></i><span>Home</span></a>
+    <a href="{{ route('dashboard') }}" class="active"><i class="bi bi-speedometer2"></i><span>Home</span></a>
     <a href="{{ route('incident') }}"><i class="bi bi-clipboard2-pulse"></i><span>Incidents</span>
         @if(($pendingIncidentsCount ?? 0) > 0)
             <span class="tab-badge">{{ $pendingIncidentsCount }}</span>
@@ -393,393 +524,627 @@
             <span class="tab-badge">{{ $pendingSosCount }}</span>
         @endif</a>
     <a href="{{ route('mapview') }}"><i class="bi bi-geo-alt-fill"></i><span>Map</span></a>
-    <a href="javascript:void(0)" id="mobileMenuBtn" class="active"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
+    <a href="javascript:void(0)" id="mobileMenuBtn"><i class="bi bi-grid-3x3-gap-fill"></i><span>More</span></a>
 </nav>
 @include('partials.sidebar')
 
-<!-- ════ MAIN ════ -->
+<!-- ════════════ MAIN ════════════ -->
 <div class="main-wrap">
-    <div class="content">
-        <div class="page-title">Alerts &amp; Broadcast</div>
 
-        <!-- TABS -->
-        <div class="tab-bar">
-            <button class="tab-btn active" onclick="switchTab('active', this)">Active Alerts</button>
-            <button class="tab-btn" onclick="switchTab('history', this)">Broadcast History</button>
-        </div>
-
-        <!-- ══ TAB: ACTIVE ALERTS ══ -->
-        <div id="tab-active" class="tab-panel active">
-            {{-- What the apps show right now. Each alert clears itself when
-                 its time is up (picked when sending); Clear removes it
-                 sooner. Cleared alerts stay in Broadcast History. --}}
-            <div class="list-head">
-                <div>
-                    <div class="section-title">In the apps now <span class="count-pill">{{ $showingAlerts->count() }}</span></div>
-                </div>
-                @if($showingAlerts->count() > 1)
-                    <form method="POST" action="{{ route('alerts.clear-all') }}" class="clear-all-form" data-count="{{ $showingAlerts->count() }}">
-                        @csrf
-                        <button type="submit" class="btn-quiet"><i class="bi bi-x-circle"></i> Clear all</button>
-                    </form>
-                @endif
-            </div>
-
-            @forelse($showingAlerts as $alert)
-                @php $meta = $audienceMeta[$alert->type] ?? $audienceMeta['Citizens']; @endphp
-                <div class="alert-card">
-                    <div class="alert-icon" style="background: {{ $meta['bg'] }};">
-                        {{ $meta['emoji'] }}
-                    </div>
-                    <div class="alert-body">
-                        <div class="alert-title">{{ $alert->title }}</div>
-                        @if($alert->subtitle)
-                            <div class="alert-desc" style="font-weight:600;color:#374151;">{{ $alert->subtitle }}</div>
-                        @endif
-                        <div class="alert-desc">{{ $alert->body }}</div>
-                        <div class="alert-time">
-                            {{ $alert->created_at->format('M d, Y g:i A') }} · Sent to {{ $meta['label'] }}
-                            @if($alert->clearsIn())
-                                · <span class="clears" title="Clears from the apps {{ $alert->expires_at->format('M d, Y g:i A') }}">Clears in {{ $alert->clearsIn() }}</span>
-                            @endif
-                        </div>
-                    </div>
-                    <form method="POST" action="{{ route('alerts.clear', $alert) }}" class="clear-form"
-                          data-title="{{ $alert->title }}" data-apps="{{ $alert->appsLabel() }}">
-                        @csrf
-                        <button type="submit" class="btn-quiet sm" title="Clear it from the apps now"><i class="bi bi-x-lg"></i> Clear</button>
-                    </form>
-                </div>
-            @empty
-                <div class="empty-state">
-                    {{ $alerts->isEmpty() ? 'No broadcasts sent yet. Use the form below to send your first one.' : 'No alerts in the apps right now. Past alerts are in Broadcast History.' }}
-                </div>
-            @endforelse
-
-            <!-- Quick Broadcast -->
-            <div class="broadcast-card">
-                <div class="broadcast-title">Quick Broadcast</div>
-
-                <form method="POST" action="{{ route('alerts.store') }}" id="broadcastForm">
-                    @csrf
-
-                    @php
-                        // Same barangay list used across the citizen-facing app
-                        // (register.dart / report_incident.dart) so location
-                        // options here stay consistent with citizen records.
-                        $barangays = [
-                            'Acop','Bakitbakit','Balingcanaway','Cabalaoangan Norte','Cabalaoangan Sur',
-                            'Calanutan','Camangaan','Capitan Tomas','Carmay East','Carmay West',
-                            'Carmen East','Carmen West','Casanicolasan','Coliling','Don Antonio Village',
-                            'Guiling','Palakipak','Pangaoan','Rabago','Rizal','Salvacion','San Angel',
-                            'San Antonio','San Bartolome','San Isidro','San Luis','San Pedro East',
-                            'San Pedro West','San Vicente','Station District','Tomana East','Tomana West',
-                            'Zone I (Poblacion)','Zone II (Poblacion)','Zone III (Poblacion)',
-                            'Zone IV (Poblacion)','Zone V (Poblacion)',
-                        ];
-
-                        $titlePresets = $titlePresets ?? [];
-
-                        // value => message template. Keys are just labels shown
-                        // in the picker; selecting one fills the textarea below,
-                        // which stays fully editable before sending.
-                        $messageTemplates = [
-                            'Typhoon / heavy rain' => 'Residents are advised to stay indoors, secure loose objects, and avoid unnecessary travel until the weather advisory is lifted.',
-                            'Flood warning' => 'Flooding is expected in low-lying areas. Residents in affected barangays are advised to move to higher ground or the nearest evacuation center.',
-                            'Earthquake advisory' => 'A recent earthquake has been recorded in the area. Please check your home and surroundings for damage, and report any injuries or structural damage to MDRRMO.',
-                            'Fire warning' => 'A fire incident has been reported. Residents in the vicinity are advised to evacuate calmly and avoid the affected area to allow responders clear access.',
-                            'Evacuation order' => 'Please proceed to the nearest designated evacuation center immediately and bring your emergency go-bag. Follow instructions from barangay officials and responders.',
-                            'Water interruption' => 'Water service interruption is scheduled today from [start time] to [end time] due to maintenance. Please store enough water in advance.',
-                            'Power interruption' => 'A power interruption is scheduled today from [start time] to [end time] due to maintenance work in your area.',
-                            'All clear' => 'This is to inform all residents that the previous warning has been lifted. It is now safe to resume normal activities. Stay alert for further advisories.',
-                        ];
-                    @endphp
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label-s">Alert Title</label>
-                            <select class="form-input-s" id="titleSelect" name="title" required
-                                    onchange="toggleCustom(this, document.getElementById('titleCustom'), 'title')">
-                                <option value="" disabled selected>Select a title...</option>
-                                @foreach($titlePresets as $preset)
-                                    <option value="{{ $preset }}">{{ $preset }}</option>
-                                @endforeach
-                                @if(($customTitles ?? collect())->isNotEmpty())
-                                    <optgroup label="Previously used">
-                                        @foreach($customTitles as $custom)
-                                            <option value="{{ $custom }}">{{ $custom }}</option>
-                                        @endforeach
-                                    </optgroup>
-                                @endif
-                                <option value="__custom__">Other (type custom title)</option>
-                            </select>
-                            <input type="text" id="titleCustom" class="form-input-s custom-field"
-                                   placeholder="Enter custom alert title">
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label-s">Send To</label>
-                            <select name="type" class="form-input-s" required>
-                                <option value="Citizens">Citizens</option>
-                                <option value="Responders">Responders</option>
-                                <option value="Both">Both</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label-s">Location / Barangay</label>
-                            <select class="form-input-s" id="locationSelect" name="subtitle"
-                                    onchange="toggleCustom(this, document.getElementById('locationCustom'), 'subtitle')">
-                                <option value="" selected>-- Optional --</option>
-                                <option value="Rosales, Pangasinan">Rosales, Pangasinan (Municipality-wide)</option>
-                                @foreach($barangays as $brgy)
-                                    <option value="Brgy. {{ $brgy }}, Rosales">Brgy. {{ $brgy }}</option>
-                                @endforeach
-                                <option value="__custom__">Other (type custom location)</option>
-                            </select>
-                            <input type="text" id="locationCustom" class="form-input-s custom-field"
-                                   placeholder="Enter custom location">
-                        </div>
-
-                        {{-- Panel #22: past alerts clear themselves from the apps. --}}
-                        <div class="form-group">
-                            <label class="form-label-s" for="clearAfter">Clears from the apps after</label>
-                            <select name="clear_after" id="clearAfter" class="form-input-s">
-                                @foreach($clearAfterDays as $days)
-                                    <option value="{{ $days }}" {{ (int) old('clear_after', $defaultClearAfter) === $days ? 'selected' : '' }}>
-                                        {{ $days === 1 ? '1 day' : $days . ' days' }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                    </div>
-
-                    <label class="form-label-s">Quick Message Template (optional)</label>
-                    <select class="form-input-s" style="margin-bottom:10px;"
-                            onchange="applyMessageTemplate(this.value)">
-                        <option value="" selected>-- Select a template to auto-fill the message, then edit as needed --</option>
-                        @foreach($messageTemplates as $label => $template)
-                            <option value="{{ $template }}">{{ $label }}</option>
-                        @endforeach
-                    </select>
-
-                    <label class="form-label-s">Message</label>
-                    <textarea id="messageBody" name="body" class="broadcast-textarea" placeholder="Type your message here, or pick a template above..." required></textarea>
-
-                    <button type="submit" class="btn-send">
-                        <i class="bi bi-broadcast"></i> Send Broadcast
-                    </button>
-
-
-                    <div class="push-note">
-                        <i class="bi bi-info-circle"></i>
-                        This sends a real push notification to whichever audience you select above and adds it to their Alerts. It clears from their Alerts by itself after the time you pick.
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- ══ TAB: BROADCAST HISTORY ══ -->
-        <div id="tab-history" class="tab-panel">
-            <div class="list-head">
-                <div>
-                    <div class="section-title">Broadcast History</div>
-                    <div class="list-sub">Every broadcast sent. Cleared ones no longer show in the apps; delete one to remove it from this list too.</div>
+    <!-- TOPBAR -->
+    <div class="topbar">
+        <div class="topbar-title">Dashboard Overview</div>
+        <div class="topbar-right">
+            <div class="topbar-bell" id="notifBell">
+                <i class="bi bi-bell"></i>
+                <span class="notif-badge" id="notifBadge"></span>
+                <div class="notif-dropdown" id="notifDropdown">
+                    <div class="notif-dropdown-header">Recent Reports</div>
+                    <div id="notifList"></div>
+                    <a href="{{ route('incidents.overview') }}" class="notif-view-all">View all incidents</a>
                 </div>
             </div>
-            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-                <table class="history-table">
-                    <thead>
-                        <tr>
-                            <th>Title</th>
-                            <th>Message</th>
-                            <th>Sent To</th>
-                            <th>Sent By</th>
-                            <th>Date &amp; Time</th>
-                            <th>Status</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($alerts as $alert)
-                        @php
-                            $meta    = $audienceMeta[$alert->type] ?? $audienceMeta['Citizens'];
-                            $showing = $alert->isShowing();
-                        @endphp
-                        <tr class="{{ $showing ? '' : 'is-cleared' }}">
-                            <td style="font-weight:600;color:#111827;">{{ $alert->title }}</td>
-                            <td>{{ \Illuminate\Support\Str::limit($alert->body, 60) }}</td>
-                            <td>
-                                <span class="badge-audience" style="background: {{ $meta['bg'] }};">
-                                    {{ $meta['emoji'] }} {{ $meta['label'] }}
-                                </span>
-                            </td>
-                            <td>{{ $alert->user->name ?? 'MDRRMO Admin' }}</td>
-                            <td>{{ $alert->created_at->format('M d, Y g:i A') }}</td>
-                            <td>
-                                @if($showing)
-                                    <span class="badge-showing">In the apps</span>
-                                    @if($alert->expires_at)
-                                        <div class="status-note" title="{{ $alert->expires_at->format('M d, Y g:i A') }}">clears {{ $alert->expires_at->format('M d') }}</div>
-                                    @endif
-                                @else
-                                    <span class="badge-cleared">Cleared</span>
-                                    <div class="status-note" title="{{ $alert->clearedOn()?->format('M d, Y g:i A') }}">
-                                        {{ $alert->clearedAutomatically() ? 'by itself' : 'by ' . ($alert->clearedBy->name ?? 'an admin') }}, {{ $alert->clearedOn()?->format('M d') }}
-                                    </div>
-                                @endif
-                            </td>
-                            <td>
-                                @if($showing)
-                                    <form method="POST" action="{{ route('alerts.clear', $alert) }}" class="clear-form"
-                                          data-title="{{ $alert->title }}" data-apps="{{ $alert->appsLabel() }}">
-                                        @csrf
-                                        <button type="submit" class="row-act" title="Clear it from the apps now">Clear</button>
-                                    </form>
-                                @else
-                                    <form method="POST" action="{{ route('alerts.destroy', $alert) }}" class="delete-form" data-title="{{ $alert->title }}">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="row-act" title="Delete it from Broadcast History"><i class="bi bi-trash3"></i> Delete</button>
-                                    </form>
-                                @endif
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="7" class="empty-state">No broadcast history yet.</td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
+            <audio id="notifSound" src="{{ asset('sounds/sos-alert.mp3') }}" preload="auto"></audio>
+            <div class="topbar-user">
+
+                <a href="{{ route('audit-log') }}" style="text-decoration:none;color:inherit;">
+                    <i class="bi bi-person-circle"></i>
+                     {{ auth()->user()->name }}
+                </a>
             </div>
-        </div>
-
-    </div><!-- /content -->
-</div>
-
-<!-- Toast -->
-<div class="toast-wrap">
-    <div id="toastMsg" class="toast align-items-center {{ session('error') ? 'text-bg-danger' : 'text-bg-success' }} border-0" role="alert" aria-live="assertive" aria-atomic="true">
-        <div class="d-flex">
-            <div class="toast-body fw-semibold" id="toastText">{{ session('error') ?: session('success') }}</div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
         </div>
     </div>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+        <div class="stat-grid-5">
+            <a href="{{ route('incidents.overview') }}" class="stat-card-link">
+                <div class="stat-card">
+                    <div class="stat-label">Total Incidents</div>
+                    <div class="stat-value">{{ $totalIncidents }}</div>
+                    <div class="stat-badge text-success">+{{ $incidentsToday }} today</div>
+                </div>
+            </a>
+
+            <a href="{{ route('critical') }}" class="stat-card-link">
+                <div class="stat-card">
+                    <div class="stat-label text-danger">Critical</div>
+                    <div class="stat-value" style="color:#dc2626;">{{ $criticalIncidents }}</div>
+                    <div class="stat-badge text-danger">High Priority</div>
+                </div>
+            </a>
+
+            <a href="{{ route('sos-alerts') }}" class="stat-card-link">
+                <div class="stat-card">
+                    <div class="stat-label text-danger">SOS Alerts</div>
+                    <div class="stat-value" style="color:#dc2626;">{{ $pendingSosCount ?? 0 }}</div>
+                    <div class="stat-badge text-danger">
+                        {{ ($pendingSosCount ?? 0) > 0 ? 'Pending' : 'All Clear' }}
+                    </div>
+                </div>
+            </a>
+
+            <a href="{{ route('incidents.overview', ['status' => 'responding']) }}" class="stat-card-link">
+                <div class="stat-card">
+                    <div class="stat-label">Responding</div>
+                    <div class="stat-value">{{ $respondingIncidents }}</div>
+                    <div class="stat-badge text-primary">Active</div>
+                </div>
+            </a>
+
+            <a href="{{ route('incidents.overview', ['status' => 'resolved']) }}" class="stat-card-link">
+                <div class="stat-card">
+                    <div class="stat-label">Resolved</div>
+                    <div class="stat-value">{{ $resolvedIncidents }}</div>
+                    <div class="stat-badge text-success">Completed</div>
+                </div>
+            </a>
+
+
+        </div>
+
+        <!-- ── MAP + RECENT INCIDENTS ── -->
+        <div class="row g-3 mb-3">
+            <div class="col-12 col-md-5">
+                <a href="{{ route('mapview') }}" class="map-link-card">
+                    <div class="panel-card">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                            <div class="panel-title" style="margin-bottom:0;">Incident Map</div>
+                            <span class="panel-link">Open Map View →</span>
+                        </div>
+                        <div class="map-placeholder">
+                            <div id="dashboardMap"></div>
+                            <div class="map-overlay-hint">
+                                <i class="bi bi-map"></i> View Full Map
+                            </div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-12 col-md-7">
+                <div class="panel-card">
+                    <div class="panel-title">Recent Incidents</div>
+                    <table class="incident-table">
+                        <thead>
+                            <tr>
+                                <th>Priority</th>
+                                <th>Incident</th>
+                                <th>Location</th>
+                                <th>Status</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($recentIncidents as $inc)
+                            @php
+                                $priorityClass = $inc->priority ? 'priority-'.$inc->priority : '';
+                                $priorityLabel = $inc->priority ? ucfirst($inc->priority) : 'Not Set';
+                                // Where it stands (Incident::progressKey()). "Pending" is
+                                // only for reports waiting for approval; approved with no
+                                // one accepted yet is Active · Awaiting Responder. Once the
+                                // team sends a report, it says so (item 46).
+                                $teamReport = $inc->teamReport();
+                                [$statusLabel, $statusClass] = match ($inc->progressKey()) {
+                                    'review'     => ['Pending', 'status-pending'],
+                                    'declined'   => ['Declined', 'status-declined'],
+                                    'needs_team' => ['Active · Needs Team', 'status-awaiting'],
+                                    'awaiting'   => ['Active · Awaiting Responder', 'status-awaiting'],
+                                    'responding' => $teamReport ? ['Initial report sent', 'status-initial'] : ['On the way', 'status-onway'],
+                                    'for_review' => ['For Review · Final report', 'status-review'],
+                                    default      => ['Resolved', 'status-resolved'],
+                                };
+                            @endphp
+                            <tr>
+                                <td><span class="{{ $priorityClass }}">{{ $priorityLabel }}</span></td>
+                                <td>{{ $inc->emergency_type }}</td>
+                                <td>{{ $inc->location }}</td>
+                                <td><span class="{{ $statusClass }}">{{ $statusLabel }}</span></td>
+                                <td>{{ $inc->created_at->format('g:i A') }}</td>
+                            </tr>
+                            @empty
+                            <tr>
+                                <td colspan="5" style="text-align:center;color:#9ca3af;padding:16px;">No incidents reported yet.</td>
+                            </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                    <div style="text-align:right; margin-top:10px;">
+                        <a href="{{ route('incident') }}" class="panel-link">View all incidents</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── CHARTS ROW (linked to Reports & Analytics) ── -->
+        <div class="row g-3">
+            <div class="col-12 col-md-5">
+                <a>
+                    <div class="panel-card">
+                        <div class="panel-title">Reports by Type</div>
+                        <div class="d-flex align-items-center gap-4">
+                            <div style="width:140px;height:140px;flex-shrink:0;">
+                                <canvas id="donutChart"></canvas>
+                            </div>
+                            <div style="font-size:.75rem;line-height:2;">
+                                @php
+                                    $donutColors = ['#3b82f6','#ef4444','#6b7280','#d1d5db','#f59e0b','#10b981','#8b5cf6','#ec4899'];
+                                @endphp
+                                @forelse($reportsByType as $type => $count)
+                                    <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ $donutColors[$loop->index % count($donutColors)] }};margin-right:6px;"></span>{{ $type }} <span style="color:#9ca3af;margin-left:4px;">{{ $count }}</span></div>
+                                @empty
+                                    <div style="color:#9ca3af;">No incidents reported yet.</div>
+                                @endforelse
+                            </div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-12 col-md-7">
+                <a>
+                    <div class="panel-card">
+                        <div class="panel-title">Incidents over time</div>
+                        <div style="height:140px;">
+                            <canvas id="lineChart"></canvas>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+        <div class="card panel" style="margin-top:18px;">
+    <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px; padding-left:5px;">
+        <div class="panel-title" style="font-weight:700;font-size:15.5px;">Recent Alerts</div>
+        <a href="{{ route('alerts') }}" style="font-size:13px;color:#1a3c8f;font-weight:600;text-decoration:none;">View all →</a>
+    </div>
+    @forelse($recentAlerts as $alert)
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6;">
+            <div style="width:36px;height:36px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i class="bi bi-megaphone" style="color:#dc2626;font-size:15px;"></i>
+            </div>
+            <div style="flex:1;">
+                <div style="font-weight:700;font-size:13.5px;color:#111827;">{{ $alert->title }}</div>
+                @if($alert->subtitle)
+                    <div style="font-size:12px;color:#6b7280;">{{ $alert->subtitle }}</div>
+                @endif
+                <div style="font-size:11.5px;color:#9ca3af;margin-top:2px;">{{ $alert->created_at->diffForHumans() }}</div>
+            </div>
+        </div>
+    @empty
+        <div style="text-align:center;padding:24px;color:#9ca3af;font-size:13.5px;">No recent alerts.</div>
+    @endforelse
 </div>
+
+    </div><!-- /content -->
+</div><!-- /main-wrap -->
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // Tab switching
-    function switchTab(id, btn) {
-        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.getElementById('tab-' + id).classList.add('active');
-        btn.classList.add('active');
-    }
+// Donut chart
+new Chart(document.getElementById('donutChart'), {
+    type: 'doughnut',
+    data: {
+        labels: {!! json_encode($reportsByType->keys()) !!},
+        datasets: [{
+            data: {!! json_encode($reportsByType->values()) !!},
+            backgroundColor: {!! json_encode(array_slice(['#3b82f6','#ef4444','#6b7280','#d1d5db','#f59e0b','#10b981','#8b5cf6','#ec4899'], 0, max($reportsByType->count(), 1))) !!},
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+    },
+    options: {
+        cutout: '70%',
+        plugins: {
+            legend: { display: false },
+            tooltip: { enabled: true }
+        }
+    },
+    plugins: [{
+        id: 'centerText',
+        beforeDraw(chart) {
+            const { ctx, chartArea: { width, height, left, top } } = chart;
+            ctx.save();
+            ctx.font = 'bold 22px Barlow, sans-serif';
+            ctx.fillStyle = '#111827';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('{{ $reportsByType->sum() }}', left + width / 2, top + height / 2);
+            ctx.restore();
+        }
+    }]
+});
 
-    // Swaps a preset <select> for a free-text <input> (and back) when the
-    // person picks "Other (custom)". Only whichever field is visible carries
-    // the real field name, so the form still submits a single clean value.
-    function toggleCustom(selectEl, customEl, fieldName) {
-        if (selectEl.value === '__custom__') {
-            selectEl.removeAttribute('name');
-            customEl.name = fieldName;
-            customEl.style.display = 'block';
-            customEl.required = fieldName === 'title'; // location stays optional
-            customEl.value = '';
-            customEl.focus();
-        } else {
-            selectEl.name = fieldName;
-            customEl.removeAttribute('name');
-            customEl.style.display = 'none';
-            customEl.required = false;
+// Line chart — real data, last 7 days
+const trendLabels = @json($trendWeek->keys());
+const trendData = @json($trendWeek->values());
+
+new Chart(document.getElementById('lineChart'), {
+    type: 'line',
+    data: {
+        labels: trendLabels,
+        datasets: [{
+            data: trendData,
+            borderColor: '#1a3c8f',
+            borderWidth: 2,
+            pointBackgroundColor: '#1a3c8f',
+            pointRadius: 4,
+            fill: false,
+            tension: 0.3
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+            y: {
+                beginAtZero: true,
+                ticks: { precision: 0, font: { size: 10 } },
+                grid: { color: '#f0f0f0' }
+            }
         }
     }
+});
 
-    // Fills the message textarea with the chosen template. Left fully
-    // editable afterward — nothing here locks the field.
-    function applyMessageTemplate(template) {
-        if (!template) return;
-        document.getElementById('messageBody').value = template;
+// Dashboard preview map — non-interactive, click-through to full Map View
+const dashboardMapIncidents = @json($mapIncidents);
+const boundaryData = @json($boundaryData);
+
+// ── Rosales municipal boundary — same "dim everything outside + solid
+// yellow outline on Rosales" treatment as the full Map View page
+// (mapview.blade.php), scaled down for this small preview. Ring-joining/
+// winding logic is duplicated here rather than shared, since this is
+// just a small inline script on its own Blade page, not a JS module.
+function pointsEqual(a, b) {
+    return Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
+}
+
+function joinSegments(segments) {
+    const segs = segments.map(s => s.slice());
+    const rings = [];
+    while (segs.length) {
+        let ring = segs.shift();
+        let extended = true;
+        while (extended && !pointsEqual(ring[0], ring[ring.length - 1])) {
+            extended = false;
+            for (let i = 0; i < segs.length; i++) {
+                const seg = segs[i];
+                if (pointsEqual(ring[ring.length - 1], seg[0])) { ring = ring.concat(seg.slice(1)); segs.splice(i, 1); extended = true; break; }
+                if (pointsEqual(ring[ring.length - 1], seg[seg.length - 1])) { ring = ring.concat(seg.slice(0, -1).reverse()); segs.splice(i, 1); extended = true; break; }
+                if (pointsEqual(ring[0], seg[seg.length - 1])) { ring = seg.slice(0, -1).concat(ring); segs.splice(i, 1); extended = true; break; }
+                if (pointsEqual(ring[0], seg[0])) { ring = seg.slice(1).reverse().concat(ring); segs.splice(i, 1); extended = true; break; }
+            }
+        }
+        rings.push(ring);
+    }
+    return rings;
+}
+
+function ringsFromRelation(el) {
+    if (!el.members) return [];
+    const segs = el.members
+        .filter(m => m.type === 'way' && m.geometry && (m.role === 'outer' || m.role === ''))
+        .map(m => m.geometry.map(pt => [pt.lat, pt.lon]));
+    if (!segs.length) return [];
+    return joinSegments(segs).filter(r => r.length >= 3);
+}
+
+// Signed area (shoelace) — normalizes ring winding so the "dim outside"
+// polygon (a world rectangle with Rosales cut out as a hole) renders
+// correctly; Google Maps treats an additional path as a hole only when
+// it winds opposite the first (outer) path.
+function signedArea(ring) {
+    let sum = 0;
+    for (let i = 0; i < ring.length - 1; i++) {
+        const [y1, x1] = ring[i];
+        const [y2, x2] = ring[i + 1];
+        sum += (x1 * y2 - x2 * y1);
+    }
+    return sum / 2;
+}
+
+function ringWithWinding(ring, wantPositive) {
+    const positive = signedArea(ring) > 0;
+    return positive === wantPositive ? ring : ring.slice().reverse();
+}
+
+function toLatLngPath(ring) {
+    return ring.map(([lat, lng]) => ({ lat, lng }));
+}
+
+function renderDashboardBoundary(map) {
+    // admin_level=6, not 8 — Philippine municipalities are tagged at
+    // level 6 in OSM. This filter matched nothing until the shared
+    // RosalesBoundaryService query (and this check) were both fixed to
+    // expect level 6 instead.
+    const relations = (boundaryData.elements || []).filter(
+        el => el.type === 'relation' && el.tags && el.tags.admin_level === '6'
+    );
+
+    relations.forEach(el => {
+        const rings = ringsFromRelation(el);
+        if (!rings.length) return;
+
+        // Same sparse-geometry guard as Map View — a real municipal
+        // boundary has hundreds of vertices; anything less almost
+        // certainly means the Overpass fetch matched the wrong place
+        // or came back incomplete, so skip drawing rather than show a
+        // bogus shape.
+        const totalPts = rings.reduce((sum, r) => sum + r.length, 0);
+        if (totalPts < 100) return;
+
+        // Large-but-finite box, not a literal -180..180 whole-world
+        // rectangle — Google Maps has known rendering ambiguity for
+        // polygons spanning the antimeridian, which a whole-world box
+        // touches on both edges, and that's the likely reason this
+        // rendered backwards (Rosales dimmed instead of everywhere else)
+        // despite the winding math checking out. Comfortably covers all
+        // of Southeast Asia, far beyond this preview's fixed zoom. See
+        // Map View's matching comment (mapview.blade.php) for the full
+        // explanation.
+        const worldRingRaw = [[-10, 90], [30, 90], [30, 150], [-10, 150]];
+        const worldRing = ringWithWinding(worldRingRaw, true);
+        const holeRings = rings.map(r => ringWithWinding(r, false));
+
+        new google.maps.Polygon({
+            paths: [toLatLngPath(worldRing), ...holeRings.map(toLatLngPath)],
+            strokeOpacity: 0,
+            fillColor: '#0b1f4d',
+            fillOpacity: 0.45,
+            clickable: false,
+            map,
+        });
+
+        rings.forEach(ring => {
+            new google.maps.Polygon({
+                paths: toLatLngPath(ring),
+                strokeColor: '#ffcc00',
+                strokeWeight: 2,
+                strokeOpacity: 1,
+                // Same gold wash as the full Map View page's highlight,
+                // so this preview reads as the same place at a glance
+                // instead of using a different treatment (plain
+                // outline, no fill) for what's meant to be the same
+                // highlight.
+                fillColor: '#ffcc00',
+                fillOpacity: 0.18,
+                clickable: false,
+                map,
+            });
+        });
+    });
+}
+
+function initDashboardMap() {
+    const rosalesCenter = { lat: 15.8952, lng: 120.6263 };
+
+    const map = new google.maps.Map(document.getElementById('dashboardMap'), {
+        center: rosalesCenter,
+        zoom: 13,
+        disableDefaultUI: true,
+        gestureHandling: 'none',
+        keyboardShortcuts: false,
+        clickableIcons: false,
+    });
+
+    renderDashboardBoundary(map);
+
+    // Same colours as Map View, keyed by incident.progress
+    // (Incident::progressKey()).
+    const statusColor = {
+        review: '#92400e', awaiting: '#ea580c', needs_team: '#ea580c',
+        responding: '#1e40af', for_review: '#6d28d9', declined: '#6b7280',
+    };
+    const typeEmoji = {
+        Fire: '🔥', Flood: '🌊', Earthquake: '🏚️', Accident: '🚗',
+        'Medical Emergency': '🚑', Landslide: '⛰️', 'SOS Emergency': '🆘',
+    };
+
+    function pinIcon(emoji, color) {
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26">
+            <circle cx="13" cy="13" r="12" fill="${color}" stroke="#fff" stroke-width="2"/>
+            <text x="13" y="17.5" font-size="12" text-anchor="middle">${emoji}</text>
+        </svg>`;
+        return {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            scaledSize: new google.maps.Size(26, 26),
+            anchor: new google.maps.Point(13, 13),
+        };
     }
 
-    @if(session('success') || session('error'))
-        document.addEventListener('DOMContentLoaded', function () {
-            const toast = new bootstrap.Toast(document.getElementById('toastMsg'));
-            toast.show();
-        });
-    @endif
-</script>
-<script>
-    const broadcastForm = document.getElementById('broadcastForm');
+    const bounds = new google.maps.LatLngBounds();
+    let hasPoints = false;
 
-    broadcastForm.addEventListener('submit', function (e) {
-        e.preventDefault();
+    dashboardMapIncidents.forEach(inc => {
+        const lat = parseFloat(inc.latitude);
+        const lng = parseFloat(inc.longitude);
+        if (isNaN(lat) || isNaN(lng)) return;
 
-        const audience = this.querySelector('select[name="type"]').value;
-        const audienceLabel = audience === 'Both'
-            ? 'citizens and responders'
-            : audience.toLowerCase();
-        const clearAfter = this.querySelector('select[name="clear_after"]');
-        const clearLabel = clearAfter ? clearAfter.options[clearAfter.selectedIndex].text.trim() : '';
+        const position = { lat, lng };
+        bounds.extend(position);
+        hasPoints = true;
 
-        Swal.fire({
-            icon: 'question',
-            title: 'Send this broadcast?',
-            text: `This will send a real push notification to ${audienceLabel}.`
-                + (clearLabel ? ` It clears from the apps after ${clearLabel}.` : ''),
-            showCancelButton: true,
-            confirmButtonText: 'Yes, Send',
-            cancelButtonText: 'Cancel',
-            confirmButtonColor: '#1a3c8f',
-            cancelButtonColor: '#6b7280',
-        }).then((result) => {
-            if (result.isConfirmed) {
-                broadcastForm.submit();
-            }
+        const emoji = typeEmoji[inc.emergency_type] || '⚠️';
+        const color = statusColor[inc.progress] || '#92400e';
+        new google.maps.Marker({
+            position,
+            map,
+            icon: pinIcon(emoji, color),
+            clickable: false,
         });
     });
 
-    // Clearing past alerts (panel #22): Clear, Clear all, and Delete ask first.
-    function confirmThenSubmit(form, options) {
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-            Swal.fire(Object.assign({
-                icon: 'question',
-                showCancelButton: true,
-                cancelButtonText: 'Cancel',
-                confirmButtonColor: '#dc2626',
-                cancelButtonColor: '#6b7280',
-                reverseButtons: true,
-            }, options(form))).then(result => {
-                if (result.isConfirmed) {
-                    form.querySelectorAll('button').forEach(b => b.disabled = true);
-                    form.submit();
-                }
-            });
+    if (hasPoints) {
+        map.fitBounds(bounds, 24);
+        google.maps.event.addListenerOnce(map, 'bounds_changed', function () {
+            if (map.getZoom() > 15) map.setZoom(15);
+        });
+    }
+}
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google.maps_key') }}&callback=initDashboardMap&v=weekly" async defer></script>
+
+{{-- ══════ Topbar notification bell — polling + sound ══════
+     The bell icon, badge, dropdown markup and <audio id="notifSound">
+     already existed in the topbar above, and the backend endpoint
+     (IncidentController::latestIncidentNotifications, route
+     'notifications.incidents') already worked — but nothing ever
+     called it. This is what was missing: poll it, fill the dropdown,
+     and play the sound when a genuinely NEW (non-SOS) report shows up.
+     SOS reports are excluded server-side already (they have their own
+     siren via sos-alert-overlay), so this never double-announces.
+
+     Guest reports and outside-Rosales reports are NOT excluded here —
+     latestIncidentNotifications() only filters out SOS Emergency, so
+     they trigger the badge/list/sound exactly like any other report
+     (needs_review only withholds the RESPONDER push, never this admin
+     notification). --}}
+<script>
+(function () {
+    const bell = document.getElementById('notifBell');
+    const badge = document.getElementById('notifBadge');
+    const dropdown = document.getElementById('notifDropdown');
+    const list = document.getElementById('notifList');
+    const sound = document.getElementById('notifSound');
+    if (!bell || !badge || !dropdown || !list || !sound) return;
+
+    const POLL_MS = 15000;
+    const LAST_SEEN_KEY = 'resqpulse_last_seen_incident_at';
+    // Starts from whatever was persisted last visit, so a page refresh
+    // doesn't re-announce reports already seen. Empty on a first-ever
+    // visit — the first poll below is treated as a baseline, not a
+    // burst of "new" reports, so it never dings for the whole history.
+    let lastSeenAt = localStorage.getItem(LAST_SEEN_KEY) || null;
+
+    // ── Audio unlock ──────────────────────────────────────────────
+    // Browsers refuse audio.play() unless the page has had a real user
+    // gesture (click/keydown/tap) — poll() runs on a setInterval, so
+    // with no unlock the FIRST alert after a fresh page load never
+    // makes a sound, no matter what triggered it (guest report,
+    // outside-Rosales, or an ordinary one). This was the actual cause
+    // behind "it didn't make a sound": the badge/list still updated
+    // (that part doesn't need audio permission), but sound.play()'s
+    // promise was silently rejected because nothing had been clicked
+    // on the page yet since it loaded.
+    //
+    // Fix: silently unlock on the admin's first click/keydown/tap
+    // anywhere on the page (no dedicated button — sound just starts
+    // working the moment they interact with the dashboard at all,
+    // same as it always eventually did, just without asking).
+    let soundUnlocked = false;
+
+    function unlockNotifSound() {
+        if (soundUnlocked) return;
+        sound.muted = true;
+        sound.play().then(function () {
+            sound.pause();
+            sound.currentTime = 0;
+            sound.muted = false;
+            soundUnlocked = true;
+        }).catch(function () {
+            // Still blocked (e.g. this "click" happened before the
+            // browser considered it a real gesture) — the next
+            // click/keydown/tap will simply try again.
         });
     }
 
-    document.querySelectorAll('.clear-form').forEach(form => confirmThenSubmit(form, f => ({
-        title: 'Clear this alert?',
-        text: `"${f.dataset.title}" will no longer show in ${f.dataset.apps}. It stays in Broadcast History.`,
-        confirmButtonText: 'Clear',
-    })));
+    document.addEventListener('click', unlockNotifSound);
+    document.addEventListener('keydown', unlockNotifSound, { once: true });
+    document.addEventListener('touchstart', unlockNotifSound, { once: true, passive: true });
 
-    document.querySelectorAll('.clear-all-form').forEach(form => confirmThenSubmit(form, f => ({
-        title: `Clear all ${f.dataset.count} alerts?`,
-        text: 'They will no longer show in the apps. They stay in Broadcast History.',
-        confirmButtonText: 'Clear all',
-    })));
+    function timeAgo(isoString) {
+        if (!isoString) return '';
+        const seconds = Math.max(0, Math.floor((Date.now() - new Date(isoString).getTime()) / 1000));
+        if (seconds < 60) return 'just now';
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return minutes + ' min ago';
+        const hours = Math.floor(minutes / 60);
+        return hours + (hours === 1 ? ' hour ago' : ' hours ago');
+    }
 
-    document.querySelectorAll('.delete-form').forEach(form => confirmThenSubmit(form, f => ({
-        icon: 'warning',
-        title: 'Delete this broadcast?',
-        text: `"${f.dataset.title}" will be removed from Broadcast History for good. The Audit Log keeps a line about it.`,
-        confirmButtonText: 'Delete',
-    })));
+    function escapeHtml(str) {
+        return String(str ?? '').replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function render(recent) {
+        if (!recent || !recent.length) {
+            list.innerHTML = '<div class="notif-empty">No recent reports.</div>';
+            return;
+        }
+        list.innerHTML = recent.map(function (inc) {
+            return '<a href="{{ url('/incidents') }}/' + inc.id + '" class="notif-item">' +
+                '<div class="notif-item-type">' + escapeHtml(inc.emergency_type) + '</div>' +
+                '<div class="notif-item-loc">' + escapeHtml(inc.location || 'Location unavailable') + '</div>' +
+                '<div class="notif-item-time">' + timeAgo(inc.created_at) + '</div>' +
+                '</a>';
+        }).join('');
+    }
+
+    async function poll() {
+        try {
+            const url = "{{ route('notifications.incidents') }}" + (lastSeenAt ? ('?since=' + encodeURIComponent(lastSeenAt)) : '');
+            const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const data = await res.json();
+
+            render(data.recent);
+
+            if (lastSeenAt && data.newCount > 0) {
+                badge.textContent = data.newCount > 9 ? '9+' : data.newCount;
+                badge.style.display = 'flex';
+                sound.currentTime = 0;
+                sound.play().catch(() => {
+                    // Still not unlocked — nothing to do here now that
+                    // there's no pill to surface; the next admin
+                    // click/keydown/tap unlocks it for future alerts.
+                });
+            }
+
+            lastSeenAt = data.serverTime;
+            localStorage.setItem(LAST_SEEN_KEY, lastSeenAt);
+        } catch (e) { /* silent — next poll tries again */ }
+    }
+
+    bell.addEventListener('click', function (e) {
+        e.stopPropagation();
+        const opening = dropdown.style.display !== 'block';
+        dropdown.style.display = opening ? 'block' : 'none';
+        if (opening) {
+            badge.style.display = 'none';
+        }
+    });
+    document.addEventListener('click', function () {
+        dropdown.style.display = 'none';
+    });
+    dropdown.addEventListener('click', function (e) { e.stopPropagation(); });
+
+    poll();
+    setInterval(poll, POLL_MS);
+})();
 </script>
+
+@include('partials.sos-alert-overlay')
 <script>
 (function () {
     var btn = document.getElementById('mobileMenuBtn');

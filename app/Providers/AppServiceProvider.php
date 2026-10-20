@@ -44,6 +44,15 @@ class AppServiceProvider extends ServiceProvider
                     ->count();
             }
             $view->with('pendingIncidentsCount', $incidentCount);
+
+            // Final reports waiting on For Review — the purple counts
+            // (item 46). partials/report-alert keeps them up to date.
+            static $forReview = null;
+            if ($forReview === null) {
+                $forReview = Incident::forReviewCounts();
+            }
+            $view->with('forReviewIncidentsCount', $forReview['incidents']);
+            $view->with('forReviewSosCount', $forReview['sos']);
         });
 }
 }

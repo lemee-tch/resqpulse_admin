@@ -19,7 +19,17 @@ class Responder extends Authenticatable
         'pending_email', 'email_verification_otp', 'email_verification_otp_expires_at',
     ];
 
-    protected $hidden = ['password', 'remember_token'];
+    // Never sent to the apps. Every incident lists the responders on it, so
+    // the other teams' phones got these too — a password-reset code among
+    // them (item 47). The app shows a responder's name, team, badge,
+    // station and number; admin pages still read everything.
+    protected $hidden = [
+        'password', 'remember_token', 'fcm_token',
+        'verification_otp', 'verification_otp_expires_at',
+        'reset_otp', 'reset_otp_expires_at',
+        'pending_email', 'email_verification_otp', 'email_verification_otp_expires_at',
+        'valid_id_path',
+    ];
 
     /** Every phone signed in to this (shared) account — see ResponderPushToken. */
     public function pushTokens()

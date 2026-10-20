@@ -203,7 +203,7 @@
         .btn-add-report:hover { background: #0d2e7a; color: #fff; box-shadow: 0 4px 12px rgba(26,60,143,.25); }
 
         /* Small tags next to the type. */
-        .tag-manual, .tag-resent, .tag-returned {
+        .tag-manual, .tag-resent, .tag-returned, .tag-initial {
             display: inline-flex; align-items: center; gap: 3px; margin-left: 6px;
             padding: 1px 8px; border-radius: 20px; font-size: .66rem; font-weight: 700;
             vertical-align: middle; white-space: nowrap;
@@ -211,6 +211,15 @@
         .tag-manual   { background: #e0e7ff; color: #3730a3; }
         .tag-resent   { background: #f5f3ff; color: #6d28d9; }
         .tag-returned { background: #fff7ed; color: #c2410c; }
+        /* Active: the team sent an Initial report (item 46). */
+        .tag-initial  { background: #fef3c7; color: #92400e; }
+
+        /* For Review: Final reports waiting — purple, like the count in the menu. */
+        .tab-count {
+            display: inline-block; min-width: 20px; margin-left: 4px; padding: 1px 7px; border-radius: 20px;
+            background: #7c3aed; color: #fff; font-size: .7rem; font-weight: 800; line-height: 1.5; text-align: center;
+        }
+        .row-ago { font-size: .72rem; font-weight: 600; color: #6d28d9; margin-top: 2px; }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
         .mobile-menu-btn {
@@ -435,7 +444,15 @@
         <div class="tab-bar">
             <button class="tab-btn active" data-tab="pending" onclick="switchTab('pending', this)">Pending ({{ $pendingIncidents->count() }})</button>
             <button class="tab-btn" data-tab="active" onclick="switchTab('active', this)">Active ({{ $activeIncidents->count() }})</button>
-            <button class="tab-btn" data-tab="for-review" onclick="switchTab('for-review', this)">For Review ({{ $forReviewIncidents->count() }})</button>
+            {{-- Purple when Final reports are waiting, like the count in the menu. --}}
+            <button class="tab-btn" data-tab="for-review" onclick="switchTab('for-review', this)">
+                For Review
+                @if($forReviewIncidents->isNotEmpty())
+                    <span class="tab-count" title="Final reports waiting for your review">{{ $forReviewIncidents->count() }}</span>
+                @else
+                    (0)
+                @endif
+            </button>
             <button class="tab-btn" data-tab="resolved" onclick="switchTab('resolved', this)">Resolved ({{ $resolvedIncidents->count() }})</button>
         </div>
 
@@ -509,6 +526,7 @@
                     <option value="needs_team">Needs Team</option>
                     <option value="pending">Awaiting Responder</option>
                     <option value="responding">Responding</option>
+                    <option value="initial_report">Initial report sent</option>
                 </select>
 
                 <select class="filter-select" id="filterType">
@@ -552,13 +570,17 @@
                     </thead>
                     <tbody id="incidentsBody">
                         @forelse($activeIncidents as $inc)
-                        @php extract($rowData($inc)); @endphp
+                        @php
+                            extract($rowData($inc));
+                            $teamReport = $inc->teamReport(); // the team's Initial report, if they sent one
+                        @endphp
                         {{-- Photos, reporter, description and responders are on the
                              Incident Details page (the row and View open it). --}}
                         <tr
                             class="incident-row"
                             data-priority="{{ $priorityVal }}"
                             data-status="{{ $inc->awaitingTeam() ? 'needs_team' : $inc->status }}"
+                            data-report="{{ $teamReport ? $teamReport['type'] : '' }}"
                             data-type="{{ $inc->emergency_type }}"
                             data-date="{{ $inc->created_at->format('Y-m-d') }}"
                             data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
@@ -570,6 +592,11 @@
                                 {{ $inc->emergency_type }}
                                 @if($inc->report_returned_at && $inc->report_return_reason)
                                     <span class="tag-returned" title="{{ $inc->report_return_reason }}"><i class="bi bi-arrow-return-left"></i> Report sent back</span>
+                                @endif
+                                @if($teamReport)
+                                    <span class="tag-initial" title="{{ $teamReport['revision'] > 1 ? 'Initial report updated' : 'Initial report sent' }} {{ $teamReport['at']->format('M d, g:i A') }} — open View to read it">
+                                        <i class="bi bi-file-earmark-text"></i> Initial report · {{ $teamReport['at']->gt(now()->subMinute()) ? 'just now' : $teamReport['at']->diffForHumans() }}
+                                    </span>
                                 @endif
                             </td>
                             <td class="td-location">{{ $inc->location ?: '—' }}</td>
@@ -632,7 +659,10 @@
                             </td>
                             <td class="td-location">{{ $inc->location ?: '—' }}</td>
                             <td>{{ $teamSummary($inc) }}</td>
-                            <td style="white-space:nowrap;">{{ $sentAt->format('M d, Y g:i A') }}</td>
+                            <td style="white-space:nowrap;">
+                                {{ $sentAt->format('M d, Y g:i A') }}
+                                <div class="row-ago">{{ $sentAt->gt(now()->subMinute()) ? 'just now' : $sentAt->diffForHumans() }}</div>
+                            </td>
                             <td onclick="event.stopPropagation()">
                                 <div class="review-actions">
                                     @if($inc->report_data)
@@ -851,8 +881,12 @@
                 // the fixed 37-barangay list would silently miss most
                 // real rows. A row whose location mentions the selected
                 // barangay anywhere counts as a match.
+                // "Initial report sent": responding, and the team sent one.
+                const statusOk = !status
+                        || row.dataset.status === status
+                        || (status === 'initial_report' && row.dataset.report === 'initial');
                 const ok = (!priority || row.dataset.priority === priority)
-                        && (!status   || row.dataset.status   === status)
+                        && statusOk
                         && (!type     || row.dataset.type     === type)
                         && (!barangay || row.dataset.search.includes(barangay))
                         && (!date     || row.dataset.date     === date)

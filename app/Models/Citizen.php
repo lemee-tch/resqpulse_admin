@@ -31,6 +31,9 @@ class Citizen extends Authenticatable
         'verification_otp', 'verification_otp_expires_at', 'verification_otp_via',
         'reset_otp', 'reset_otp_expires_at',
         'valid_id_path',
+        // The phone's push token and the Google account id went to the
+        // responders app with every incident the resident reported (item 47).
+        'fcm_token', 'google_id',
     ];
 
     protected function casts(): array

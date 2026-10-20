@@ -296,6 +296,12 @@
                                 $statusLabel = in_array($inc->progressKey(), ['awaiting', 'needs_team'], true)
                                     ? 'Active · ' . $inc->status_label
                                     : $inc->status_label;
+                                // The team's latest report (item 46): Initial while
+                                // it's Active, Final while it's For Review.
+                                $teamReport = $inc->teamReport();
+                                if ($teamReport) {
+                                    $statusLabel .= $teamReport['type'] === 'final' ? ' · Final report' : ' · Initial report';
+                                }
                             @endphp
                             <tr class="overview-row" onclick="window.location.href='{{ $detailUrl }}'">
                                 <td>

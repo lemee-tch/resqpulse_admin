@@ -968,6 +968,78 @@ class IncidentController extends Controller
     }
 
     /**
+     * Powers the "report received" notice on every admin page
+     * (partials/report-alert, item 46): the reports the responding teams
+     * sent that MDRRMO may not have looked at yet, newest first —
+     * Initial reports from the last 3 hours, and Final reports from the
+     * last day that are still waiting for review. The page remembers the
+     * ones the admin opened or closed, and rings for one that just came in.
+     *
+     * Also the For Review counts, so the purple counts in the menu change
+     * without reloading the page.
+     */
+    public function latestReports()
+    {
+        $now   = now();
+        $since = ['initial' => $now->copy()->subHours(3), 'final' => $now->copy()->subDay()];
+
+        $reports = Incident::with('responders')
+            // Sending a report updates the incident, so this only skips
+            // incidents nothing happened to since.
+            ->where('updated_at', '>=', $since['final'])
+            ->where(function ($q) {
+                $q->where('status', 'for_review')
+                    ->orWhere(fn ($q) => $q->whereIn('status', ['pending', 'responding'])->whereNotNull('report_data'));
+            })
+            ->orderByDesc('updated_at')
+            ->limit(50)
+            ->get()
+            ->map(function (Incident $incident) use ($since) {
+                $report = $incident->teamReport();
+
+                return $report && $report['at']->gte($since[$report['type']])
+                    ? $this->reportNotice($incident, $report)
+                    : null;
+            })
+            ->filter()
+            ->sortByDesc('at')
+            ->take(10)
+            ->values();
+
+        return response()->json([
+            'reports'   => $reports,
+            'forReview' => Incident::forReviewCounts(),
+            'now'       => $now->getTimestamp(),
+        ]);
+    }
+
+    /** One report, as partials/report-alert shows it. */
+    private function reportNotice(Incident $incident, array $report): array
+    {
+        $isFinal = $report['type'] === 'final';
+        $lead    = $incident->responders->sortBy(fn ($r) => (string) $r->pivot->accepted_at)->first();
+        // "SOS Alert — Brgy. Acop, Rosales" → "Brgy. Acop, Rosales"
+        $place = trim((string) preg_replace('/^(SOS Alert|Guest Report)\s*[—,]\s*/u', '', (string) $incident->location));
+
+        return [
+            'key'    => $report['key'],
+            'type'   => $report['type'],
+            'title'  => match (true) {
+                $isFinal && $report['again'] => 'Final report sent again',
+                $isFinal                     => 'Final report received',
+                $report['revision'] > 1      => 'Initial report updated',
+                default                      => 'Initial report received',
+            },
+            'what'   => $incident->display_type,
+            'where'  => $place !== '' ? $place : 'No location',
+            'from'   => $lead ? $lead->full_name . ($lead->agency ? " ({$lead->agency})" : '') : 'The responders',
+            'at'     => $report['at']->getTimestamp(),
+            'action' => $isFinal ? 'Review' : 'View',
+            'url'    => $incident->isSos() ? route('sos.detail', $incident) : route('incident.detail', $incident),
+        ];
+    }
+
+    /**
      * One-time cleanup for a real bug that's now fixed in
      * BarangayLocationService: it used to silently default an unresolved
      * municipality to 'Rosales' instead of saying "unknown" — so a pin
