@@ -7,7 +7,6 @@ use App\Models\Alert;
 use App\Services\PushNotificationService;
 use App\Services\AuditLogService;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class AlertController extends Controller
 {
@@ -65,36 +64,33 @@ class AlertController extends Controller
             ->orderBy('title')
             ->pluck('title');
 
-        $clearAfterDays = Alert::CLEAR_AFTER_DAYS;
-        $defaultClearAfter = Alert::DEFAULT_CLEAR_AFTER_DAYS;
+        // "24 hours": every alert clears from the apps by itself then.
+        $clearsAfter = Alert::clearsAfterLabel();
 
         return view('alerts', compact(
-            'showingAlerts', 'alerts', 'titlePresets', 'customTitles', 'clearAfterDays', 'defaultClearAfter'
+            'showingAlerts', 'alerts', 'titlePresets', 'customTitles', 'clearsAfter'
         ));
     }
 
     public function store(Request $request, PushNotificationService $push)
     {
         $request->validate([
-            'title'       => ['required', 'string', 'max:255'],
-            'subtitle'    => ['nullable', 'string', 'max:255'],
-            'body'        => ['required', 'string'],
-            'type'        => ['required', 'in:Citizens,Responders,Both'],
-            // Panel comment #22: past alerts clear themselves.
-            'clear_after' => ['nullable', 'integer', Rule::in(Alert::CLEAR_AFTER_DAYS)],
-        ], [
-            'clear_after.in' => 'Choose when the alert clears from the apps.',
+            'title'    => ['required', 'string', 'max:255'],
+            'subtitle' => ['nullable', 'string', 'max:255'],
+            'body'     => ['required', 'string'],
+            'type'     => ['required', 'in:Citizens,Responders,Both'],
         ]);
 
-        $days = (int) ($request->input('clear_after') ?: Alert::DEFAULT_CLEAR_AFTER_DAYS);
-
+        // Panel comment #22: past alerts clear themselves. Item 50: always
+        // 24 hours after it's sent — the admin used to pick 1 to 30 days
+        // ("Clears from the apps after").
         $alert = Alert::create([
             'title'      => $request->title,
             'subtitle'   => $request->subtitle,
             'body'       => $request->body,
             'type'       => $request->type,
             'user_id'    => auth()->id(),
-            'expires_at' => now()->addDays($days),
+            'expires_at' => now()->addHours(Alert::CLEARS_AFTER_HOURS),
         ]);
 
         $audience = $request->type;
@@ -105,7 +101,7 @@ class AlertController extends Controller
             default      => 'citizens',
         };
 
-        $after = $days === 1 ? '1 day' : "{$days} days";
+        $after = Alert::clearsAfterLabel();
 
         AuditLogService::log(
             'created',
@@ -123,7 +119,7 @@ class AlertController extends Controller
 
         return back()->with(
             'success',
-            "Broadcast sent to {$label}. It clears from the apps on {$alert->expires_at->format('M j, g:i A')}."
+            "Broadcast sent to {$label}. It clears from the apps by itself in {$after}, on {$alert->expires_at->format('M j, g:i A')}."
         );
     }
 

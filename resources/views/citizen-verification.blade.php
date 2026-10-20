@@ -323,9 +323,6 @@
             <button class="tab-btn active" onclick="switchTab('pending', this)">Pending Review ({{ $pendingCitizens->count() }})</button>
             <button class="tab-btn" onclick="switchTab('verified', this)">Verified ({{ $verifiedCitizens->count() }})</button>
             {{-- Resident & guest activity is now on the combined Audit Log page. --}}
-            <a class="tab-btn" href="{{ route('audit-log', ['who' => 'resident']) }}" style="text-decoration:none;">
-                Activity log <i class="bi bi-box-arrow-up-right" style="font-size:.75em;"></i>
-            </a>
         </div>
 
         <!-- ══ TAB: PENDING REVIEW ══ -->
@@ -422,7 +419,7 @@
                             <th>Resident</th>
                             <th>Contact</th>
                             <th>Municipality / Barangay</th>
-                            <th>Valid ID</th>
+                            <th>Proof of Residency</th>
                             <th>Registered</th>
                             <th>Status</th>
                             <th>Action</th>

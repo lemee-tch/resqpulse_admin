@@ -13,18 +13,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Responders or Both).
  *
  * Clearing past alerts (panel comment #22): an alert shows in the apps
- * until expires_at — 1 to 30 days after it was sent, picked by the admin
- * when sending — or until an admin clears it early (cleared_at,
- * cleared_by). Either way it stays in Broadcast History. Residents and
- * responders can also clear alerts on their own phone; that only hides
- * them on that phone.
+ * until expires_at — 24 hours after it was sent — or until an admin
+ * clears it early (cleared_at, cleared_by). Either way it stays in
+ * Broadcast History. Residents and responders can also clear alerts on
+ * their own phone; that only hides them on that phone.
+ *
+ * Item 50: the admin no longer picks when an alert clears (it was 1 to 30
+ * days, "Clears from the apps after" on the broadcast form). Every alert
+ * clears by itself 24 hours after it's sent.
  */
 class Alert extends Model
 {
-    /** "Clears from the apps after" choices on the broadcast form, in days. */
-    public const CLEAR_AFTER_DAYS = [1, 3, 7, 14, 30];
-
-    public const DEFAULT_CLEAR_AFTER_DAYS = 7;
+    /** Every alert clears from the apps by itself this long after it's sent. */
+    public const CLEARS_AFTER_HOURS = 24;
 
     protected $fillable = [
         'title', 'subtitle', 'body', 'type', 'user_id',
@@ -67,9 +68,16 @@ class Alert extends Model
         return $this->cleared_at === null && $this->expires_at !== null && ! $this->expires_at->isFuture();
     }
 
+    /** "24 hours" — how long every alert stays in the apps. */
+    public static function clearsAfterLabel(): string
+    {
+        return self::CLEARS_AFTER_HOURS === 1 ? '1 hour' : self::CLEARS_AFTER_HOURS . ' hours';
+    }
+
     /**
      * How long until it clears itself, rounded: "40 minutes", "19 hours",
-     * "2 days". Null when it has no time or is already cleared.
+     * "24 hours" (just sent). Null when it has no time or is already
+     * cleared.
      */
     public function clearsIn(): ?string
     {
@@ -83,7 +91,7 @@ class Alert extends Model
         }
 
         $hours = (int) round($minutes / 60);
-        if ($hours < 24) {
+        if ($hours <= 24) {
             return $hours === 1 ? '1 hour' : "{$hours} hours";
         }
 

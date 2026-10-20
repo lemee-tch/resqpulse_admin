@@ -410,9 +410,9 @@
 
         <!-- ══ TAB: ACTIVE ALERTS ══ -->
         <div id="tab-active" class="tab-panel active">
-            {{-- What the apps show right now. Each alert clears itself when
-                 its time is up (picked when sending); Clear removes it
-                 sooner. Cleared alerts stay in Broadcast History. --}}
+            {{-- What the apps show right now. Each alert clears itself 24
+                 hours after it was sent (item 50); Clear removes it sooner.
+                 Cleared alerts stay in Broadcast History. --}}
             <div class="list-head">
                 <div>
                     <div class="section-title">In the apps now <span class="count-pill">{{ $showingAlerts->count() }}</span></div>
@@ -540,18 +540,9 @@
                             <input type="text" id="locationCustom" class="form-input-s custom-field"
                                    placeholder="Enter custom location">
                         </div>
-
-                        {{-- Panel #22: past alerts clear themselves from the apps. --}}
-                        <div class="form-group">
-                            <label class="form-label-s" for="clearAfter">Clears from the apps after</label>
-                            <select name="clear_after" id="clearAfter" class="form-input-s">
-                                @foreach($clearAfterDays as $days)
-                                    <option value="{{ $days }}" {{ (int) old('clear_after', $defaultClearAfter) === $days ? 'selected' : '' }}>
-                                        {{ $days === 1 ? '1 day' : $days . ' days' }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
+                        {{-- Item 50: no "Clears from the apps after" choice any
+                             more — every alert clears by itself 24 hours after
+                             it's sent (see the note under Send Broadcast). --}}
                     </div>
 
                     <label class="form-label-s">Quick Message Template (optional)</label>
@@ -573,7 +564,7 @@
 
                     <div class="push-note">
                         <i class="bi bi-info-circle"></i>
-                        This sends a real push notification to whichever audience you select above and adds it to their Alerts. It clears from their Alerts by itself after the time you pick.
+                        This sends a real push notification to whichever audience you select above and adds it to their Alerts. It clears from their Alerts by itself {{ $clearsAfter ?? '24 hours' }} after it's sent.
                     </div>
                 </form>
             </div>
@@ -721,14 +712,14 @@
         const audienceLabel = audience === 'Both'
             ? 'citizens and responders'
             : audience.toLowerCase();
-        const clearAfter = this.querySelector('select[name="clear_after"]');
-        const clearLabel = clearAfter ? clearAfter.options[clearAfter.selectedIndex].text.trim() : '';
+        // Every alert clears from the apps by itself 24 hours after it's sent.
+        const clearsAfter = @json($clearsAfter ?? '24 hours');
 
         Swal.fire({
             icon: 'question',
             title: 'Send this broadcast?',
-            text: `This will send a real push notification to ${audienceLabel}.`
-                + (clearLabel ? ` It clears from the apps after ${clearLabel}.` : ''),
+            text: `This will send a real push notification to ${audienceLabel}. `
+                + `It clears from the apps by itself after ${clearsAfter}.`,
             showCancelButton: true,
             confirmButtonText: 'Yes, Send',
             cancelButtonText: 'Cancel',

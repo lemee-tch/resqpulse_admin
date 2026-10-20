@@ -18,10 +18,10 @@ class AlertController extends Controller
      * this fix it was hardcoded to Citizens/Both for everyone, which
      * meant a responder-only broadcast was invisible to every responder.
      *
-     * Only alerts that are still showing: a past alert clears itself when
-     * its time is up (expires_at, picked by the admin when sending) or
-     * when an admin clears it early — see Alert::scopeShowing(). The apps
-     * can also hide alerts on the phone; that's kept on the phone.
+     * Only alerts that are still showing: a past alert clears itself 24
+     * hours after it was sent (expires_at, item 50) or when an admin
+     * clears it early — see Alert::scopeShowing(). The apps can also hide
+     * alerts on the phone; that's kept on the phone.
      */
     public function index(Request $request)
     {

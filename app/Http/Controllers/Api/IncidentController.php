@@ -18,8 +18,12 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class IncidentController extends Controller
 {
-    /** The team's report is with MDRRMO (status for_review). */
-    private const UNDER_REVIEW_MESSAGE = 'Your Initial report is with MDRRMO for review. You can only change it if MDRRMO sends it back to you.';
+    /**
+     * The team's report is with MDRRMO (status for_review, "For Review" in
+     * the app). The incident isn't resolved yet: only MDRRMO marks it
+     * resolved, when it approves the report (item 50).
+     */
+    private const UNDER_REVIEW_MESSAGE = 'Your Initial report is with MDRRMO for review. The incident isn\'t resolved until MDRRMO approves the report. You can only change it if MDRRMO sends it back to you.';
 
     /** MDRRMO approved the team's report: the incident is resolved. */
     private const RESOLVED_MESSAGE = 'MDRRMO approved this report and marked the incident resolved. It can no longer be changed.';
@@ -420,7 +424,8 @@ class IncidentController extends Controller
     /**
      * Report History — incidents this responder personally accepted (or
      * backed up on) whose report is done: resolved, or still with MDRRMO
-     * for review (status for_review, shown as "Under Review").
+     * for review (status for_review, shown as "For Review" — not resolved
+     * until MDRRMO approves the report).
      * assignedToResponder() above filters both OUT by design (it's the
      * "what's still active" feed), so an incident disappears from it the
      * moment the report is sent — this is the separate feed the
