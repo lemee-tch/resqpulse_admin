@@ -4,9 +4,9 @@
 
         @include('partials.return-report-modal', ['incident' => $inc, 'modalId' => 'returnModal' . $inc->id])
 
-    Sends the responders' Final report back (Admin\IncidentController::
+    Sends the responders' report back (Admin\IncidentController::
     returnReport()) with what needs fixing. The script at the bottom is
-    printed once per page and also asks before "Mark as Resolved"
+    printed once per page and also asks before "Approve as Resolved"
     (any form with class="resolve-form").
 --}}
 <div class="modal fade" id="{{ $modalId }}" tabindex="-1">
@@ -20,9 +20,9 @@
                 </div>
                 <div class="modal-body pt-3">
                     <p class="rr-intro">
-                        The <strong>{{ $incident->display_type }}</strong> incident goes back to <strong>Active</strong> and its report becomes
-                        <strong>Initial</strong> again, so the responding team can fix it and send it as Final once more.
-                        They get a notification with what you choose here.
+                        The <strong>{{ $incident->display_type }}</strong> incident goes back to <strong>Active</strong>, so the responding
+                        team can fix the report and send it to you again. They get a notification with what you choose here.
+                        @if(is_array($incident->report_data)) For something you can fix yourself, use <strong>Review &amp; Edit</strong> instead. @endif
                     </p>
                     <label class="rr-label" for="{{ $modalId }}Reason">What needs fixing?</label>
                     <select name="return_reason" id="{{ $modalId }}Reason" class="rr-input" required>
@@ -71,7 +71,7 @@
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // Mark as Resolved: asks first.
+    // Approve as Resolved: asks first.
     document.querySelectorAll('.resolve-form').forEach(function (form) {
         form.addEventListener('submit', function (e) {
             e.preventDefault();
@@ -85,15 +85,15 @@ document.addEventListener('DOMContentLoaded', function () {
             if (window.Swal) {
                 Swal.fire({
                     icon: 'question',
-                    title: 'Mark as resolved?',
-                    html: '<div style="font-size:.9em;color:#4b5563;line-height:1.5;">You checked the responders\' Final report for the <strong>'
-                        + type.innerHTML + '</strong> incident and it is complete. The incident moves to Resolved. ' + notify + '</div>',
+                    title: 'Approve as resolved?',
+                    html: '<div style="font-size:.9em;color:#4b5563;line-height:1.5;">You checked the responders\' report for the <strong>'
+                        + type.innerHTML + '</strong> incident and it is complete. The incident moves to Resolved and your name goes on the PDF as the reviewer. ' + notify + '</div>',
                     showCancelButton: true,
-                    confirmButtonText: 'Mark as Resolved',
+                    confirmButtonText: 'Approve as Resolved',
                     cancelButtonText: 'Cancel',
                     confirmButtonColor: '#10b981',
                 }).then(function (result) { if (result.isConfirmed) form.submit(); });
-            } else if (window.confirm('Mark this incident as resolved? ' + notify)) {
+            } else if (window.confirm('Approve the report and mark this incident as resolved? ' + notify)) {
                 form.submit();
             }
         });

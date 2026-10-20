@@ -780,6 +780,8 @@
         confirmButtonText: 'Delete',
     })));
 </script>
+{{-- The SOS siren, like on every other admin page (item 49). --}}
+@include('partials.sos-alert-overlay')
 <script>
 (function () {
     var btn = document.getElementById('mobileMenuBtn');

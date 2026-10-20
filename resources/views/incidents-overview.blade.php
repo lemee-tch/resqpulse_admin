@@ -296,8 +296,8 @@
                                 $statusLabel = in_array($inc->progressKey(), ['awaiting', 'needs_team'], true)
                                     ? 'Active · ' . $inc->status_label
                                     : $inc->status_label;
-                                // The team's latest report (item 46): Initial while
-                                // it's Active, Final while it's For Review.
+                                // The team's latest report (items 46, 49): the Initial
+                                // report — or a Final one sent before item 49.
                                 $teamReport = $inc->teamReport();
                                 if ($teamReport) {
                                     $statusLabel .= $teamReport['type'] === 'final' ? ' · Final report' : ' · Initial report';

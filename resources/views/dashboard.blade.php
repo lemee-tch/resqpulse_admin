@@ -544,7 +544,6 @@
                     <a href="{{ route('incidents.overview') }}" class="notif-view-all">View all incidents</a>
                 </div>
             </div>
-            <audio id="notifSound" src="{{ asset('sounds/sos-alert.mp3') }}" preload="auto"></audio>
             <div class="topbar-user">
 
                 <a href="{{ route('audit-log') }}" style="text-decoration:none;color:inherit;">
@@ -643,15 +642,17 @@
                                 // Where it stands (Incident::progressKey()). "Pending" is
                                 // only for reports waiting for approval; approved with no
                                 // one accepted yet is Active · Awaiting Responder. Once the
-                                // team sends a report, it says so (item 46).
+                                // team sends its report, it says so (items 46, 49) — an
+                                // "Initial report saved" is one saved before item 49,
+                                // not sent to MDRRMO yet.
                                 $teamReport = $inc->teamReport();
                                 [$statusLabel, $statusClass] = match ($inc->progressKey()) {
                                     'review'     => ['Pending', 'status-pending'],
                                     'declined'   => ['Declined', 'status-declined'],
                                     'needs_team' => ['Active · Needs Team', 'status-awaiting'],
                                     'awaiting'   => ['Active · Awaiting Responder', 'status-awaiting'],
-                                    'responding' => $teamReport ? ['Initial report sent', 'status-initial'] : ['On the way', 'status-onway'],
-                                    'for_review' => ['For Review · Final report', 'status-review'],
+                                    'responding' => $teamReport ? ['Initial report saved', 'status-initial'] : ['On the way', 'status-onway'],
+                                    'for_review' => ['For Review · ' . ($teamReport && $teamReport['type'] === 'final' ? 'Final report' : 'Initial report'), 'status-review'],
                                     default      => ['Resolved', 'status-resolved'],
                                 };
                             @endphp
@@ -1004,73 +1005,33 @@ function initDashboardMap() {
 </script>
 <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google.maps_key') }}&callback=initDashboardMap&v=weekly" async defer></script>
 
-{{-- ══════ Topbar notification bell — polling + sound ══════
-     The bell icon, badge, dropdown markup and <audio id="notifSound">
-     already existed in the topbar above, and the backend endpoint
-     (IncidentController::latestIncidentNotifications, route
-     'notifications.incidents') already worked — but nothing ever
-     called it. This is what was missing: poll it, fill the dropdown,
-     and play the sound when a genuinely NEW (non-SOS) report shows up.
-     SOS reports are excluded server-side already (they have their own
-     siren via sos-alert-overlay), so this never double-announces.
+{{-- ══════ Topbar notification bell — polling ══════
+     The bell lists the newest (non-SOS) reports and shows how many came in
+     since the last check (IncidentController::latestIncidentNotifications,
+     route 'notifications.incidents'). SOS reports are excluded
+     server-side: they have their own siren (sos-alert-overlay).
 
-     Guest reports and outside-Rosales reports are NOT excluded here —
-     latestIncidentNotifications() only filters out SOS Emergency, so
-     they trigger the badge/list/sound exactly like any other report
-     (needs_review only withholds the RESPONDER push, never this admin
-     notification). --}}
+     It doesn't play a sound anymore (item 49). A new report from a resident
+     rang only here, on the Dashboard; now the notice in the corner of every
+     admin page (partials/report-alert, brought by the sidebar) shows it and
+     rings once — on this page too, so the bell ringing as well would ring
+     twice. --}}
 <script>
 (function () {
     const bell = document.getElementById('notifBell');
     const badge = document.getElementById('notifBadge');
     const dropdown = document.getElementById('notifDropdown');
     const list = document.getElementById('notifList');
-    const sound = document.getElementById('notifSound');
-    if (!bell || !badge || !dropdown || !list || !sound) return;
+    if (!bell || !badge || !dropdown || !list) return;
 
     const POLL_MS = 15000;
     const LAST_SEEN_KEY = 'resqpulse_last_seen_incident_at';
     // Starts from whatever was persisted last visit, so a page refresh
-    // doesn't re-announce reports already seen. Empty on a first-ever
-    // visit — the first poll below is treated as a baseline, not a
-    // burst of "new" reports, so it never dings for the whole history.
-    let lastSeenAt = localStorage.getItem(LAST_SEEN_KEY) || null;
-
-    // ── Audio unlock ──────────────────────────────────────────────
-    // Browsers refuse audio.play() unless the page has had a real user
-    // gesture (click/keydown/tap) — poll() runs on a setInterval, so
-    // with no unlock the FIRST alert after a fresh page load never
-    // makes a sound, no matter what triggered it (guest report,
-    // outside-Rosales, or an ordinary one). This was the actual cause
-    // behind "it didn't make a sound": the badge/list still updated
-    // (that part doesn't need audio permission), but sound.play()'s
-    // promise was silently rejected because nothing had been clicked
-    // on the page yet since it loaded.
-    //
-    // Fix: silently unlock on the admin's first click/keydown/tap
-    // anywhere on the page (no dedicated button — sound just starts
-    // working the moment they interact with the dashboard at all,
-    // same as it always eventually did, just without asking).
-    let soundUnlocked = false;
-
-    function unlockNotifSound() {
-        if (soundUnlocked) return;
-        sound.muted = true;
-        sound.play().then(function () {
-            sound.pause();
-            sound.currentTime = 0;
-            sound.muted = false;
-            soundUnlocked = true;
-        }).catch(function () {
-            // Still blocked (e.g. this "click" happened before the
-            // browser considered it a real gesture) — the next
-            // click/keydown/tap will simply try again.
-        });
-    }
-
-    document.addEventListener('click', unlockNotifSound);
-    document.addEventListener('keydown', unlockNotifSound, { once: true });
-    document.addEventListener('touchstart', unlockNotifSound, { once: true, passive: true });
+    // doesn't count reports already seen as new. Empty on a first-ever
+    // visit — the first poll below is treated as a baseline, not a burst
+    // of "new" reports.
+    let lastSeenAt = null;
+    try { lastSeenAt = localStorage.getItem(LAST_SEEN_KEY) || null; } catch (e) {}
 
     function timeAgo(isoString) {
         if (!isoString) return '';
@@ -1113,16 +1074,10 @@ function initDashboardMap() {
             if (lastSeenAt && data.newCount > 0) {
                 badge.textContent = data.newCount > 9 ? '9+' : data.newCount;
                 badge.style.display = 'flex';
-                sound.currentTime = 0;
-                sound.play().catch(() => {
-                    // Still not unlocked — nothing to do here now that
-                    // there's no pill to surface; the next admin
-                    // click/keydown/tap unlocks it for future alerts.
-                });
             }
 
             lastSeenAt = data.serverTime;
-            localStorage.setItem(LAST_SEEN_KEY, lastSeenAt);
+            try { localStorage.setItem(LAST_SEEN_KEY, lastSeenAt); } catch (e) {}
         } catch (e) { /* silent — next poll tries again */ }
     }
 

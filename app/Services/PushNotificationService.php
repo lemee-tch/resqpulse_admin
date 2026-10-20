@@ -21,7 +21,7 @@ use Kreait\Laravel\Firebase\Facades\Firebase;
  *
  *   type=incident  a report or SOS sent to the team — rings, with
  *                  incident_id (and kind: new / again / help)
- *   type=report    MDRRMO accepted or sent back the team's Final report
+ *   type=report    MDRRMO approved or sent back the team's report
  *   type=alert     a disaster alert from Alerts & Broadcast
  *
  * Incident pushes also go on the app's ringing Android channel
@@ -103,7 +103,7 @@ class PushNotificationService
 
     /**
      * Notifies the responders on one incident — e.g. when MDRRMO sends
-     * their Final report back for changes, or confirms it as resolved.
+     * their report back for changes, or approves it as resolved.
      * Best-effort like the rest: never throws back to the caller, and
      * responders with no phone signed in (or a deactivated account) are
      * skipped. Every phone signed in to their accounts gets it.

@@ -9,8 +9,8 @@
     Kept minimal, on two lines (three when there's a team or a decline
     reason to show):
       1. a coloured dot for where it stands, the type (plus the state on
-         Active, and "Initial report" / "Report sent back" / "Sent again")
-         and the time that matters on this tab;
+         Active, and "Initial report" / "Report sent back" / "Sent again" /
+         "Corrected") and the time that matters on this tab;
       2. who sent it, their number (tap to call) and where;
       3. the team (Active, For Review, Resolved) or the decline reason.
 
@@ -18,7 +18,9 @@
       pending     View (approve or decline on SOS Details)
       active      View (an approved SOS with no team yet says so; the team
                   is assigned on SOS Details)
-      for-review  View · Report · Return · Mark as Resolved
+      for-review  View · Report · Edit · Return · Approve (item 49: the
+                  team's Initial report — correct it, approve it as
+                  resolved, or send it back)
       resolved    View
       declined    View · Delete
     Clicking anywhere else on the row opens SOS Details too (the script on
@@ -59,8 +61,12 @@
     // Approved, but not sent to the responders yet (item 36).
     $needsTeam = $tab === 'active' && $sos->awaitingTeam();
 
-    // Active: the team's Initial report, if they sent one (item 46).
+    // Active: an Initial report the team saved before item 49 (it reaches
+    // For Review when they send it from the app).
     $initialReport = $tab === 'active' ? $sos->teamReport() : null;
+    // For Review: "Initial report" — or "Final report" for one sent before item 49.
+    $reportKind = is_array($sos->report_data) && ($sos->report_data['report_type'] ?? 'final') !== 'initial'
+        ? 'Final report' : 'Initial report';
 
     // Where it stands: the dot's colour.
     $variant = match (true) {
@@ -95,10 +101,10 @@
                 . ($leadText ? $leadText . ' responding' : 'no one has accepted yet'),
             ! $leadText,
         ],
-        $tab === 'for-review' => [$leadText ? 'Final report from ' . $leadText : 'Final report sent', false],
+        $tab === 'for-review' => [$leadText ? $reportKind . ' from ' . $leadText : $reportKind . ' sent', false],
         $tab === 'resolved'   => [
             ($leadText ? 'Handled by ' . $leadText : ($teams ? 'Sent to ' . ($sos->sentToAllTeams() ? 'all teams' : $teamsText) : 'Sent to the responders'))
-                . ($sos->resolvedBy ? ' · reviewed by ' . $sos->resolvedBy->name : ''),
+                . ($sos->resolvedBy ? ' · approved by ' . $sos->resolvedBy->name : ''),
             false,
         ],
         $tab === 'declined'   => [
@@ -134,11 +140,14 @@
                 <span class="sos-flag" title="Sent back: {{ $sos->report_return_reason }}">Report sent back</span>
             @endif
             @if($initialReport)
-                <span class="sos-flag sos-flag--initial" title="{{ $initialReport['revision'] > 1 ? 'Initial report updated' : 'Initial report sent' }} {{ $initialReport['at']->format('M d, g:i A') }} — open View to read it">
+                <span class="sos-flag sos-flag--initial" title="{{ $initialReport['revision'] > 1 ? 'Initial report updated' : 'Initial report saved' }} {{ $initialReport['at']->format('M d, g:i A') }} — not sent to MDRRMO yet. Open View to read it.">
                     <i class="bi bi-file-earmark-text"></i>Initial report · {{ $initialReport['at']->gt(now()->subMinute()) ? 'just now' : $initialReport['at']->diffForHumans() }}
                 </span>
             @elseif($tab === 'for-review' && $sos->report_returned_at)
                 <span class="sos-flag" title="Sent again after you returned it">Sent again</span>
+            @endif
+            @if($tab === 'for-review' && ! empty($sos->report_data['edited_by']))
+                <span class="sos-flag sos-flag--corrected" title="Corrected by {{ $sos->report_data['edited_by'] }}"><i class="bi bi-pencil"></i>Corrected</span>
             @endif
             <span class="sos-time{{ $late ? ' late' : ($tab === 'pending' ? ' waiting' : '') }}" title="{{ $whenTitle }}">{{ $whenText }}</span>
         </div>
@@ -171,8 +180,11 @@
 
         @if($tab === 'for-review')
             @if($sos->report_data)
-                <a href="{{ route('incident.report-pdf', $sos) }}" target="_blank" class="act">
+                <a href="{{ route('incident.report-pdf', $sos) }}" target="_blank" class="act" title="Open the report (PDF)">
                     <i class="bi bi-file-earmark-pdf"></i> Report
+                </a>
+                <a href="{{ route('incident.report.edit', $sos) }}" class="act act--edit" title="Read the report and correct it before approving">
+                    <i class="bi bi-pencil-square"></i> Edit
                 </a>
             @endif
             <button type="button" class="act act--warn" data-bs-toggle="modal" data-bs-target="#returnModal{{ $sos->id }}">
@@ -182,8 +194,8 @@
                   data-type="SOS"
                   data-notifies-citizen="{{ $sos->citizen_id ? '1' : '0' }}">
                 @csrf
-                <button type="submit" class="act act--primary">
-                    <i class="bi bi-check2-circle"></i> Mark as Resolved
+                <button type="submit" class="act act--primary" title="Approve the report and mark the SOS resolved">
+                    <i class="bi bi-check2-circle"></i> Approve
                 </button>
             </form>
         @elseif($tab === 'declined')

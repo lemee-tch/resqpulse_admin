@@ -1,16 +1,21 @@
 {{--
-    "Initial / Final report received" — a notice in the corner of every
-    admin page when a responding team sends a report (item 46), with a
-    short sound. partials/sidebar brings it, so every page with the menu
-    has it.
+    A notice in the corner of every admin page, with a short sound, when
+    something comes in that MDRRMO has to look at (items 46 and 49).
+    partials/sidebar brings it, so every page with the menu has it.
 
     It asks IncidentController::latestReports() every 15 seconds:
-      Initial  amber — the team is still on it; from the last 3 hours
-      Final    purple — waiting for review on For Review; from the last day
+      new     red — a resident's new report (Report Emergency) waiting for
+              approval on Pending; from the last day. It used to ring only
+              on the Dashboard (the bell). SOS alerts have their own siren
+              (partials/sos-alert-overlay).
+      review  purple — a team's report waiting on For Review; from the
+              last day
+      open    amber — an Initial report a team saved before item 49 (not
+              sent to MDRRMO yet); from the last 3 hours
     A notice stays, on every page, until the admin opens the incident (its
-    page marks the report as seen: data-report-seen, see
-    incident-details) or closes it (×). It also goes when it's no longer
-    new: the Final report was reviewed, the team sent a newer one…
+    page marks it as seen: data-report-seen, see incident-details) or
+    closes it (×). It also goes when it's no longer new: the report was
+    approved or declined, the team sent a newer one…
 
     Up to 3 show at a time (2 on a short screen, 1 on a phone). With 2 or
     more, a bar above them says how many and has Hide (they shrink to one
@@ -23,7 +28,7 @@
     It also keeps the purple For Review counts in the menu up to date, and
     shows how many notices are open in the tab's title: "(2) RESQPULSE – …".
 --}}
-<div class="report-alerts" id="reportAlerts" role="region" aria-label="New reports from the responders" aria-live="polite" aria-relevant="additions"></div>
+<div class="report-alerts" id="reportAlerts" role="region" aria-label="New reports" aria-live="polite" aria-relevant="additions"></div>
 <audio id="reportAlertAudio" src="{{ asset('sounds/notification.mp3') }}" preload="auto"></audio>
 
 <style>
@@ -44,7 +49,8 @@
     color: #111827; cursor: pointer;
     animation: raIn .28s ease-out;
 }
-.report-alert--initial { --ra-accent: #f59e0b; --ra-tint: #fef3c7; --ra-ink: #92400e; }
+.report-alert--open { --ra-accent: #f59e0b; --ra-tint: #fef3c7; --ra-ink: #92400e; }
+.report-alert--new  { --ra-accent: #dc2626; --ra-tint: #fee2e2; --ra-ink: #991b1b; }
 .ra-icon {
     width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
     background: var(--ra-tint); color: var(--ra-ink);
@@ -64,8 +70,8 @@
     padding: 3px 10px; font-size: .74rem; font-weight: 700; text-decoration: none; white-space: nowrap;
 }
 .ra-open:hover { color: #fff; filter: brightness(.93); }
-.report-alert--initial .ra-open { background: #fff; color: var(--ra-ink); }
-.report-alert--initial .ra-open:hover { background: #fffbeb; color: var(--ra-ink); filter: none; }
+.report-alert--open .ra-open { background: #fff; color: var(--ra-ink); }
+.report-alert--open .ra-open:hover { background: #fffbeb; color: var(--ra-ink); filter: none; }
 .ra-close {
     position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 7px;
     background: none; border: none; color: #9ca3af; font-size: 1.15rem; line-height: 1;
@@ -92,7 +98,8 @@
     width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
     background: #7c3aed; font-size: .72rem;
 }
-.ra-pill.initial-only .ra-dot { background: #f59e0b; }
+.ra-pill.open-only .ra-dot { background: #f59e0b; }
+.ra-pill.has-new .ra-dot { background: #dc2626; }
 .ra-pill:hover, .ra-pill:focus-visible { background: #1f2937; outline: none; }
 
 @keyframes raIn {
@@ -191,13 +198,16 @@
         audio.play().catch(() => {});
     }
 
-    // ── The notices ──
+    // ── The notices: new (a resident's report), review (a team's report on
+    // For Review), open (an Initial report saved before item 49) ──
+    const ICONS = { new: 'bi-megaphone-fill', review: 'bi-clipboard2-check-fill', open: 'bi-file-earmark-text-fill' };
+    const kindOf = r => (ICONS[r.kind] ? r.kind : 'review');
     function card(r) {
         const el = document.createElement('div');
-        el.className = 'report-alert report-alert--' + (r.type === 'final' ? 'final' : 'initial');
+        el.className = 'report-alert report-alert--' + kindOf(r);
         el.dataset.key = r.key;
         el.innerHTML =
-            '<div class="ra-icon"><i class="bi ' + (r.type === 'final' ? 'bi-clipboard2-check-fill' : 'bi-file-earmark-text-fill') + '"></i></div>' +
+            '<div class="ra-icon"><i class="bi ' + ICONS[kindOf(r)] + '"></i></div>' +
             '<div class="ra-body">' +
                 '<div class="ra-head"><span class="ra-title">' + escapeHtml(r.title) + '</span><span class="ra-time">· ' + timeAgo(r.at) + '</span></div>' +
                 '<div class="ra-what">' + escapeHtml(r.what) + '</div>' +
@@ -251,11 +261,14 @@
         if (!pillEl) {
             pillEl = document.createElement('button');
             pillEl.type = 'button';
-            pillEl.title = 'Show the new reports from the responders';
-            pillEl.innerHTML = '<span class="ra-dot"><i class="bi bi-clipboard2-check-fill"></i></span><span class="ra-count"></span><i class="bi bi-chevron-up"></i>';
+            pillEl.title = 'Show the new reports';
+            pillEl.innerHTML = '<span class="ra-dot"><i class="bi bi-bell-fill"></i></span><span class="ra-count"></span><i class="bi bi-chevron-up"></i>';
             pillEl.addEventListener('click', () => { write(HIDDEN_KEY, null); render(); });
         }
-        pillEl.className = 'ra-pill' + (open.some(r => r.type === 'final') ? '' : ' initial-only');
+        // The dot: red with a resident's new report, purple with a report to
+        // review, amber otherwise.
+        const kinds = open.map(kindOf);
+        pillEl.className = 'ra-pill' + (kinds.includes('new') ? ' has-new' : (kinds.includes('review') ? '' : ' open-only'));
         pillEl.querySelector('.ra-count').textContent = plural(open.length);
         return pillEl;
     }
@@ -303,7 +316,7 @@
             const n = Number(forReview[el.dataset.reviewCount] || 0);
             el.hidden = n === 0;
             el.querySelector('span').textContent = n;
-            el.title = n === 1 ? '1 Final report waiting for your review' : n + ' Final reports waiting for your review';
+            el.title = n === 1 ? '1 report waiting for your review' : n + ' reports waiting for your review';
         });
     }
     document.querySelectorAll('[data-review-count]').forEach(el => {

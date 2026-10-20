@@ -989,7 +989,7 @@
         respMarkers = [];
 
         incidentsData.forEach(incident => {
-            // Resolved, or the team's Final report is with MDRRMO (For Review).
+            // Resolved, or the team's report is with MDRRMO (For Review).
             if (incident.status === 'resolved' || incident.status === 'for_review') return;
 
             const responders = incident.responders || [];

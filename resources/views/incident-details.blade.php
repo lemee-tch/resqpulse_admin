@@ -10,8 +10,9 @@
              Attachments · Responders' Report · Activity Timeline
       right  Administrative Actions (changes with the stage: Approve or
              Decline / Assign response team, once approved / change the
-             assignment / review the Final report / resolved / declined) ·
-             Response Assignment · Internal Note
+             assignment / review the team's Initial report — correct it,
+             approve it as resolved or return it (item 49) / resolved /
+             declined) · Response Assignment · Internal Note
 
     The lists (Incidents, SOS Alerts) only have View for Pending: approving,
     declining and assigning the team are done here.
@@ -83,9 +84,11 @@
         .chip-resolved { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
         .chip-declined { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
         .chip-source   { background: #fff; color: #4b5563; border-color: #d1d5db; }
-        /* The team's latest report (item 46) — goes to the report card. */
-        .chip-initial  { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
-        .chip-final    { background: #ede9fe; color: #5b21b6; border-color: #c4b5fd; }
+        /* The team's latest report (items 46, 49) — goes to the report card.
+           Purple while it waits for your review; amber for an Initial report
+           a team saved before item 49 and hasn't sent to MDRRMO yet. */
+        .chip-report-review { background: #ede9fe; color: #5b21b6; border-color: #c4b5fd; }
+        .chip-report-open   { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
         a.chip { text-decoration: none; }
         a.chip:hover { filter: brightness(.96); }
         .chip-prio-critical { background: #dc2626; color: #fff; }
@@ -157,14 +160,15 @@
         .tag { display: inline-block; margin-left: 6px; font-size: .66rem; font-weight: 800; padding: 2px 8px; border-radius: 10px; vertical-align: middle; }
         .tag-initial { background: #fef3c7; color: #92400e; }
         .tag-final   { background: #d1fae5; color: #065f46; }
-        /* The team's latest report stands out: an Initial one until the Final
-           one comes, a Final one until it's reviewed. */
+        /* The team's latest report stands out until it's approved. */
         .o-report { scroll-margin-top: 16px; }
-        .o-report.is-new-initial { border-color: #fcd34d; box-shadow: inset 4px 0 0 #f59e0b; }
-        .o-report.is-new-final   { border-color: #c4b5fd; box-shadow: inset 4px 0 0 #7c3aed; }
+        .o-report.is-new-review { border-color: #c4b5fd; box-shadow: inset 4px 0 0 #7c3aed; }
+        .o-report.is-new-open   { border-color: #fcd34d; box-shadow: inset 4px 0 0 #f59e0b; }
         .new-pill { font-size: .66rem; font-weight: 800; letter-spacing: .04em; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; }
-        .new-pill.initial { background: #fef3c7; color: #92400e; }
-        .new-pill.final   { background: #ede9fe; color: #5b21b6; }
+        .new-pill.review { background: #ede9fe; color: #5b21b6; }
+        .new-pill.open   { background: #fef3c7; color: #92400e; }
+        /* MDRRMO corrected the report (item 49). */
+        .edited-note { margin-top: 10px; display: flex; gap: 7px; align-items: flex-start; font-size: .78rem; line-height: 1.45; color: #5b21b6; background: #f5f3ff; border-radius: 8px; padding: 8px 11px; }
         .narrative { margin-top: 12px; background: #f9fafb; border-left: 3px solid #10b981; border-radius: 8px; padding: 10px 12px; font-size: .85rem; line-height: 1.6; color: #1f2937; white-space: pre-line; overflow-wrap: anywhere; }
         .count-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
         .count-pill { font-size: .75rem; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: #f3f4f6; color: #374151; }
@@ -458,18 +462,24 @@
     }
     $photos = $photos->filter(fn ($p) => is_string($p) && $p !== '')->values();
 
-    // The responders' MDRRMC report (Initial or Final), or the one MDRRMO
-    // typed in for an incident handled outside the app.
+    // The responders' MDRRMC report — the Initial report (a Final one if it
+    // was sent before item 49) — or the one MDRRMO typed in for an incident
+    // handled outside the app.
     $report = is_array($incident->report_data) ? $incident->report_data : null;
     $reportIsInitial = $report && ($report['report_type'] ?? 'final') === 'initial';
-    $reportUpdatedAt = null;
-    if ($report && ! empty($report['updated_at'])) {
+    $reportKind = $reportIsInitial || ! $report ? 'Initial report' : 'Final report';
+    $parseTime = function ($value) {
+        if (empty($value)) return null;
         try {
-            $reportUpdatedAt = \Carbon\Carbon::parse($report['updated_at'])->setTimezone(config('app.timezone'));
+            return \Carbon\Carbon::parse($value)->setTimezone(config('app.timezone'));
         } catch (\Throwable $e) {
-            $reportUpdatedAt = null;
+            return null;
         }
-    }
+    };
+    $reportUpdatedAt = $report ? $parseTime($report['updated_at'] ?? null) : null;
+    // MDRRMO corrected it on For Review (item 49).
+    $reportEditedAt = $report ? $parseTime($report['edited_at'] ?? null) : null;
+    $editedParts = $report ? array_values(array_filter((array) ($report['edited_parts'] ?? []), 'is_string')) : [];
     $casualtyCounts = [];
     foreach (['dead' => 'Dead', 'injured' => 'Injured', 'missing' => 'Missing'] as $key => $label) {
         $casualtyCounts[$label] = count(array_filter((array) ($report['casualties'][$key] ?? []), 'is_array'));
@@ -529,8 +539,12 @@
             <a href="{{ $backUrl }}" class="back-link"><i class="bi bi-arrow-left"></i> Back to {{ $isSos ? 'SOS Alerts' : 'Incidents' }}</a>
         </div>
 
+        {{-- Opening this page counts as seeing its notice (partials/report-alert):
+             the team's report, or a resident's new report waiting here. --}}
         @if($teamReport)
             <span hidden data-report-seen="{{ $teamReport['key'] }}"></span>
+        @elseif($incident->needs_review && ! $isSos && ! $isDeclined)
+            <span hidden data-report-seen="new-{{ $incident->id }}"></span>
         @endif
 
         <!-- HEADER -->
@@ -542,8 +556,8 @@
                     <div class="head-badges">
                         <span class="chip {{ $stageClass }}">{{ $stageText }}</span>
                         @if($teamReport)
-                            <a href="#report" class="chip chip-{{ $teamReport['type'] }}" title="Sent {{ $teamReport['at']->format('M d, g:i A') }} — go to the report">
-                                <i class="bi {{ $teamReport['type'] === 'final' ? 'bi-clipboard2-check-fill' : 'bi-file-earmark-text-fill' }}"></i>
+                            <a href="#report" class="chip {{ $teamReport['review'] ? 'chip-report-review' : 'chip-report-open' }}" title="Sent {{ $teamReport['at']->format('M d, g:i A') }} — go to the report">
+                                <i class="bi {{ $teamReport['review'] ? 'bi-clipboard2-check-fill' : 'bi-file-earmark-text-fill' }}"></i>
                                 {{ $teamReport['type'] === 'final' ? 'Final report' : 'Initial report' }} · {{ $ago($teamReport['at']) }}
                             </a>
                         @endif
@@ -711,11 +725,11 @@
 
                 <!-- RESPONDERS' REPORT -->
                 @if($report || in_array($incident->status, ['for_review', 'resolved'], true))
-                    <section class="card-x o-report{{ $teamReport ? ' is-new-' . $teamReport['type'] : '' }}" id="report">
+                    <section class="card-x o-report{{ $teamReport ? ' is-new-' . ($teamReport['review'] ? 'review' : 'open') : '' }}" id="report">
                         <div class="card-title">
                             {{ $isManual ? 'MDRRMC Incident Report' : "Responders' Report" }}
                             @if($teamReport)
-                                <span class="new-pill {{ $teamReport['type'] }}">{{ $teamReport['type'] === 'final' ? 'Waiting for your review' : ($teamReport['revision'] > 1 ? 'Updated' : 'Sent') }} · {{ $ago($teamReport['at']) }}</span>
+                                <span class="new-pill {{ $teamReport['review'] ? 'review' : 'open' }}">{{ $teamReport['review'] ? 'Waiting for your review' : ($teamReport['revision'] > 1 ? 'Updated' : 'Saved') }} · {{ $ago($teamReport['at']) }}</span>
                             @elseif($reportUpdatedAt)
                                 <span class="title-note">{{ ($report['revision'] ?? 1) > 1 ? 'Last updated' : 'Filed' }} {{ $reportUpdatedAt->format('M d, g:i A') }}</span>
                             @endif
@@ -738,18 +752,23 @@
                                     </div>
                                     <div class="sub">
                                         @if($isReturned)
-                                            Sent back — the team updates it and sends it as Final again.
-                                        @elseif($reportIsInitial)
-                                            The team can keep updating it until they send it as Final.
+                                            Sent back — the team fixes it and sends it again.
+                                        @elseif($incident->isForReview())
+                                            Waiting for your review — correct it if needed, then approve it.
                                         @elseif($isManual)
                                             Added by MDRRMO.
-                                        @elseif($incident->isForReview())
-                                            Final — waiting for your review.
+                                        @elseif($incident->status === 'resolved')
+                                            Approved{{ ! empty($report['reviewed_by']) ? ' by ' . $report['reviewed_by'] : '' }}.
+                                        @elseif($reportIsInitial)
+                                            Saved by the team — it reaches For Review when they send it from the app.
                                         @else
-                                            Final{{ ! empty($report['reviewed_by']) ? ' · reviewed by ' . $report['reviewed_by'] : '' }}.
+                                            {{ $reportKind }}.
                                         @endif
                                     </div>
                                 </div>
+                                @if($incident->isForReview())
+                                    <a href="{{ route('incident.report.edit', $incident) }}" class="btn-soft"><i class="bi bi-pencil-square"></i> Review &amp; Edit</a>
+                                @endif
                                 <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="btn-soft"><i class="bi bi-eye"></i> View</a>
                                 <a href="{{ route('incident.report-pdf', [$incident, 'download' => 1]) }}" class="btn-soft" title="Download"><i class="bi bi-download"></i></a>
                             </div>
@@ -759,6 +778,13 @@
                                     <span class="count-pill {{ $count ? 'has' : '' }}">{{ $label }}: {{ $count }}</span>
                                 @endforeach
                             </div>
+
+                            @if($reportEditedAt)
+                                <div class="edited-note">
+                                    <i class="bi bi-pencil-square"></i>
+                                    <span>Corrected by <strong>{{ $report['edited_by'] ?? 'MDRRMO' }}</strong> {{ $reportEditedAt->format('M d, g:i A') }}{{ $editedParts ? ' — ' . implode(', ', $editedParts) : '' }}.</span>
+                                </div>
+                            @endif
                         @endif
                     </section>
                 @endif
@@ -870,22 +896,25 @@
                                     @if($incident->report_submitted_at || $incident->status === 'resolved')
                                         <li class="done">
                                             <span class="dot"><i class="bi bi-check"></i></span>
-                                            <div class="tl-label">Final report sent <span class="tl-time">{{ $incident->report_submitted_at?->format('M d, g:i A') }}</span></div>
-                                            <div class="tl-sub">{{ $incident->isForReview() ? 'Waiting for your review.' : 'Reviewed by MDRRMO.' }}</div>
+                                            <div class="tl-label">{{ $reportKind }} sent <span class="tl-time">{{ $incident->report_submitted_at?->format('M d, g:i A') }}</span></div>
+                                            <div class="tl-sub">
+                                                {{ $incident->isForReview() ? 'Waiting for your review.' : 'Reviewed by MDRRMO.' }}
+                                                @if($reportEditedAt) Corrected by {{ $report['edited_by'] ?? 'MDRRMO' }} {{ $reportEditedAt->format('M d, g:i A') }}. @endif
+                                            </div>
                                         </li>
                                     @elseif($report && $reportIsInitial)
                                         <li class="current">
                                             <span class="dot"></span>
                                             @if($isReturned && ! $teamReport)
-                                                <div class="tl-label">Final report — waiting for the team to send it again</div>
-                                                <div class="tl-sub">They fix what you sent it back for, then send it as Final.</div>
+                                                <div class="tl-label">Initial report — waiting for the team to send it again</div>
+                                                <div class="tl-sub">They fix what you sent it back for, then send it to you again.</div>
                                             @else
-                                                <div class="tl-label">Initial report {{ ($report['revision'] ?? 1) > 1 ? 'updated' : 'sent' }} <span class="tl-time">{{ $reportUpdatedAt?->format('M d, g:i A') }}</span></div>
-                                                <div class="tl-sub">The team sends the Final report when they're done.</div>
+                                                <div class="tl-label">Initial report {{ ($report['revision'] ?? 1) > 1 ? 'updated' : 'saved' }} <span class="tl-time">{{ $reportUpdatedAt?->format('M d, g:i A') }}</span></div>
+                                                <div class="tl-sub">Not sent to MDRRMO yet — it reaches For Review when the team sends it from the app.</div>
                                             @endif
                                         </li>
                                     @elseif($teamOnIt->isNotEmpty())
-                                        <li class="todo"><span class="dot"></span><div class="tl-label">Final report — not yet</div></li>
+                                        <li class="todo"><span class="dot"></span><div class="tl-label">Initial report — not yet</div></li>
                                     @endif
 
                                     {{-- 6. Resolved --}}
@@ -893,12 +922,12 @@
                                         <li class="done">
                                             <span class="dot"><i class="bi bi-check"></i></span>
                                             <div class="tl-label">Resolved <span class="tl-time">{{ $incident->resolved_at?->format('M d, g:i A') }}</span></div>
-                                            <div class="tl-sub">{{ $incident->resolvedBy ? 'Reviewed by ' . $incident->resolvedBy->name . '.' : 'Closed.' }}</div>
+                                            <div class="tl-sub">{{ $incident->resolvedBy ? 'Report approved by ' . $incident->resolvedBy->name . '.' : 'Closed.' }}</div>
                                         </li>
                                     @elseif($incident->isForReview())
                                         <li class="current">
                                             <span class="dot"></span>
-                                            <div class="tl-label">Resolved — waiting for your review</div>
+                                            <div class="tl-label">Resolved — waiting for your approval</div>
                                         </li>
                                     @else
                                         <li class="todo"><span class="dot"></span><div class="tl-label">Resolved — not yet</div></li>
@@ -993,26 +1022,34 @@
                         <div class="action-help"><i class="bi bi-info-circle"></i> Deleting removes it for good, with its photos. The Audit Log keeps a line about it.</div>
 
                     @elseif($incident->isForReview())
-                        {{-- ── FOR REVIEW: the responders' Final report ── --}}
+                        {{-- ── FOR REVIEW: the team's Initial report (item 49) — correct
+                             it if needed, then approve it as resolved, or return it. ── --}}
                         <div class="notice notice-review">
                             <i class="bi bi-clipboard2-check"></i>
                             <span>
-                                <strong>{{ $teamOnIt->first()?->full_name ?? 'The team' }}</strong> sent the <strong>Final report</strong>{{ $teamReport && $teamReport['again'] ? ' again' : '' }}
-                                {{ $teamReport ? $ago($teamReport['at']) : '' }}{{ $incident->report_submitted_at ? ' (' . $incident->report_submitted_at->format('M d, g:i A') . ')' : '' }}.
-                                Open it and check the narrative, casualties, actions taken and photo.
+                                @if($report)
+                                    <strong>{{ $teamOnIt->first()?->full_name ?? 'The team' }}</strong> sent the <strong>{{ $reportKind }}</strong>{{ $teamReport && $teamReport['again'] ? ' again' : '' }}
+                                    {{ $teamReport ? $ago($teamReport['at']) : '' }}{{ $incident->report_submitted_at ? ' (' . $incident->report_submitted_at->format('M d, g:i A') . ')' : '' }}.
+                                    Check the narrative, casualties, actions taken and photo — correct anything that's wrong — then approve it.
+                                @else
+                                    <strong>{{ $teamOnIt->first()?->full_name ?? 'The team' }}</strong> marked it done {{ $teamReport ? $ago($teamReport['at']) : '' }} without a report (an older version of the app).
+                                @endif
+                                @if($reportEditedAt)
+                                    <br>You corrected it {{ $ago($reportEditedAt) }}{{ $editedParts ? ': ' . implode(', ', $editedParts) : '' }}.
+                                @endif
                             </span>
                         </div>
                         <div class="stack">
                             @if($report)
-                                <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="btn-x btn-outline-x btn-block">
-                                    <i class="bi bi-file-earmark-pdf"></i> Open Final Report
+                                <a href="{{ route('incident.report.edit', $incident) }}" class="btn-x btn-outline-x btn-block">
+                                    <i class="bi bi-pencil-square"></i> Review &amp; Edit Report
                                 </a>
                             @endif
                             <form action="{{ route('incident.confirm-resolved', $incident->id) }}" method="POST" class="resolve-form"
                                   data-type="{{ $isSos ? 'SOS' : $incident->emergency_type }}"
                                   data-notifies-citizen="{{ $incident->citizen_id ? '1' : '0' }}">
                                 @csrf
-                                <button type="submit" class="btn-x btn-green-x btn-block"><i class="bi bi-check2-circle"></i> Mark as Resolved</button>
+                                <button type="submit" class="btn-x btn-green-x btn-block"><i class="bi bi-check2-circle"></i> Approve as Resolved</button>
                             </form>
                             <button type="button" class="btn-x btn-amber-x btn-block" data-bs-toggle="modal" data-bs-target="#returnModal">
                                 <i class="bi bi-arrow-return-left"></i> Return to Responders
@@ -1020,8 +1057,9 @@
                         </div>
                         <div class="action-help">
                             <i class="bi bi-info-circle"></i>
-                            <strong>Mark as Resolved</strong> closes it and adds "Reviewed by" with your name to the PDF.
-                            <strong>Return</strong> sends the report back with what to fix — it goes back to Active.
+                            @if($report) <strong>Review &amp; Edit</strong> opens the report as a form, to correct it before approving. @endif
+                            <strong>Approve as Resolved</strong> closes the incident and adds "Reviewed by" with your name to the PDF.
+                            <strong>Return</strong> sends the report back to the team with what to fix — it goes back to Active.
                         </div>
 
                     @elseif($incident->status === 'resolved')
@@ -1029,7 +1067,7 @@
                         <div class="notice notice-ok">
                             <i class="bi bi-check-circle-fill"></i>
                             <span>
-                                Resolved{{ $incident->resolved_at ? ' ' . $incident->resolved_at->format('M d, Y g:i A') : '' }}{{ $incident->resolvedBy ? ($isManual ? ' — added by ' : ' — reviewed by ') . $incident->resolvedBy->name : '' }}.
+                                Resolved{{ $incident->resolved_at ? ' ' . $incident->resolved_at->format('M d, Y g:i A') : '' }}{{ $incident->resolvedBy ? ($isManual ? ' — added by ' : ' — report approved by ') . $incident->resolvedBy->name : '' }}.
                                 Nothing left to do.
                             </span>
                         </div>
@@ -1060,7 +1098,7 @@
                                 <span>
                                     Report sent back: <strong>{{ rtrim($incident->report_return_reason, '. ') }}</strong>.
                                     @if($teamReport)
-                                        {{ $teamOnIt->first()?->full_name ?? 'The team' }} updated it {{ $ago($teamReport['at']) }} — it's still Initial, and comes back to For Review when they send it as Final.
+                                        {{ $teamOnIt->first()?->full_name ?? 'The team' }} updated it {{ $ago($teamReport['at']) }} but hasn't sent it yet — it comes back to For Review when they do.
                                     @else
                                         Waiting for the team to send it again.
                                     @endif
@@ -1080,12 +1118,14 @@
                                 </span>
                             </div>
                         @elseif($teamReport)
-                            {{-- The team sent an Initial report (item 46). --}}
+                            {{-- An Initial report the team saved before item 49, when the
+                                 incident stayed Active until a Final report came. It goes
+                                 to For Review when they send it from the app. --}}
                             <div class="notice notice-initial">
                                 <i class="bi bi-file-earmark-text-fill"></i>
                                 <span>
-                                    <strong>{{ $teamOnIt->first()->full_name }}</strong> {{ $teamReport['revision'] > 1 ? 'updated the' : 'sent an' }} <strong>Initial report</strong> {{ $ago($teamReport['at']) }}.
-                                    They send the Final report when they're done.
+                                    <strong>{{ $teamOnIt->first()->full_name }}</strong> {{ $teamReport['revision'] > 1 ? 'updated an' : 'saved an' }} <strong>Initial report</strong> {{ $ago($teamReport['at']) }}, but hasn't sent it to MDRRMO yet.
+                                    When they send it from the app, it moves to <strong>For Review</strong> for you to approve.
                                     @if($notifiedHelp && $notifiedAt) Asked {{ $teamList($notifiedTeams) }} to help {{ $ago($notifiedAt) }}. @endif
                                 </span>
                             </div>

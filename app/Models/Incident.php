@@ -25,7 +25,7 @@ class Incident extends Model
         'HCU'  => 'Health Care Unit',
     ];
 
-    /** Why MDRRMO sends a Final report back to the responders (For Review → Return). */
+    /** Why MDRRMO sends the team's report back to the responders (For Review → Return). */
     public const RETURN_REASONS = [
         'Casualty details are missing or incomplete',
         'The narrative needs more detail',
@@ -88,8 +88,9 @@ class Incident extends Model
      *   pending     waiting for an admin to approve or decline it
      *   active      approved and sent to all responders: waiting for one
      *               to accept, or being responded to
-     *   for_review  the responders sent their Final report; the admin
-     *               checks it before it counts as resolved
+     *   for_review  the responders sent their Initial report; the admin
+     *               checks it — and can correct it — then approves it as
+     *               resolved (item 49)
      *   resolved    resolved — or declined (shown on the same tab)
      */
     public function getStageAttribute(): string
@@ -129,7 +130,7 @@ class Incident extends Model
      *   awaiting    approved and sent, no one has accepted yet
      *               ("Active · Awaiting Responder")
      *   responding  a responder accepted
-     *   for_review  the Final report is with MDRRMO
+     *   for_review  the team's report is with MDRRMO
      *   resolved
      */
     public function progressKey(): string
@@ -254,23 +255,29 @@ class Incident extends Model
 
     /**
      * The report the responding team sent last, while it's with MDRRMO
-     * (item 46): an Initial report until the Final one comes, a Final
-     * report until MDRRMO reviews it. The Incidents and SOS lists tag it,
-     * Incident Details says so at the top, and every admin page shows a
-     * notice when one comes in (partials/report-alert). Null when there's
-     * nothing from the team: no report yet, the Final report was accepted
-     * (resolved), MDRRMO sent it back and the team hasn't sent it again,
-     * or MDRRMO added the incident itself (Add Resolved Report).
+     * (items 46 and 49). The Incidents and SOS lists tag it, Incident
+     * Details says so at the top, and every admin page shows a notice when
+     * one comes in (partials/report-alert). Null when there's nothing from
+     * the team: no report yet, MDRRMO approved it (resolved), MDRRMO sent it
+     * back and the team hasn't sent it again, or MDRRMO added the incident
+     * itself (Add Resolved Report).
      *
-     *   type      initial  the incident stays Active; the team can update it
-     *             final    it's on For Review, waiting for MDRRMO
+     *   type      initial  the Initial report — the only report the team
+     *                      sends since item 49
+     *             final    a Final report sent before item 49
+     *   review    true     it's on For Review, waiting for MDRRMO to approve
+     *                      it (status for_review)
+     *             false    an Initial report saved before item 49, while the
+     *                      incident stayed Active until a Final report came.
+     *                      It goes to For Review when the team sends it from
+     *                      the app.
      *   at        when the team sent it
      *   revision  how many times the team has sent the report (1 = first)
-     *   again     a Final report sent again after MDRRMO returned it
+     *   again     sent again after MDRRMO returned it
      *   key       one value per sending, so a notice the admin has seen
      *             isn't shown again
      *
-     * @return array{type: string, at: \Illuminate\Support\Carbon, revision: int, again: bool, key: string}|null
+     * @return array{type: string, review: bool, at: \Illuminate\Support\Carbon, revision: int, again: bool, key: string}|null
      */
     public function teamReport(): ?array
     {
@@ -281,16 +288,18 @@ class Incident extends Model
         $report = is_array($this->report_data) ? $this->report_data : null;
 
         if ($this->status === 'for_review') {
-            $type = 'final';
+            $review = true;
             // Older app versions finish an incident without a report.
+            $type = ($report['report_type'] ?? 'final') === 'initial' ? 'initial' : 'final';
             $at = $this->report_submitted_at ?? $this->updated_at;
         } elseif (in_array($this->status, ['pending', 'responding'], true)
             && $report && ($report['report_type'] ?? 'final') === 'initial') {
+            $review = false;
             $type = 'initial';
             $at = $this->reportSentAt($report) ?? $this->updated_at;
 
-            // Sent back by MDRRMO: Initial again, but not new until the
-            // team sends it again.
+            // Sent back by MDRRMO: not new until the team sends it again
+            // (it then goes to For Review).
             if ($this->report_returned_at && $at->lte($this->report_returned_at)) {
                 return null;
             }
@@ -300,16 +309,17 @@ class Incident extends Model
 
         return [
             'type'     => $type,
+            'review'   => $review,
             'at'       => $at,
             'revision' => max(1, (int) ($report['revision'] ?? 1)),
-            'again'    => $type === 'final' && $this->report_returned_at !== null,
+            'again'    => $review && $this->report_returned_at !== null,
             'key'      => $this->id . '-' . $at->getTimestamp(),
         ];
     }
 
     /**
-     * How many Final reports are waiting on For Review — the purple counts
-     * next to Incidents and SOS Alerts in the menu.
+     * How many reports from the teams are waiting on For Review — the
+     * purple counts next to Incidents and SOS Alerts in the menu.
      *
      * @return array{incidents: int, sos: int}
      */

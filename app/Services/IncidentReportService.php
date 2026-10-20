@@ -9,11 +9,12 @@ use Illuminate\Support\Str;
 
 /**
  * Builds the official "MDRRMC Incident Report" PDF that a responder files
- * from the field (see Api\IncidentController::resolve()). An Initial
- * report can be updated as often as needed — the PDF is rebuilt each time;
- * a Final report goes to MDRRMO's For Review tab and can't be changed
- * unless MDRRMO sends it back. When MDRRMO marks the incident resolved,
- * the PDF is rebuilt once more with who reviewed it.
+ * from the field (see Api\IncidentController::resolve()). The team sends
+ * the Initial report — the only one it sends since item 49 — and it goes
+ * to MDRRMO's For Review tab, where it can't be changed by the team unless
+ * MDRRMO sends it back. MDRRMO can correct it there (applyEdit()); the PDF
+ * is rebuilt each time, and once more with who reviewed it when MDRRMO
+ * approves it as resolved.
  *
  * MDRRMO can also add the report of an incident handled outside the app
  * (Add Resolved Report, Admin\IncidentController::storeManual()) — same
@@ -36,43 +37,29 @@ class IncidentReportService
      * Cleans whatever the app sent and fills the blanks from the incident
      * itself, so the responder only has to type what the system can't know.
      *
-     * $previous is the report already saved for this incident, when an
-     * Initial report is being updated. Its first filing time is kept and
-     * the revision number goes up:
+     * $previous is the report already saved for this incident, when the
+     * team sends it again (MDRRMO returned it). Its first filing time is
+     * kept and the revision number goes up:
      *   filed_at      first time the report was submitted
      *   updated_at    this submission
      *   revision      1 for the first submission, 2 after one update, ...
-     *   finalized_at  when it was submitted as Final (null while Initial)
+     *   finalized_at  when it was submitted as Final (only MDRRMO's own
+     *                 reports, Add Resolved Report, and Final reports sent
+     *                 before item 49)
+     *
+     * report_type is "initial" unless "final" is asked for (Add Resolved
+     * Report).
      */
     public function normalize(Incident $incident, ?Responder $responder, array $input, ?array $previous = null): array
     {
         $created = $incident->created_at ?? now();
         $now     = now();
 
-        $type = in_array($input['report_type'] ?? null, ['initial', 'final'], true)
-            ? $input['report_type'] : 'final';
+        $type = ($input['report_type'] ?? null) === 'final' ? 'final' : 'initial';
 
         $clean = fn($v, $max = 255) => mb_substr(trim((string) ($v ?? '')), 0, $max);
 
-        $casualties = [];
-        foreach (['dead', 'injured', 'missing'] as $key) {
-            $casualties[$key] = [];
-            foreach ((array) ($input['casualties'][$key] ?? []) as $row) {
-                if (! is_array($row)) continue;
-                $entry = [
-                    'name'    => $clean($row['name'] ?? '', 120),
-                    'age'     => $clean($row['age'] ?? '', 10),
-                    'sex'     => $clean($row['sex'] ?? '', 10),
-                    'address' => $clean($row['address'] ?? '', 160),
-                    'cause'   => $clean($row['cause'] ?? '', 120),
-                    'remarks' => $clean($row['remarks'] ?? '', 200),
-                ];
-                if (implode('', $entry) !== '') {
-                    $casualties[$key][] = $entry;
-                }
-            }
-            $casualties[$key] = array_slice($casualties[$key], 0, 30);
-        }
+        $casualties = $this->cleanCasualties($input['casualties'] ?? []);
 
         $releasedBy = $clean($input['released_by'] ?? '');
         if ($releasedBy === '' && $responder) {
@@ -107,10 +94,114 @@ class IncidentReportService
         ];
     }
 
-    /** Whether $report (an incident's report_data) is a Final report. */
+    /**
+     * Whether $report (an incident's report_data) is a Final report: one
+     * MDRRMO added itself (Add Resolved Report), or one a team sent before
+     * item 49. Reports saved before report types existed count as Final.
+     */
     public static function isFinal(?array $report): bool
     {
         return $report !== null && ($report['report_type'] ?? 'final') !== 'initial';
+    }
+
+    /**
+     * The casualty lists (Dead / Injured / Missing) as the report keeps
+     * them: every text trimmed and cut to length, blank rows dropped, at
+     * most 30 people per list.
+     *
+     * @return array{dead: list<array>, injured: list<array>, missing: list<array>}
+     */
+    public function cleanCasualties($input): array
+    {
+        $clean = fn($v, $max) => mb_substr(trim((string) ($v ?? '')), 0, $max);
+
+        $casualties = [];
+        foreach (['dead', 'injured', 'missing'] as $key) {
+            $casualties[$key] = [];
+            foreach ((array) (is_array($input) ? ($input[$key] ?? []) : []) as $row) {
+                if (! is_array($row)) continue;
+                $entry = [
+                    'name'    => $clean($row['name'] ?? '', 120),
+                    'age'     => $clean($row['age'] ?? '', 10),
+                    'sex'     => $clean($row['sex'] ?? '', 10),
+                    'address' => $clean($row['address'] ?? '', 160),
+                    'cause'   => $clean($row['cause'] ?? '', 120),
+                    'remarks' => $clean($row['remarks'] ?? '', 200),
+                ];
+                if (implode('', $entry) !== '') {
+                    $casualties[$key][] = $entry;
+                }
+            }
+            $casualties[$key] = array_slice($casualties[$key], 0, 30);
+        }
+
+        return $casualties;
+    }
+
+    /** The parts of the report MDRRMO can correct (applyEdit()), as the Audit Log names them. */
+    public const EDITABLE_PARTS = [
+        'location'      => 'Location',
+        'narrative'     => 'Narrative',
+        'casualties'    => 'Casualties',
+        'effects'       => 'Effects',
+        'actions_taken' => 'Actions taken',
+        'released_by'   => 'Released by',
+    ];
+
+    /**
+     * MDRRMO's corrections to the team's report while it's on For Review
+     * (item 49, Admin\IncidentController::updateReport()). Only the parts
+     * in EDITABLE_PARTS are taken from $input, cleaned the same way as
+     * normalize(); everything else stays as the team sent it — the type,
+     * the incident's date and time, when it was sent, the revision and the
+     * team. A blank location keeps the one the report had.
+     *
+     * Returns the report and the names of the parts that changed. When
+     * something changed, the report also says who corrected it and when
+     * (edited_by, edited_at) and every part corrected so far (edited_parts)
+     * — shown on Incident Details and to the team in the app. Sending the
+     * report again (after MDRRMO returned it) starts a fresh one without
+     * them.
+     *
+     * @return array{0: array, 1: list<string>}
+     */
+    public function applyEdit(array $report, array $input, string $editor): array
+    {
+        $clean = fn($v, $max = 255) => mb_substr(trim((string) ($v ?? '')), 0, $max);
+
+        $new = [
+            'location'      => $clean($input['location'] ?? ''),
+            'narrative'     => $clean($input['narrative'] ?? '', 2000),
+            'casualties'    => $this->cleanCasualties($input['casualties'] ?? []),
+            'effects'       => $clean($input['effects'] ?? '', 1000),
+            'actions_taken' => $clean($input['actions_taken'] ?? '', 1500),
+            'released_by'   => $clean($input['released_by'] ?? ''),
+        ];
+        if ($new['location'] === '') {
+            $new['location'] = (string) ($report['location'] ?? '');
+        }
+
+        $changed = [];
+        foreach ($new as $key => $value) {
+            $old = $key === 'casualties'
+                ? $this->cleanCasualties($report['casualties'] ?? [])
+                : (string) ($report[$key] ?? '');
+            if ($old !== $value) {
+                $changed[] = self::EDITABLE_PARTS[$key];
+            }
+            $report[$key] = $value;
+        }
+
+        if ($changed) {
+            $report['edited_by']    = $editor;
+            $report['edited_at']    = now()->toIso8601String();
+            $report['edited_parts'] = array_values(array_unique(array_merge(
+                array_values(array_filter((array) ($report['edited_parts'] ?? []), 'is_string')),
+                $changed
+            )));
+        }
+
+        return [$report, $changed];
     }
 
     /**

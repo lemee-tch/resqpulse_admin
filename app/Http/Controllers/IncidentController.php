@@ -23,8 +23,9 @@ class IncidentController extends Controller
      * incident.blade.php splits them into four tabs (Incident::$stage):
      *   Pending     waiting for the admin to approve or decline
      *   Active      approved and sent to the responders
-     *   For Review  the responders sent their Final report — the admin
-     *               marks it resolved (confirmResolved()) or sends it back
+     *   For Review  the responders sent their Initial report — the admin
+     *               can correct it (editReport()), then approves it as
+     *               resolved (confirmResolved()) or sends it back
      *               (returnReport())
      *   Resolved    resolved or declined, plus incidents handled outside
      *               the app that the admin added (storeManual())
@@ -559,11 +560,10 @@ class IncidentController extends Controller
     }
 
     /**
-     * For Review → "Mark as Resolved". The admin has checked the
-     * responders' Final MDRRMC report and accepts it: the incident is now
-     * resolved. The PDF is rebuilt with who reviewed it ("Reviewed by"),
-     * the resident who reported it (if any) and the responding team are
-     * told.
+     * For Review → "Approve as Resolved" (item 49). The admin read the
+     * team's Initial report — and corrected it if something was wrong
+     * (editReport()) — and accepts it: the incident is now resolved. A
+     * Final report sent before item 49 is approved the same way.
      */
     public function confirmResolved(Incident $incident, IncidentReportService $reports, PushNotificationService $push)
     {
@@ -571,16 +571,29 @@ class IncidentController extends Controller
             return back()->withErrors(['review' => 'This incident is no longer waiting for review.']);
         }
 
-        $admin = auth('web')->user();
+        $this->approveReport($incident, $reports, $push);
+
+        return back()->with('success', 'Report approved. The incident is now resolved.');
+    }
+
+    /**
+     * Resolves an incident on For Review: the PDF is rebuilt with who
+     * reviewed it ("Reviewed by"), and the resident who reported it (if
+     * any) and the responding team are told.
+     */
+    private function approveReport(Incident $incident, IncidentReportService $reports, PushNotificationService $push): void
+    {
+        $admin  = auth('web')->user();
+        $report = is_array($incident->report_data) ? $incident->report_data : null;
+        $kind   = $this->reportKind($report);
+
         $changes = [
             'status'      => 'resolved',
             'resolved_at' => now(),
             'resolved_by' => $admin?->id,
         ];
-
-        if (is_array($incident->report_data)) {
-            $report = $incident->report_data;
-            $report['reviewed_by'] = $admin?->name ? "{$admin->name}, MDRRMO Rosales" : 'MDRRMO Rosales';
+        if ($report !== null) {
+            $report['reviewed_by'] = $this->mdrrmoName($admin);
             $report['reviewed_at'] = now()->format('F j, Y g:i A');
             $changes['report_data'] = $report;
         }
@@ -600,29 +613,151 @@ class IncidentController extends Controller
         }
         $push->notifyResponders(
             $incident->responders,
-            'Report accepted by MDRRMO',
-            "{$incident->display_type} — {$incident->location}: your Final report was accepted. The incident is now resolved.",
+            'Report approved by MDRRMO',
+            "{$incident->display_type} — {$incident->location}: MDRRMO approved your {$kind}"
+                . (! empty($report['edited_by']) ? ' with a few corrections' : '')
+                . '. The incident is now resolved.',
             $incident
         );
 
         AuditLogService::log(
             'resolved',
-            "Reviewed the responders' Final report and marked the {$this->describeIncident($incident)} as resolved.",
+            "Approved the responders' {$kind} and marked the {$this->describeIncident($incident)} as resolved.",
             $incident,
             ['status' => 'for_review'],
             ['status' => 'resolved']
         );
+    }
 
-        return back()->with('success', 'Report accepted. The incident is now resolved.');
+    /** "Initial report", or "Final report" for one sent before item 49. */
+    private function reportKind(?array $report): string
+    {
+        return $report !== null && IncidentReportService::isFinal($report) ? 'Final report' : 'Initial report';
+    }
+
+    /** "Ana Cruz, MDRRMO Rosales" — how the report names the admin. */
+    private function mdrrmoName($admin): string
+    {
+        return $admin?->name ? "{$admin->name}, MDRRMO Rosales" : 'MDRRMO Rosales';
+    }
+
+    /** Incident Details, or SOS Details for an SOS. */
+    private function detailsUrl(Incident $incident): string
+    {
+        return $incident->isSos() ? route('sos.detail', $incident) : route('incident.detail', $incident);
     }
 
     /**
-     * For Review → "Return to Responders". Something in the Final report
-     * needs fixing. The report becomes Initial again and the incident
-     * goes back to Active (status responding), so the team can update it
-     * in the app and send it as Final again — it then comes back here.
-     * The team gets a push with the reason; the app shows it too
-     * (Api\IncidentController::reportForResponder()).
+     * For Review → "Review & Edit" (item 49): the team's report as a form,
+     * so MDRRMO can correct it before approving it — the location, the
+     * narrative, the casualties, the effects, the actions taken and who
+     * released it. The type, the date and time, the team and the photo
+     * stay as the team sent them.
+     */
+    public function editReport(Incident $incident, IncidentReportService $reports)
+    {
+        if (! $incident->isForReview() || ! is_array($incident->report_data)) {
+            return redirect($this->detailsUrl($incident))->withErrors(['review' => $incident->isForReview()
+                ? 'There is no report to edit: the team finished this incident without one (an older version of the app).'
+                : 'Only a report waiting for your review can be edited.']);
+        }
+
+        $incident->load(['responders', 'citizen']);
+
+        return view('incident-report-edit', [
+            'incident' => $incident,
+            'report'   => $incident->report_data,
+            'team'     => $reports->currentTeam($incident),
+            'kind'     => $this->reportKind($incident->report_data),
+            'details'  => $this->detailsUrl($incident),
+        ]);
+    }
+
+    /**
+     * Saves MDRRMO's corrections from editReport(). "Save Changes" keeps the
+     * report on For Review; "Save & Approve as Resolved" (approve=1) also
+     * approves it, like confirmResolved(). The PDF is rebuilt with the
+     * corrections, and the team sees them in the app.
+     */
+    public function updateReport(Request $request, Incident $incident, IncidentReportService $reports, PushNotificationService $push)
+    {
+        if (! $incident->isForReview() || ! is_array($incident->report_data)) {
+            return redirect($this->detailsUrl($incident))
+                ->withErrors(['review' => 'This report is no longer waiting for your review.']);
+        }
+
+        $casualtyRow = ['nullable', 'string'];
+        $validated = $request->validate([
+            'location'                  => ['required', 'string', 'max:255'],
+            'narrative'                 => ['required', 'string', 'max:2000'],
+            'effects'                   => ['nullable', 'string', 'max:1000'],
+            'actions_taken'             => ['nullable', 'string', 'max:1500'],
+            'released_by'               => ['nullable', 'string', 'max:255'],
+            'casualties'                => ['nullable', 'array'],
+            'casualties.*'              => ['nullable', 'array', 'max:30'],
+            'casualties.*.*.name'       => [...$casualtyRow, 'max:120'],
+            'casualties.*.*.age'        => [...$casualtyRow, 'max:10'],
+            'casualties.*.*.sex'        => [...$casualtyRow, 'max:10'],
+            'casualties.*.*.address'    => [...$casualtyRow, 'max:160'],
+            'casualties.*.*.cause'      => [...$casualtyRow, 'max:120'],
+            'casualties.*.*.remarks'    => [...$casualtyRow, 'max:200'],
+            'approve'                   => ['nullable', 'boolean'],
+        ], [
+            'location.required'   => 'Write where it happened (Location).',
+            'narrative.required'  => 'Describe what happened (Details / Narrative).',
+            'narrative.max'       => 'Keep the narrative under 2,000 characters.',
+            'effects.max'         => 'Keep the effects under 1,000 characters.',
+            'actions_taken.max'   => 'Keep the actions taken under 1,500 characters.',
+            'casualties.*.max'    => 'A casualty list can have up to 30 people.',
+        ]);
+
+        $approve = $request->boolean('approve');
+        $kind    = $this->reportKind($incident->report_data);
+        [$report, $changed] = $reports->applyEdit($incident->report_data, $validated, $this->mdrrmoName(auth('web')->user()));
+
+        if ($changed) {
+            $changes = ['report_data' => $report];
+            // The narrative doubles as the short notes on the admin pages
+            // and in the team's Report History.
+            if (in_array(IncidentReportService::EDITABLE_PARTS['narrative'], $changed, true)) {
+                $changes['resolution_notes'] = $report['narrative'];
+            }
+            $incident->update($changes);
+
+            AuditLogService::log(
+                'updated',
+                "Corrected the responders' {$kind} for the {$this->describeIncident($incident)} — " . implode(', ', $changed) . '.',
+                $incident,
+                null,
+                ['corrected' => $changed]
+            );
+
+            // Approving rebuilds it anyway.
+            if (! $approve) {
+                $this->rebuildReportPdf($incident, $reports);
+            }
+        }
+
+        if ($approve) {
+            $this->approveReport($incident, $reports, $push);
+
+            return redirect($this->detailsUrl($incident))->with('success', $changed
+                ? 'Report corrected and approved. The incident is now resolved.'
+                : 'Report approved. The incident is now resolved.');
+        }
+
+        return redirect($this->detailsUrl($incident))->with('success', $changed
+            ? 'Changes saved to the report and its PDF. Approve it when it\'s ready.'
+            : 'Nothing was changed.');
+    }
+
+    /**
+     * For Review → "Return to Responders". Something in the report needs
+     * fixing that MDRRMO can't correct itself (e.g. the names of the
+     * injured). The incident goes back to Active (status responding), so
+     * the team can update the report in the app and send it again — it
+     * then comes back here. The team gets a push with the reason; the app
+     * shows it too (Api\IncidentController::reportForResponder()).
      */
     public function returnReport(Request $request, Incident $incident, IncidentReportService $reports, PushNotificationService $push)
     {
@@ -640,6 +775,7 @@ class IncidentController extends Controller
             'return_note.max'        => 'Keep the note under 500 characters.',
         ]);
 
+        $kind   = $this->reportKind(is_array($incident->report_data) ? $incident->report_data : null);
         $note   = trim((string) $request->input('return_note'));
         $reason = $request->return_reason === 'Other'
             ? $note
@@ -666,19 +802,19 @@ class IncidentController extends Controller
         $push->notifyResponders(
             $incident->responders,
             'Report sent back by MDRRMO',
-            "{$incident->display_type} — {$incident->location}: " . rtrim($reason, '. ') . '. Update the report and submit it as Final again.',
+            "{$incident->display_type} — {$incident->location}: " . rtrim($reason, '. ') . '. Update the report and send it to MDRRMO again.',
             $incident
         );
 
         AuditLogService::log(
             'rejected',
-            "Sent the Final report for the {$this->describeIncident($incident)} back to the responders — {$reason}",
+            "Sent the {$kind} for the {$this->describeIncident($incident)} back to the responders — {$reason}",
             $incident,
             ['status' => 'for_review'],
             ['status' => 'responding', 'return_reason' => $reason]
         );
 
-        return back()->with('success', 'Report sent back to the responders. It comes back to For Review when they submit it again.');
+        return back()->with('success', 'Report sent back to the responders. It comes back to For Review when they send it again.');
     }
 
     /**
@@ -914,6 +1050,10 @@ class IncidentController extends Controller
      * the bell too, on top of triggering the siren — same event,
      * announced twice. This is for everything else: regular incident
      * reports (including guest ones pending review).
+     *
+     * The bell only lists them now. The sound for a new report comes from
+     * the notice on every admin page (latestReports(), item 49), so it
+     * rings on every page — not only on the Dashboard — and only once.
      */
     public function latestIncidentNotifications(Request $request)
     {
@@ -949,12 +1089,20 @@ class IncidentController extends Controller
     }
 
     /**
-     * Powers the "report received" notice on every admin page
-     * (partials/report-alert, item 46): the reports the responding teams
-     * sent that MDRRMO may not have looked at yet, newest first —
-     * Initial reports from the last 3 hours, and Final reports from the
-     * last day that are still waiting for review. The page remembers the
-     * ones the admin opened or closed, and rings for one that just came in.
+     * Powers the notice in the corner of every admin page
+     * (partials/report-alert, items 46 and 49), newest first:
+     *
+     *   new     a resident's new report (Report Emergency) waiting for
+     *           approval on Pending, from the last day. It used to ring
+     *           only on the Dashboard (the bell); now every page shows it
+     *           and rings, like a report from the responders. SOS alerts
+     *           aren't here: they have their own siren (sos-alert-overlay).
+     *   review  a team's report waiting on For Review, from the last day
+     *   open    an Initial report a team saved before item 49 (the
+     *           incident stayed Active), from the last 3 hours
+     *
+     * The page remembers the ones the admin opened or closed, and rings for
+     * one that just came in.
      *
      * Also the For Review counts, so the purple counts in the menu change
      * without reloading the page.
@@ -962,12 +1110,12 @@ class IncidentController extends Controller
     public function latestReports()
     {
         $now   = now();
-        $since = ['initial' => $now->copy()->subHours(3), 'final' => $now->copy()->subDay()];
+        $since = ['open' => $now->copy()->subHours(3), 'review' => $now->copy()->subDay()];
 
         $reports = Incident::with('responders')
             // Sending a report updates the incident, so this only skips
             // incidents nothing happened to since.
-            ->where('updated_at', '>=', $since['final'])
+            ->where('updated_at', '>=', $since['review'])
             ->where(function ($q) {
                 $q->where('status', 'for_review')
                     ->orWhere(fn ($q) => $q->whereIn('status', ['pending', 'responding'])->whereNotNull('report_data'));
@@ -978,45 +1126,79 @@ class IncidentController extends Controller
             ->map(function (Incident $incident) use ($since) {
                 $report = $incident->teamReport();
 
-                return $report && $report['at']->gte($since[$report['type']])
+                return $report && $report['at']->gte($since[$report['review'] ? 'review' : 'open'])
                     ? $this->reportNotice($incident, $report)
                     : null;
             })
-            ->filter()
-            ->sortByDesc('at')
-            ->take(10)
-            ->values();
+            ->filter();
+
+        $newReports = Incident::with('citizen')
+            ->where('emergency_type', '!=', 'SOS Emergency')
+            ->where('needs_review', true)
+            ->whereNull('declined_at')
+            ->where('created_at', '>=', $since['review'])
+            ->orderByDesc('created_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (Incident $incident) => $this->newReportNotice($incident));
 
         return response()->json([
-            'reports'   => $reports,
+            'reports'   => $reports->concat($newReports)->sortByDesc('at')->take(10)->values(),
             'forReview' => Incident::forReviewCounts(),
             'now'       => $now->getTimestamp(),
         ]);
     }
 
-    /** One report, as partials/report-alert shows it. */
+    /** "SOS Alert — Brgy. Acop, Rosales" → "Brgy. Acop, Rosales" */
+    private function placeOf(Incident $incident): string
+    {
+        $place = trim((string) preg_replace('/^(SOS Alert|Guest Report)\s*[—,]\s*/u', '', (string) $incident->location));
+
+        return $place !== '' ? $place : 'No location';
+    }
+
+    /** A team's report, as partials/report-alert shows it. */
     private function reportNotice(Incident $incident, array $report): array
     {
-        $isFinal = $report['type'] === 'final';
-        $lead    = $incident->responders->sortBy(fn ($r) => (string) $r->pivot->accepted_at)->first();
-        // "SOS Alert — Brgy. Acop, Rosales" → "Brgy. Acop, Rosales"
-        $place = trim((string) preg_replace('/^(SOS Alert|Guest Report)\s*[—,]\s*/u', '', (string) $incident->location));
+        $review = $report['review'];
+        $kind   = $report['type'] === 'final' ? 'Final report' : 'Initial report';
+        $lead   = $incident->responders->sortBy(fn ($r) => (string) $r->pivot->accepted_at)->first();
 
         return [
             'key'    => $report['key'],
-            'type'   => $report['type'],
+            'kind'   => $review ? 'review' : 'open',
             'title'  => match (true) {
-                $isFinal && $report['again'] => 'Final report sent again',
-                $isFinal                     => 'Final report received',
-                $report['revision'] > 1      => 'Initial report updated',
-                default                      => 'Initial report received',
+                $review && $report['again'] => "{$kind} sent again",
+                $review                     => "{$kind} received",
+                $report['revision'] > 1     => 'Initial report updated',
+                default                     => 'Initial report saved',
             },
             'what'   => $incident->display_type,
-            'where'  => $place !== '' ? $place : 'No location',
+            'where'  => $this->placeOf($incident),
             'from'   => $lead ? $lead->full_name . ($lead->agency ? " ({$lead->agency})" : '') : 'The responders',
             'at'     => $report['at']->getTimestamp(),
-            'action' => $isFinal ? 'Review' : 'View',
-            'url'    => $incident->isSos() ? route('sos.detail', $incident) : route('incident.detail', $incident),
+            'action' => $review ? 'Review' : 'View',
+            'url'    => $this->detailsUrl($incident),
+        ];
+    }
+
+    /**
+     * A resident's new report waiting for approval, as partials/report-alert
+     * shows it. Opening it (Incident Details) counts as seeing it — the page
+     * marks "new-{id}" as seen.
+     */
+    private function newReportNotice(Incident $incident): array
+    {
+        return [
+            'key'    => 'new-' . $incident->id,
+            'kind'   => 'new',
+            'title'  => 'New report',
+            'what'   => $incident->display_type,
+            'where'  => $this->placeOf($incident),
+            'from'   => $incident->reporter_name . ($incident->citizen_id ? '' : ' (guest)'),
+            'at'     => $incident->created_at->getTimestamp(),
+            'action' => 'Review',
+            'url'    => $this->detailsUrl($incident),
         ];
     }
 

@@ -86,7 +86,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/incidents/{incident}/decline', [IncidentController::class, 'decline'])->name('incident.decline');
     // Active: change the priority, the team(s) and the notes for the team.
     Route::patch('/incidents/{incident}/assignment', [IncidentController::class, 'updateAssignment'])->name('incident.assignment');
-    // For Review: accept the responders' Final report, or send it back.
+    // For Review: correct the team's Initial report, approve it as
+    // resolved, or send it back (item 49).
+    Route::get('/incidents/{incident}/report/edit', [IncidentController::class, 'editReport'])->name('incident.report.edit');
+    Route::put('/incidents/{incident}/report', [IncidentController::class, 'updateReport'])->name('incident.report.update');
     Route::post('/incidents/{incident}/confirm-resolved', [IncidentController::class, 'confirmResolved'])->name('incident.confirm-resolved');
     Route::post('/incidents/{incident}/return-report', [IncidentController::class, 'returnReport'])->name('incident.return-report');
     // Declined reports / SOS alerts only — see IncidentController::destroy().
@@ -94,7 +97,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/sos-alerts/latest', [IncidentController::class, 'latestSos'])->name('sos-alerts.latest');
     Route::get('/notifications/incidents', [IncidentController::class, 'latestIncidentNotifications'])->name('notifications.incidents');
-    // The "Initial / Final report received" notice on every page (partials/report-alert).
+    // The notice on every page (partials/report-alert): a team's report,
+    // or a resident's new report waiting for approval.
     Route::get('/notifications/reports', [IncidentController::class, 'latestReports'])->name('notifications.reports');
     // Must stay AFTER /sos-alerts/latest — {incident} is a wildcard and
     // would otherwise swallow "latest" as if it were an incident ID,

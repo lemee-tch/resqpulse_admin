@@ -176,7 +176,8 @@
         .tab-note--pending { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
         .tab-note--review  { background: #f5f3ff; border: 1px solid #ddd6fe; color: #5b21b6; }
 
-        /* For Review actions: the report PDF, Return. */
+        /* For Review actions: the report PDF, Edit (correct the report —
+           item 49), Approve, Return. */
         .btn-pdf {
             display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
             background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; border-radius: 6px;
@@ -184,6 +185,13 @@
             transition: background .2s, color .2s, border-color .2s;
         }
         .btn-pdf:hover { background: #fef2f2; border-color: #f87171; color: #991b1b; }
+        .btn-edit {
+            display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+            background: #fff; color: #6d28d9; border: 1.5px solid #c4b5fd; border-radius: 6px;
+            padding: 5px 12px; font-size: .78rem; font-weight: 700; text-decoration: none;
+            transition: background .2s, color .2s, border-color .2s;
+        }
+        .btn-edit:hover { background: #6d28d9; border-color: #6d28d9; color: #fff; }
         .btn-return {
             background: #fff; color: #b45309; border: 1.5px solid #f59e0b; border-radius: 6px;
             padding: 5px 13px; font-size: .78rem; font-weight: 700; cursor: pointer;
@@ -203,7 +211,7 @@
         .btn-add-report:hover { background: #0d2e7a; color: #fff; box-shadow: 0 4px 12px rgba(26,60,143,.25); }
 
         /* Small tags next to the type. */
-        .tag-manual, .tag-resent, .tag-returned, .tag-initial {
+        .tag-manual, .tag-resent, .tag-returned, .tag-initial, .tag-corrected {
             display: inline-flex; align-items: center; gap: 3px; margin-left: 6px;
             padding: 1px 8px; border-radius: 20px; font-size: .66rem; font-weight: 700;
             vertical-align: middle; white-space: nowrap;
@@ -211,10 +219,12 @@
         .tag-manual   { background: #e0e7ff; color: #3730a3; }
         .tag-resent   { background: #f5f3ff; color: #6d28d9; }
         .tag-returned { background: #fff7ed; color: #c2410c; }
-        /* Active: the team sent an Initial report (item 46). */
+        /* Active: an Initial report the team saved before item 49. */
         .tag-initial  { background: #fef3c7; color: #92400e; }
+        /* For Review: you corrected the report (item 49). */
+        .tag-corrected { background: #ede9fe; color: #5b21b6; }
 
-        /* For Review: Final reports waiting — purple, like the count in the menu. */
+        /* For Review: reports waiting — purple, like the count in the menu. */
         .tab-count {
             display: inline-block; min-width: 20px; margin-left: 4px; padding: 1px 7px; border-radius: 20px;
             background: #7c3aed; color: #fff; font-size: .7rem; font-weight: 800; line-height: 1.5; text-align: center;
@@ -378,8 +388,9 @@
             //               one to accept (the admin can notify specific
             //               teams), or being responded to. "Needs Team" only
             //               on incidents approved without being sent (item 36)
-            //   For Review  the responders sent their Final report; the admin
-            //               marks it resolved or sends it back
+            //   For Review  the responders sent their Initial report; the admin
+            //               corrects it if needed, then approves it as resolved
+            //               or sends it back (item 49)
             //   Resolved    resolved, declined (badged "Declined"), and
             //               incidents handled outside the app that MDRRMO
             //               added with "Add Resolved Report"
@@ -444,11 +455,11 @@
         <div class="tab-bar">
             <button class="tab-btn active" data-tab="pending" onclick="switchTab('pending', this)">Pending ({{ $pendingIncidents->count() }})</button>
             <button class="tab-btn" data-tab="active" onclick="switchTab('active', this)">Active ({{ $activeIncidents->count() }})</button>
-            {{-- Purple when Final reports are waiting, like the count in the menu. --}}
+            {{-- Purple when reports are waiting, like the count in the menu. --}}
             <button class="tab-btn" data-tab="for-review" onclick="switchTab('for-review', this)">
                 For Review
                 @if($forReviewIncidents->isNotEmpty())
-                    <span class="tab-count" title="Final reports waiting for your review">{{ $forReviewIncidents->count() }}</span>
+                    <span class="tab-count" title="Reports waiting for your review">{{ $forReviewIncidents->count() }}</span>
                 @else
                     (0)
                 @endif
@@ -526,7 +537,7 @@
                     <option value="needs_team">Needs Team</option>
                     <option value="pending">Awaiting Responder</option>
                     <option value="responding">Responding</option>
-                    <option value="initial_report">Initial report sent</option>
+                    <option value="initial_report">Initial report saved</option>
                 </select>
 
                 <select class="filter-select" id="filterType">
@@ -572,7 +583,7 @@
                         @forelse($activeIncidents as $inc)
                         @php
                             extract($rowData($inc));
-                            $teamReport = $inc->teamReport(); // the team's Initial report, if they sent one
+                            $teamReport = $inc->teamReport(); // an Initial report the team saved before item 49
                         @endphp
                         {{-- Photos, reporter, description and responders are on the
                              Incident Details page (the row and View open it). --}}
@@ -594,7 +605,7 @@
                                     <span class="tag-returned" title="{{ $inc->report_return_reason }}"><i class="bi bi-arrow-return-left"></i> Report sent back</span>
                                 @endif
                                 @if($teamReport)
-                                    <span class="tag-initial" title="{{ $teamReport['revision'] > 1 ? 'Initial report updated' : 'Initial report sent' }} {{ $teamReport['at']->format('M d, g:i A') }} — open View to read it">
+                                    <span class="tag-initial" title="{{ $teamReport['revision'] > 1 ? 'Initial report updated' : 'Initial report saved' }} {{ $teamReport['at']->format('M d, g:i A') }} — not sent to MDRRMO yet. Open View to read it.">
                                         <i class="bi bi-file-earmark-text"></i> Initial report · {{ $teamReport['at']->gt(now()->subMinute()) ? 'just now' : $teamReport['at']->diffForHumans() }}
                                     </span>
                                 @endif
@@ -624,11 +635,11 @@
             </div>
         </div>
 
-        <!-- ══ TAB: FOR REVIEW (the responders' Final report, waiting for the admin) ══ -->
+        <!-- ══ TAB: FOR REVIEW (the responders' Initial report, waiting for the admin) ══ -->
         <div id="tab-for-review" class="tab-panel">
             <div class="tab-note tab-note--review">
                 <i class="bi bi-clipboard2-check"></i>
-                <span>The responding team sent their <strong>Final report</strong> for these incidents. Open the report and check it, then <strong>Mark as Resolved</strong> — or <strong>Return</strong> it to the responders with what needs fixing. A returned report goes back to Active until they send it again.</span>
+                <span>The responding team sent their <strong>Initial report</strong> for these incidents. Check it — <strong>Edit</strong> it if something needs correcting — then <strong>Approve</strong> it to mark the incident resolved, or <strong>Return</strong> it to the team with what needs fixing. A returned report goes back to Active until they send it again.</span>
             </div>
 
             <div class="table-card">
@@ -656,6 +667,9 @@
                                 @if($inc->report_returned_at)
                                     <span class="tag-resent" title="Sent again after you returned it"><i class="bi bi-arrow-repeat"></i> Sent again</span>
                                 @endif
+                                @if(! empty($inc->report_data['edited_by']))
+                                    <span class="tag-corrected" title="Corrected by {{ $inc->report_data['edited_by'] }}"><i class="bi bi-pencil"></i> Corrected</span>
+                                @endif
                             </td>
                             <td class="td-location">{{ $inc->location ?: '—' }}</td>
                             <td>{{ $teamSummary($inc) }}</td>
@@ -666,16 +680,19 @@
                             <td onclick="event.stopPropagation()">
                                 <div class="review-actions">
                                     @if($inc->report_data)
-                                        <a href="{{ route('incident.report-pdf', $inc) }}" target="_blank" class="btn-pdf" title="Open the Final report (PDF)">
-                                            <i class="bi bi-file-earmark-pdf"></i> Report
+                                        <a href="{{ route('incident.report-pdf', $inc) }}" target="_blank" class="btn-pdf" title="Open the report (PDF)" aria-label="Open the report (PDF)">
+                                            <i class="bi bi-file-earmark-pdf"></i>
+                                        </a>
+                                        <a href="{{ route('incident.report.edit', $inc) }}" class="btn-edit" title="Read the report and correct it before approving">
+                                            <i class="bi bi-pencil-square"></i> Edit
                                         </a>
                                     @endif
                                     <form action="{{ route('incident.confirm-resolved', $inc->id) }}" method="POST" class="resolve-form"
                                           data-type="{{ $inc->emergency_type }}"
                                           data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
                                         @csrf
-                                        <button type="submit" class="btn-approve" title="Accept the report and mark the incident resolved">
-                                            <i class="bi bi-check2-circle"></i> Mark as Resolved
+                                        <button type="submit" class="btn-approve" title="Approve the report and mark the incident resolved">
+                                            <i class="bi bi-check2-circle"></i> Approve
                                         </button>
                                     </form>
                                     <button type="button" class="btn-return" title="Send the report back to the responders"
@@ -926,7 +943,7 @@
     })();
 
     // Pending is the first tab, so after changing something on another tab
-    // (a priority on Active, Mark as Resolved on For Review…) the reload
+    // (a priority on Active, Approve on For Review…) the reload
     // would jump back to it. Remember the tab the change came from and
     // reopen it once. (The priority dropdown sends its form with
     // form.submit(), which doesn't fire "submit", so listen for "change"

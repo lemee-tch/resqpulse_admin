@@ -9,18 +9,19 @@
 
     Uses $pendingIncidentsCount / $pendingSosCount (the red counts: waiting
     for approval) and $forReviewIncidentsCount / $forReviewSosCount (the
-    purple counts: Final reports waiting for review — tap one to open
-    For Review) from AppServiceProvider's view composer.
+    purple counts: the teams' reports waiting for review — tap one to
+    open For Review) from AppServiceProvider's view composer.
 
-    It also brings the "Initial / Final report received" notice
-    (partials/report-alert), so every page with the menu has it. That
-    keeps the purple counts up to date too.
+    It also brings the notice in the corner (partials/report-alert) — a
+    team's report, or a resident's new report waiting for approval, with a
+    sound — so every page with the menu has it. That keeps the purple
+    counts up to date too.
 --}}
 @php
     $navActive = fn (string ...$routes) => request()->routeIs(...$routes) ? 'active' : '';
     $userManagementOpen = request()->routeIs('citizen-verification', 'users', 'responder-accounts');
     $countBadge = 'background:#fff;color:#dc2626;font-size:.65rem;font-weight:800;padding:1px 7px;border-radius:20px;margin-left:6px;';
-    $reviewTitle = fn (int $n) => $n === 1 ? '1 Final report waiting for your review' : "{$n} Final reports waiting for your review";
+    $reviewTitle = fn (int $n) => $n === 1 ? '1 report waiting for your review' : "{$n} reports waiting for your review";
 @endphp
 
 <style>
@@ -48,7 +49,7 @@
     .sidebar-nav .nav-sub a { padding: 8px 20px 8px 48px; font-size: .8rem; margin: 1px 10px; }
     .sidebar-nav .nav-sub a::before { content: '\2022'; opacity: .8; }
 
-    /* Final reports waiting for review (purple, next to the red count). */
+    /* Reports waiting for review (purple, next to the red count). */
     .sidebar-nav .nav-review-count {
         display: inline-flex; align-items: center; gap: 3px; margin-left: 4px;
         background: #ede9fe; color: #5b21b6; font-size: .65rem; font-weight: 800; line-height: 1.5;
@@ -102,7 +103,7 @@
             </summary>
             <div class="nav-sub">
                 <a href="{{ route('citizen-verification') }}" class="{{ $navActive('citizen-verification') }}">Residents Verification</a>
-                <a href="{{ route('users') }}" class="{{ $navActive('users') }}">LGU Staff</a>
+                <a href="{{ route('users') }}" class="{{ $navActive('users') }}">Admin & Authorized Staff</a>
                 <a href="{{ route('responder-accounts') }}" class="{{ $navActive('responder-accounts') }}">Response Team</a>
             </div>
         </details>

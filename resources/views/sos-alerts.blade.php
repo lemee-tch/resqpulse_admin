@@ -199,11 +199,13 @@
             font-size: .7rem; font-weight: 700; color: #c2410c; background: #fff7ed;
             padding: 1px 8px; border-radius: 20px;
         }
-        /* Active: the team sent an Initial report (item 46). */
+        /* Active: an Initial report the team saved before item 49. */
         .sos-flag--initial { color: #92400e; background: #fef3c7; }
+        /* For Review: you corrected the report (item 49). */
+        .sos-flag--corrected { color: #5b21b6; background: #ede9fe; }
         .sos-flag i { margin-right: 3px; }
 
-        /* For Review: Final reports waiting — purple, like the count in the menu. */
+        /* For Review: reports waiting — purple, like the count in the menu. */
         .tab-count {
             display: inline-block; min-width: 20px; margin-left: 4px; padding: 1px 7px; border-radius: 20px;
             background: #7c3aed; color: #fff; font-size: .7rem; font-weight: 800; line-height: 1.5; text-align: center;
@@ -247,6 +249,9 @@
         .act--danger:hover, .act--danger:focus-visible { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
         .act--warn { color: #b45309; border-color: #f3d9a4; }
         .act--warn:hover, .act--warn:focus-visible { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
+        /* For Review: correct the team's report (item 49). */
+        .act--edit { color: #6d28d9; border-color: #d8ccfb; }
+        .act--edit:hover, .act--edit:focus-visible { background: #f5f3ff; border-color: #a78bfa; color: #5b21b6; }
 
         @media (max-width: 760px) {
             .sos-card { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
@@ -411,8 +416,9 @@
             // doesn't belong alongside genuinely active ones. Declined
             // alerts have their own tab; Resolved History is only the
             // ones responders actually resolved.
-            // For Review: the responders sent their Final report — the
-            // admin marks it resolved or sends it back (same as Incidents).
+            // For Review: the responders sent their Initial report — the
+            // admin corrects it if needed, then approves it as resolved or
+            // sends it back (same as Incidents, item 49).
             // Active: the ones still needing a team first (newest first inside each group).
             $activeSos    = $sosAlerts->filter(fn ($s) => $s->stage === 'active')
                 ->sortBy(fn ($s) => $s->awaitingTeam() ? 0 : 1)->values();
@@ -449,11 +455,11 @@
         <div class="tab-bar">
             <button class="tab-btn active" data-tab="pending" onclick="switchTab('pending', this)">Pending ({{ $pendingReviewSos->count() }})</button>
             <button class="tab-btn" data-tab="active" onclick="switchTab('active', this)">Active ({{ $activeSos->count() }})</button>
-            {{-- Purple when Final reports are waiting, like the count in the menu. --}}
+            {{-- Purple when reports are waiting, like the count in the menu. --}}
             <button class="tab-btn" data-tab="for-review" onclick="switchTab('for-review', this)">
                 For Review
                 @if($forReviewSos->isNotEmpty())
-                    <span class="tab-count" title="Final reports waiting for your review">{{ $forReviewSos->count() }}</span>
+                    <span class="tab-count" title="Reports waiting for your review">{{ $forReviewSos->count() }}</span>
                 @else
                     (0)
                 @endif
@@ -474,11 +480,11 @@
             @endforelse
         </div>
 
-        <!-- ══ TAB: FOR REVIEW (the responders' Final report, waiting for the admin) ══ -->
+        <!-- ══ TAB: FOR REVIEW (the responders' Initial report, waiting for the admin) ══ -->
         <div id="tab-for-review" class="tab-panel">
             <div class="review-banner review-banner--report">
                 <i class="bi bi-clipboard2-check" style="margin-top:1px;"></i>
-                <span>The team sent their Final report. Check it, then mark it resolved or return it with what needs fixing.</span>
+                <span>The team sent their Initial report. Check it — <strong>Edit</strong> it if something needs correcting — then <strong>Approve</strong> it as resolved, or <strong>Return</strong> it with what needs fixing.</span>
             </div>
 
             @forelse($forReviewSos as $sos)
@@ -635,7 +641,7 @@
         if (tab) openTab(tab);
     })();
 
-    // Pending is the first tab, so after Mark as Resolved / Return on the
+    // Pending is the first tab, so after Approve / Return on the
     // For Review tab the reload would jump back to it. Remember the tab the
     // change came from and reopen it once.
     (function () {
