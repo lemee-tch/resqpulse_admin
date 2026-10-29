@@ -1,7 +1,8 @@
 {{--
-    Response team checkboxes (BFP / PNP / SARS / HCU) for Incident Details,
-    while the incident is Active: Notify specific responders (the incident
-    already went to all of them when it was approved).
+    Response team checkboxes (BFP / PNP / SARS / HCU) for Incident Details:
+    Pending → Send to (approving sends it to the ticked teams; the usual
+    teams for the type start ticked), and Active → Notify specific
+    responders.
 
         @include('partials.team-choices', ['checked' => [...], 'previous' => [...] or null])
 

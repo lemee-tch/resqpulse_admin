@@ -203,9 +203,6 @@
         .fixed-value.fixed-low   { color: #1d4ed8; background: #eff6ff; }
         .fixed-value.fixed-unset { color: #6b7280; background: #f3f4f6; }
         .fixed-value .fixed-note { font-weight: 500; opacity: .8; }
-        /* Pending: the teams approving sends it to. */
-        .goes-to { display: flex; gap: 6px; flex-wrap: wrap; }
-        .team-pill { font-size: .78rem; font-weight: 700; color: #1a3c8f; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 20px; padding: 3px 11px; }
 
         /* Priority — pick one */
         .choice-row { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -491,16 +488,18 @@
     // see data-report-seen below).
     $teamReport = $incident->teamReport();
 
-    // Response team. Approving sends it to all responders (every team);
-    // on Active the admin can notify specific teams. $needsTeam: approved
-    // while approving didn't send it anywhere (item 36) — not sent yet.
+    // Response team. Approving sends it to the team(s) the admin ticks —
+    // the usual ones for the type start ticked (item 53); on Active the
+    // admin can notify more teams. $needsTeam: approved while approving
+    // didn't send it anywhere (item 36) — not sent yet.
     $needsTeam    = $incident->awaitingTeam();
     $teamOnIt     = $incident->responders->sortBy(fn ($r) => (string) $r->pivot->accepted_at)->values();
     $assigned     = $incident->assignedTeamCodes();
-    $allTeams     = array_keys(\App\Models\Incident::TEAMS);
     $toAll        = $incident->sentToAllTeams();
     $suggested    = $incident->defaultTeams();
     $checkedTeams = (array) old('teams', []);
+    $approveTeams = (array) old('teams', $suggested);
+    $usualFor     = $isSos ? ($incident->sos_emergency_type ?: 'an SOS') : $incident->emergency_type;
     $teamList = function (array $teams) {
         if (count($teams) <= 1) return $teams[0] ?? '';
         return implode(', ', array_slice($teams, 0, -1)) . ' and ' . end($teams);
@@ -947,15 +946,16 @@
                     <div class="card-title">Administrative Actions</div>
 
                     @if($incident->needs_review)
-                        {{-- ── PENDING: Approve or Decline. Approving sends it to all
-                             responders right away; on Active the admin can
-                             notify specific teams. ── --}}
+                        {{-- ── PENDING: choose the response team, then Approve & Send
+                             (item 53, as in item 26) — or Decline. Only the ticked
+                             teams are notified; on Active the admin can notify
+                             more teams. ── --}}
                         <div class="notice notice-pending">
                             <i class="bi bi-hourglass-split"></i>
                             <span>
                                 Check the details, photos and location first.
                                 @if($mobile) Call <a href="tel:{{ $mobile }}" class="call-link">{{ $mobile }}</a> to confirm. @endif
-                                All responders are notified as soon as you approve it.
+                                Then choose the response team — only that team is notified when you approve it.
                             </span>
                         </div>
 
@@ -979,13 +979,18 @@
                             </div>
 
                             <div class="field">
-                                <span class="field-label">Goes to</span>
-                                <div class="goes-to">
-                                    @foreach($allTeams as $code)
-                                        <span class="team-pill">{{ $code }}</span>
-                                    @endforeach
+                                <span class="field-label">Send to <span class="req">(required)</span></span>
+                                @include('partials.team-choices', ['checked' => $approveTeams, 'previous' => null])
+                                <div class="field-help">
+                                    Usually needed for {{ $usualFor }}: {{ $teamList($suggested) }} — ticked for you.
+                                    Only the ticked teams are notified and can accept it. You can notify more teams later, while it's Active.
                                 </div>
-                                <div class="field-help">All responders: every response team gets it and any of them can accept it.</div>
+                            </div>
+
+                            <div class="field">
+                                <label class="field-label" for="approve_notes">Notes for the team <span class="opt">(optional)</span></label>
+                                <textarea name="assignment_notes" id="approve_notes" rows="2" maxlength="500" class="f-input"
+                                          placeholder="e.g. Proceed via the market road.">{{ old('assignment_notes') }}</textarea>
                             </div>
 
                             <div class="action-buttons">
@@ -999,7 +1004,7 @@
                             <div class="why-disabled" id="approveHint" hidden></div>
                             <div class="action-help">
                                 <i class="bi bi-info-circle"></i>
-                                <strong>Approve &amp; Send</strong> → the {{ $isSos ? 'SOS' : 'report' }} moves to <strong>Active</strong> and all responders are notified right away.
+                                <strong>Approve &amp; Send</strong> → the {{ $isSos ? 'SOS' : 'report' }} moves to <strong>Active</strong> and the ticked teams are notified right away, with your notes.
                                 {{ $incident->citizen_id ? 'The resident is told it was approved.' : '' }}
                             </div>
                         </form>
@@ -1079,8 +1084,8 @@
                         @endif
 
                     @else
-                        {{-- ── ACTIVE: it went to all responders when it was approved.
-                             The admin can notify specific teams: "no one has
+                        {{-- ── ACTIVE: it went to the team(s) chosen when it was
+                             approved. The admin can notify specific teams: "no one has
                              accepted yet", or asking a team to help once
                              someone is on it. ($needsTeam: approved while
                              approving didn't send it anywhere — send it.) ── --}}
@@ -1228,7 +1233,9 @@
                                 @empty
                                     <span class="muted">Not written down</span>
                                 @endforelse
-                            @elseif($incident->needs_review || $isDeclined)
+                            @elseif($incident->needs_review)
+                                <span class="muted">Chosen when you approve it</span>
+                            @elseif($isDeclined)
                                 <span class="muted">—</span>
                             @elseif($needsTeam)
                                 <span class="warn">Not sent yet</span>
@@ -1473,9 +1480,9 @@
         });
     });
 
-    // Approve: stays off until a priority is chosen (reports).
-    // Notify Selected: stays off until a team is ticked. (Send to All
-    // Responders has no teams to tick.)
+    // Approve & Send: stays off until a priority is chosen (reports) and a
+    // team is ticked. Notify Selected: stays off until a team is ticked.
+    // (Send to All Responders has no teams to tick.)
     function wireAssignmentForm(formId, submitId, hintId, needsPriority, needsTeam) {
         const form = document.getElementById(formId);
         if (!form) return;
@@ -1505,7 +1512,7 @@
         });
         sync();
     }
-    wireAssignmentForm('approveForm', 'approveSubmit', 'approveHint', {{ $isSos ? 'false' : 'true' }}, false);
+    wireAssignmentForm('approveForm', 'approveSubmit', 'approveHint', {{ $isSos ? 'false' : 'true' }}, true);
     wireAssignmentForm('assignmentForm', 'assignmentSubmit', 'assignmentHint', false, true);
 
     // Decline: a reason is required, then one last confirmation.

@@ -86,8 +86,8 @@ class Incident extends Model
      * Incidents page:
      *
      *   pending     waiting for an admin to approve or decline it
-     *   active      approved and sent to all responders: waiting for one
-     *               to accept, or being responded to
+     *   active      approved and sent to the chosen response team(s):
+     *               waiting for one to accept, or being responded to
      *   for_review  the responders sent their Initial report; the admin
      *               checks it — and can correct it — then approves it as
      *               resolved (item 49)
@@ -165,8 +165,9 @@ class Incident extends Model
 
     /**
      * Approved, but not sent to anyone: an empty team list ([]). Approving
-     * now sends it to all responders right away, so this is only an
-     * incident approved while approving didn't send it anywhere (item 36).
+     * now sends it to the team(s) the admin chooses right away, so this is
+     * only an incident approved while approving didn't send it anywhere
+     * (item 36).
      * The admin sends it from Incident Details
      * (Admin\IncidentController::updateAssignment()).
      *
@@ -194,8 +195,9 @@ class Incident extends Model
 
     /**
      * The teams usually needed for this kind of incident (Fire → BFP +
-     * SARS…), named as a hint when the admin notifies specific teams. The
-     * AI's reading of an SOS photo wins over the type the person picked.
+     * SARS…): ticked for the admin when approving (item 53), and named as
+     * a hint when notifying specific teams. The AI's reading of an SOS
+     * photo wins over the type the person picked.
      */
     public function defaultTeams(): array
     {
@@ -215,7 +217,7 @@ class Incident extends Model
         return array_values(array_intersect(array_keys(self::TEAMS), $teams));
     }
 
-    /** Sent to every response team — what approving does. */
+    /** Sent to every response team (the admin ticked all four). */
     public function sentToAllTeams(): bool
     {
         return $this->assignedTeamCodes() === array_keys(self::TEAMS);

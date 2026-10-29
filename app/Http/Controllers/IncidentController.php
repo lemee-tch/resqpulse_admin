@@ -192,21 +192,27 @@ class IncidentController extends Controller
     }
 
     /**
-     * Approve — Incident Details → Administrative Actions, while it's
+     * Approve & Send — Incident Details → Administrative Actions, while it's
      * Pending. The lists only have View: an admin approves or declines
      * after checking the photos, the map and the reporter on the details
      * page.
      *
-     *   priority  reports only — Critical, High or Low. Nothing sets it
-     *             automatically, and it can't be changed after approving.
-     *             SOS is always Critical.
+     *   priority          reports only — Critical, High or Low. Nothing
+     *                     sets it automatically, and it can't be changed
+     *                     after approving. SOS is always Critical.
+     *   teams[]           BFP / PNP / SARS / HCU — the response team(s) it
+     *                     goes to. The page ticks the teams usually needed
+     *                     for the type (Incident::defaultTeams()).
+     *   assignment_notes  instructions for the team (optional): sent along
+     *                     and shown in the responder app.
      *
-     * Approving sends it to all responders right away — every response
-     * team (Incident::TEAMS) gets it and any of them can accept it (Lem:
-     * "once accepted, it will send to all responder, but once approved: it
-     * can notify specific responder"). On Active, the admin can notify
-     * specific teams (updateAssignment()). A logged-in resident is told it
-     * was approved; a guest has no account to notify.
+     * Only the chosen teams are notified, and only they can see and accept
+     * it (item 53, as in item 26 — Lem: "while the report was on pending,
+     * it will assign a responder team specifically"; items 40–41 had sent
+     * it to the usual teams, then to all of them). MSWD still sees it on its
+     * map. On Active, the admin can notify more teams (updateAssignment()).
+     * A logged-in resident is told it was approved; a guest has no account
+     * to notify.
      */
     public function approve(Request $request, Incident $incident, PushNotificationService $push)
     {
@@ -216,55 +222,61 @@ class IncidentController extends Controller
 
         $isSos = $incident->isSos();
 
-        if (! $isSos) {
-            $request->validate(['priority' => ['required', 'in:critical,high,low']], $this->assignmentMessages());
-        }
+        // The priority first, so a report missing both says that first.
+        $rules = $isSos ? [] : ['priority' => ['required', 'in:critical,high,low']];
+        $request->validate($rules + $this->assignmentRules(), array_merge($this->assignmentMessages(), [
+            'teams.required' => 'Choose the response team to send it to.',
+            'teams.min'      => 'Choose the response team to send it to.',
+        ]));
+
+        $teams = $this->orderedTeams($request->input('teams'));
 
         $oldPriority = $incident->priority;
         $changes = [
             'needs_review'     => false,
             'reviewed_at'      => now(),
             'reviewed_by'      => auth('web')->id(),
-            'assignment_notes' => null,
+            'assignment_notes' => $this->cleanText($request->input('assignment_notes')),
         ];
         if (! $isSos) {
             $changes['priority'] = $request->priority;
         }
         $incident->update($changes);
 
-        $this->sendToAllResponders($incident, $push);
+        $this->sendToTeams($incident, $teams, $push);
 
+        $sentTo  = $this->sentToLabel($teams);
         $details = redirect()->route($isSos ? 'sos.detail' : 'incident.detail', $incident);
 
         if ($isSos) {
             AuditLogService::log(
                 'approved',
-                "Approved the {$this->describeIncident($incident)} — sent to all responders.",
+                "Approved the {$this->describeIncident($incident)} — sent to {$sentTo}.",
                 $incident,
                 null,
-                ['teams' => $incident->assignedTeamCodes()]
+                ['teams' => $incident->assignedTeamCodes(), 'assignment_notes' => $incident->assignment_notes]
             );
 
-            return $details->with('success', 'SOS approved and sent to all responders.');
+            return $details->with('success', "SOS approved and sent to {$sentTo}.");
         }
 
         $priorityLabel = ucfirst($incident->priority);
 
         AuditLogService::log(
             'approved',
-            "Approved the {$this->describeIncident($incident)} as {$priorityLabel} priority — sent to all responders.",
+            "Approved the {$this->describeIncident($incident)} as {$priorityLabel} priority — sent to {$sentTo}.",
             $incident,
             ['priority' => $oldPriority],
-            ['priority' => $incident->priority, 'teams' => $incident->assignedTeamCodes()]
+            ['priority' => $incident->priority, 'teams' => $incident->assignedTeamCodes(), 'assignment_notes' => $incident->assignment_notes]
         );
 
-        return $details->with('success', "Report approved as {$priorityLabel} priority and sent to all responders.");
+        return $details->with('success', "Report approved as {$priorityLabel} priority and sent to {$sentTo}.");
     }
 
     /**
      * Incident Details → Notify specific responders, while the incident is
-     * Active. Approving already sent it to every response team; this
-     * notifies the teams the admin ticks:
+     * Active. Approving sent it to the team(s) the admin chose (approve());
+     * this notifies the teams the admin ticks now:
      *
      *   no one has accepted yet  "🚨 Fire report — no one has accepted yet"
      *   someone is on it         "🚨 Fire — MDRRMO needs your team", so the
@@ -275,22 +287,22 @@ class IncidentController extends Controller
      *                     shown in the responder app and sent along
      *
      * It never takes the incident away from a team. A ticked team that
-     * couldn't see it yet (sent to some teams only, before approving sent
-     * it to all) is added, and a responder on a ticked team who declined it
+     * couldn't see it yet (it wasn't sent to that team) is added and can
+     * accept it, and a responder on a ticked team who declined it
      * gets it back in their list — otherwise the alert would point to
      * something they can't see. Each team can be notified once a minute, so
      * a double click doesn't send it twice. The priority isn't changed here
      * (a priority sent along is ignored).
      *
      * An incident approved while approving didn't send it anywhere
-     * (Incident::awaitingTeam(), item 36) is sent to all responders, the
-     * same as approving.
+     * (Incident::awaitingTeam(), item 36) is sent to all responders (Send
+     * to All Responders).
      */
     public function updateAssignment(Request $request, Incident $incident, PushNotificationService $push)
     {
         if ($incident->stage !== 'active') {
             return back()->withErrors(['assignment' => $incident->needs_review
-                ? "Approve it first. It's sent to all responders when you approve it."
+                ? "Approve it first. It's sent to the team you choose when you approve it."
                 : 'The responders can only be notified while the incident is active.']);
         }
 
@@ -377,13 +389,23 @@ class IncidentController extends Controller
     }
 
     /**
-     * Sends an approved incident to every response team, and tells a
-     * logged-in resident it was approved (a guest has no account to tell).
+     * Sends an approved incident to every response team (an incident
+     * approved under item 36 that was never sent: Send to All Responders).
      */
     private function sendToAllResponders(Incident $incident, PushNotificationService $push): void
     {
+        $this->sendToTeams($incident, array_keys(Incident::TEAMS), $push);
+    }
+
+    /**
+     * Sends an approved incident to these response teams — only they are
+     * notified and can see and accept it — and tells a logged-in resident
+     * it was approved (a guest has no account to tell).
+     */
+    private function sendToTeams(Incident $incident, array $teams, PushNotificationService $push): void
+    {
         $incident->update([
-            'assigned_teams' => array_keys(Incident::TEAMS),
+            'assigned_teams' => $this->orderedTeams($teams),
             'assigned_at'    => now(),
         ]);
 
@@ -432,6 +454,14 @@ class IncidentController extends Controller
     private function orderedTeams($teams): array
     {
         return array_values(array_intersect(array_keys(Incident::TEAMS), array_unique((array) $teams)));
+    }
+
+    /** "BFP and SARS" — or "all responders" when it's every team. */
+    private function sentToLabel(array $teams): string
+    {
+        return $this->orderedTeams($teams) === array_keys(Incident::TEAMS)
+            ? 'all responders'
+            : $this->teamList($this->orderedTeams($teams));
     }
 
     /** "BFP", "BFP and SARS", "BFP, PNP and SARS". */

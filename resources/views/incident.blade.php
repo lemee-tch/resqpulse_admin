@@ -384,8 +384,8 @@
             //   Pending     every new report waits here until an admin
             //               approves or declines it on Incident Details (the
             //               table only has View)
-            //   Active      approved and sent to all responders: waiting for
-            //               one to accept (the admin can notify specific
+            //   Active      approved and sent to the chosen team(s): waiting
+            //               for one to accept (the admin can notify more
             //               teams), or being responded to. "Needs Team" only
             //               on incidents approved without being sent (item 36)
             //   For Review  the responders sent their Initial report; the admin
@@ -471,7 +471,7 @@
         <div id="tab-pending" class="tab-panel active">
             <div class="tab-note tab-note--pending">
                 <i class="bi bi-info-circle"></i>
-                <span>Every new report waits here for your review. Open <strong>View</strong> to check the photos, description and reporter, then approve or decline it there. Approving sends it to all responders right away; you can notify specific teams from its page on <strong>Active</strong>.</span>
+                <span>Every new report waits here for your review. Open <strong>View</strong> to check the photos, description and reporter, then approve or decline it there. Approving sends it right away to the response team you choose there; you can notify more teams from its page on <strong>Active</strong>.</span>
             </div>
 
             <div class="table-card">

@@ -184,7 +184,8 @@ class PushNotificationService
 
     /**
      * Sends the incident to the responders — called when the admin approves
-     * it (Admin\IncidentController::approve(): every response team), and
+     * it (Admin\IncidentController::approve(): the team(s) the admin
+     * chose), and
      * with $onlyAgencies when the admin notifies specific teams later
      * (updateAssignment()). $kind picks the title:
      *

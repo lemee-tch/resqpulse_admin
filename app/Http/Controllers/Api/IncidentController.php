@@ -400,9 +400,10 @@ class IncidentController extends Controller
             ->whereDoesntHave('declinedBy', function ($q) use ($responder) {
                 $q->where('responders.id', $responder->id);
             })
-            // The team(s) it was sent to — approving sends it to every
-            // response team (Admin\IncidentController::approve()); older
-            // incidents may list only some — plus anyone already on it, and
+            // The team(s) it was sent to — approving sends it to the teams
+            // the admin chooses (Admin\IncidentController::approve(), item
+            // 53), and the admin can add more later — plus anyone already
+            // on it, and
             // incidents approved before teams were assigned (no team list at
             // all). One approved without being sent anywhere (item 36) has
             // an empty list, so no team sees it. MSWD keeps seeing
@@ -517,12 +518,15 @@ class IncidentController extends Controller
             ], 409);
         }
 
-        // An older incident MDRRMO sent to other team(s) only. Joining needs
-        // MDRRMO to notify this team first (Incident Details → Notify
-        // specific responders), which adds it.
+        // MDRRMO sent it to other team(s) only (Approve & Send, item 53).
+        // Joining needs MDRRMO to notify this team first (Incident Details
+        // → Notify specific responders), which adds it.
         if (! $incident->isAssignedTo($responder->agency)
             && ! $incident->responders()->where('responder_id', $responder->id)->exists()) {
-            $teams = implode(', ', $incident->assignedTeamCodes());
+            $codes = $incident->assignedTeamCodes();
+            $teams = count($codes) > 1
+                ? implode(', ', array_slice($codes, 0, -1)) . ' and ' . end($codes)
+                : ($codes[0] ?? 'another team');
             return response()->json([
                 'message' => "MDRRMO sent this incident to {$teams}. Ask MDRRMO to notify your team if you need to respond.",
             ], 403);

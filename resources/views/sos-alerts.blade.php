@@ -502,7 +502,7 @@
         <div id="tab-pending" class="tab-panel active">
             <div class="review-banner">
                 <i class="bi bi-info-circle" style="margin-top:1px;"></i>
-                <span>Open <strong>View</strong> for the photo and the map, call to confirm, then approve or decline it there. Approving sends it to all responders right away.</span>
+                <span>Open <strong>View</strong> for the photo and the map, call to confirm, then approve or decline it there. Approving sends it right away to the response team you choose there.</span>
             </div>
 
             @forelse($pendingReviewSos as $sos)
