@@ -14,6 +14,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/citizen-verification', [CitizenVerificationController::class, 'index'])->name('citizen-verification');
     Route::post('/citizen-verification/{citizen}/approve', [CitizenVerificationController::class, 'approve'])->name('citizen-verification.approve');
     Route::post('/citizen-verification/{citizen}/reject', [CitizenVerificationController::class, 'reject'])->name('citizen-verification.reject');
+    // Item 54: block a fake or prank account instead of removing it; unblock.
+    Route::post('/citizen-verification/{citizen}/block', [CitizenVerificationController::class, 'block'])->name('citizen-verification.block');
+    Route::post('/citizen-verification/{citizen}/unblock', [CitizenVerificationController::class, 'unblock'])->name('citizen-verification.unblock');
     // Serves a citizen's uploaded valid-ID image from the PRIVATE disk
     // (storage/app/private) — admin-only, auth-gated, replacing the old
     // Storage::url() link which exposed these photos to anyone with the

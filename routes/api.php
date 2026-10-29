@@ -46,7 +46,9 @@ Route::get('/responder/incidents/{incident}/report-pdf', [IncidentController::cl
     ->middleware('signed:relative')
     ->name('responder.report-pdf');
 
-Route::middleware('auth:sanctum')->group(function () {
+// Signed in. A resident MDRRMO blocked is signed out here with the reason
+// (item 54, RejectBlockedCitizens); responders aren't affected.
+Route::middleware(['auth:sanctum', \App\Http\Middleware\RejectBlockedCitizens::class])->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });

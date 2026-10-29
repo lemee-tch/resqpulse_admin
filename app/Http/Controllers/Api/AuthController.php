@@ -83,6 +83,12 @@ class AuthController extends Controller
             ], 503);
         }
 
+        // An email or mobile number of an account MDRRMO blocked can't sign
+        // up again (item 54).
+        if ($blocked = $this->blockedSignupErrors($request)) {
+            return response()->json(['message' => 'Validation failed', 'errors' => $blocked], 422);
+        }
+
         [$replaceable, $waiting] = $this->unfinishedSignups($request);
         $replaceIds = $replaceable->pluck('id')->all();
 
@@ -461,6 +467,26 @@ class AuthController extends Controller
     }
 
     /**
+     * register(): the email or mobile number belongs to an account MDRRMO
+     * blocked (item 54) — field => [message], or null when neither does.
+     */
+    private function blockedSignupErrors(Request $request): ?array
+    {
+        $email  = $this->inputString($request, 'email');
+        $mobile = $this->inputString($request, 'mobile');
+        $after  = 'its ResQPulse account was blocked by MDRRMO. If you think this is a mistake, call MDRRMO Rosales.';
+
+        if ($email !== '' && Citizen::blocked()->where('email', $email)->exists()) {
+            return ['email' => ["This email can't be used to sign up: {$after}"]];
+        }
+        if ($mobile !== '' && Citizen::numberIsBlocked($mobile)) {
+            return ['mobile' => ["This mobile number can't be used to sign up: {$after}"]];
+        }
+
+        return null;
+    }
+
+    /**
      * Message for an email / mobile number that's already used. When it's
      * an unfinished sign-up that is still waiting for its code, tells the
      * resident how to get past it instead of only "already taken".
@@ -708,6 +734,14 @@ class AuthController extends Controller
             ], 401);
         }
 
+        // MDRRMO blocked the account (item 54): no login, with the reason.
+        if ($citizen->isBlocked()) {
+            return response()->json([
+                'message' => $citizen->blockedMessage(),
+                'blocked' => true,
+            ], 403);
+        }
+
         // Finished sign-up = the code was entered, by email or by text.
         if (! $citizen->hasVerifiedContact()) {
             $mobileAccount = $citizen->isMobileAccount();
@@ -874,8 +908,9 @@ class AuthController extends Controller
 
         $citizen = Citizen::where('email', $request->email)->first();
 
-        // Don't reveal whether the email exists — same response either way
-        if (! $citizen) {
+        // Don't reveal whether the email exists — same response either way.
+        // A blocked account (item 54) gets no code: it can't log in anyway.
+        if (! $citizen || $citizen->isBlocked()) {
             return response()->json(['message' => 'If that email is registered, a code has been sent.']);
         }
 
@@ -934,7 +969,7 @@ class AuthController extends Controller
 
             $citizen = Citizen::where('email', $request->input('email'))->first();
 
-            if (! $citizen || SmsService::normalizeNumber((string) $citizen->mobile) !== $number) {
+            if (! $citizen || $citizen->isBlocked() || SmsService::normalizeNumber((string) $citizen->mobile) !== $number) {
                 return response()->json($sameReply);
             }
         } else {
@@ -945,7 +980,8 @@ class AuthController extends Controller
 
             $citizen = Citizen::whereMobileNumber($number)->first();
 
-            if (! $citizen || $citizen->mobile_verified_at === null) {
+            // A blocked account (item 54) gets no code: it can't log in anyway.
+            if (! $citizen || $citizen->mobile_verified_at === null || $citizen->isBlocked()) {
                 return response()->json($sameReply);
             }
         }

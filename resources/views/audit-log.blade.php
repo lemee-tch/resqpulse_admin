@@ -64,6 +64,9 @@
         .badge-accepted { background: #dcfce7; color: #166534; }
         .badge-declined { background: #ffedd5; color: #9a3412; }
         .badge-resolved { background: #ccfbf1; color: #115e59; }
+        /* A resident MDRRMO blocked or unblocked (item 54). */
+        .badge-blocked   { background: #1f2937; color: #fff; }
+        .badge-unblocked { background: #e0e7ff; color: #3730a3; }
 
         /* Who did it — one tag per group. */
         .actor-name { font-weight: 600; color: #111827; }

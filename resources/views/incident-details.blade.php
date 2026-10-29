@@ -434,9 +434,11 @@
         ? route('sos-alerts', $backTab ? ['tab' => $backTab] : [])
         : route('incident', $backTab ? ['tab' => $backTab] : []);
 
-    // Resident account status.
+    // Resident account status. A blocked one (item 54) says so first.
     $account = null;
-    if ($incident->citizen) {
+    if ($incident->citizen?->isBlocked()) {
+        $account = ['Blocked by MDRRMO ' . $incident->citizen->blocked_at->format('M d, Y') . ' — ' . ($incident->citizen->block_reason ?: 'no reason given'), 'bad'];
+    } elseif ($incident->citizen) {
         $account = match ($incident->citizen->verification_status) {
             'verified' => ['Verified ✓', 'ok'],
             'rejected' => ['ID rejected', 'bad'],

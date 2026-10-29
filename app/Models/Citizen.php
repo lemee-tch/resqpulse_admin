@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -19,7 +20,24 @@ class Citizen extends Authenticatable
         'reset_otp', 'reset_otp_expires_at',
         'verification_otp', 'verification_otp_expires_at', 'verification_otp_via',
         'email_verified_at', 'mobile_verified_at', 'fcm_token',
+        'blocked_at', 'blocked_by', 'block_reason',
     ];
+
+    /**
+     * Why MDRRMO blocks a resident (item 54) — Residents Verification →
+     * Block, or "Other" with a typed reason. The resident sees it when the
+     * app refuses them.
+     */
+    public const BLOCK_REASONS = [
+        'Fake or prank reports',
+        'Fake or edited ID',
+        'Fake or duplicate account',
+        'Abusive or offensive messages',
+    ];
+
+    /** Said to a guest whose mobile number belongs to a blocked account. */
+    public const BLOCKED_NUMBER_MESSAGE = 'This mobile number was blocked by MDRRMO, so reports and SOS from it '
+        . 'aren\'t accepted. If you think this is a mistake, call MDRRMO Rosales.';
 
     // Never sent to the apps. The sign-up and password-reset codes used to
     // be included whenever a citizen was returned as JSON — in the sign-up
@@ -34,6 +52,8 @@ class Citizen extends Authenticatable
         // The phone's push token and the Google account id went to the
         // responders app with every incident the resident reported (item 47).
         'fcm_token', 'google_id',
+        // MDRRMO's block (item 54): the app gets the message instead.
+        'blocked_at', 'blocked_by', 'block_reason',
     ];
 
     protected function casts(): array
@@ -42,6 +62,7 @@ class Citizen extends Authenticatable
             'email_verified_at'  => 'datetime',
             'mobile_verified_at' => 'datetime',
             'verified_at'        => 'datetime',
+            'blocked_at'         => 'datetime',
             'password'           => 'hashed',
         ];
     }
@@ -96,6 +117,49 @@ class Citizen extends Authenticatable
         $local = substr($number, 2); // 9XXXXXXXXX
 
         return $query->whereIn('mobile', ['0' . $local, $number, '+' . $number, $local]);
+    }
+
+    // ── Blocking (item 54) ────────────────────────────────────────────
+
+    /**
+     * MDRRMO blocked the account: it can't log in, send a report or an SOS
+     * (not even as a guest with the same mobile number), and its email and
+     * number can't sign up again. Unblocking gives it all back.
+     */
+    public function isBlocked(): bool
+    {
+        return $this->blocked_at !== null;
+    }
+
+    public function scopeBlocked(Builder $query): Builder
+    {
+        return $query->whereNotNull('blocked_at');
+    }
+
+    public function scopeNotBlocked(Builder $query): Builder
+    {
+        return $query->whereNull('blocked_at');
+    }
+
+    /** The admin who blocked it. */
+    public function blockedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'blocked_by');
+    }
+
+    /** What the app says to the blocked resident. */
+    public function blockedMessage(): string
+    {
+        $reason = rtrim((string) ($this->block_reason ?: 'no reason given'), '. ');
+
+        return "Your ResQPulse account was blocked by MDRRMO: {$reason}. "
+            . 'If you think this is a mistake, call MDRRMO Rosales.';
+    }
+
+    /** A blocked account has this mobile number, however it was typed. */
+    public static function numberIsBlocked(?string $mobile): bool
+    {
+        return static::blocked()->whereMobileNumber($mobile)->exists();
     }
 
     /** The account for what was typed in "Email or Mobile Number". */

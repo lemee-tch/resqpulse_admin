@@ -51,8 +51,10 @@
         .sidebar-logout a:hover { color: #fff; }
 
         /* ── MAIN ── */
-        .main-wrap { margin-left: 250px; flex: 1; display: flex; flex-direction: column; }
-        .content { padding: 32px 36px; flex: 1; }
+        /* min-width: 0 — on a phone the tables scroll sideways inside the page
+           instead of making the whole page wider (as on Alerts and Audit Log). */
+        .main-wrap { margin-left: 250px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        .content { padding: 32px 36px; flex: 1; min-width: 0; }
 
         .page-header {
             display: flex; align-items: center; justify-content: space-between;
@@ -126,6 +128,17 @@
         .action-btn:hover { color: #1a3c8f; background: #eff2fb; }
         .action-btn.approve:hover { color: #10b981; background: #d1fae5; }
         .action-btn.reject:hover { color: #ef4444; background: #fee2e2; }
+        /* Block (item 54): for fake or prank accounts. */
+        .action-btn.block:hover { color: #111827; background: #e5e7eb; }
+        .badge-blocked { background: #1f2937; color: #fff; font-size: .72rem; font-weight: 700; padding: 3px 12px; border-radius: 20px; white-space: nowrap; }
+        .evac-table td.block-reason { color: #374151; font-weight: 600; white-space: normal; min-width: 200px; }
+        .btn-unblock {
+            background: #fff; color: #1a3c8f; border: 1.5px solid #1a3c8f; border-radius: 8px;
+            padding: 5px 12px; font-size: .78rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+            display: inline-flex; align-items: center; gap: 5px; transition: background .2s;
+        }
+        .btn-unblock:hover { background: #eff2fb; }
+        .tab-note { display: flex; gap: 7px; align-items: flex-start; font-size: .8rem; color: #6b7280; margin-bottom: 12px; line-height: 1.45; }
 
         .empty-state { text-align: center; padding: 40px; color: #9ca3af; font-size: .85rem; }
 
@@ -150,6 +163,12 @@
             font-size: .88rem; cursor: pointer; transition: background .2s;
         }
         .btn-reject-confirm:hover { background: #dc2626; }
+        .btn-block-confirm {
+            background: #1f2937; color: #fff; border: none; border-radius: 8px;
+            padding: 9px 22px; font-family: 'Barlow', sans-serif; font-weight: 700;
+            font-size: .88rem; cursor: pointer; transition: background .2s;
+        }
+        .btn-block-confirm:hover { background: #111827; }
         /* Reject: "Other" reason box, the check under it, the note. */
         textarea.form-control-m { resize: vertical; min-height: 78px; line-height: 1.45; }
         .reject-other-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 5px; font-size: .74rem; color: #6b7280; }
@@ -299,7 +318,7 @@
         <div class="page-header">
             <div class="page-title">Residents Verification</div>
         </div>
-        <div class="page-sub">Review uploaded IDs and confirm residency before marking accounts verified.</div>
+        <div class="page-sub">Review uploaded IDs and confirm residency before marking accounts verified. Block fake or prank accounts.</div>
 
         {{-- A rejection the server refused, e.g. "Other" with no reason typed. --}}
         @if($errors->any())
@@ -311,17 +330,20 @@
         @php
             // Rejected citizens are deleted immediately in the controller
             // (CitizenVerificationController::reject), so in practice this
-            // only ever splits into "still needs review" vs "verified" —
-            // but the badge/status logic stays generic in case that
-            // behavior changes later.
-            $pendingCitizens  = $citizens->where('verification_status', '!=', 'verified')->values();
-            $verifiedCitizens = $citizens->where('verification_status', '=', 'verified')->values();
+            // splits into "still needs review" vs "verified" — but the
+            // badge/status logic stays generic in case that behavior
+            // changes later. Blocked residents (item 54) are only on the
+            // Blocked tab, newest first.
+            $pendingCitizens  = $citizens->filter(fn ($c) => ! $c->isBlocked() && $c->verification_status !== 'verified')->values();
+            $verifiedCitizens = $citizens->filter(fn ($c) => ! $c->isBlocked() && $c->verification_status === 'verified')->values();
+            $blockedCitizens  = $citizens->filter(fn ($c) => $c->isBlocked())->sortByDesc('blocked_at')->values();
         @endphp
 
         <!-- TABS -->
         <div class="tab-bar">
-            <button class="tab-btn active" onclick="switchTab('pending', this)">Pending Review ({{ $pendingCitizens->count() }})</button>
-            <button class="tab-btn" onclick="switchTab('verified', this)">Verified ({{ $verifiedCitizens->count() }})</button>
+            <button class="tab-btn active" data-tab="pending" onclick="switchTab('pending', this)">Pending Review ({{ $pendingCitizens->count() }})</button>
+            <button class="tab-btn" data-tab="verified" onclick="switchTab('verified', this)">Verified ({{ $verifiedCitizens->count() }})</button>
+            <button class="tab-btn" data-tab="blocked" onclick="switchTab('blocked', this)">Blocked ({{ $blockedCitizens->count() }})</button>
             {{-- Resident & guest activity is now on the combined Audit Log page. --}}
         </div>
 
@@ -392,9 +414,13 @@
                                         <i class="bi bi-check-circle"></i>
                                     </button>
                                 </form>
-                                <button class="action-btn reject" title="Reject"
+                                <button class="action-btn reject" title="Reject — the ID can't be accepted; they may sign up again"
                                         data-bs-toggle="modal" data-bs-target="#rejectModal{{ $citizen->id }}">
                                     <i class="bi bi-x-circle"></i>
+                                </button>
+                                <button class="action-btn block" title="Block — a fake or prank account"
+                                        data-bs-toggle="modal" data-bs-target="#blockModal{{ $citizen->id }}">
+                                    <i class="bi bi-slash-circle"></i>
                                 </button>
                             </td>
                         </tr>
@@ -465,9 +491,11 @@
                             <td>{{ $citizen->created_at->format('M d, Y') }}</td>
                             <td><span class="badge-verified">Verified</span></td>
                             <td>
-                                <button class="action-btn reject" title="Reject"
-                                        data-bs-toggle="modal" data-bs-target="#rejectModal{{ $citizen->id }}">
-                                    <i class="bi bi-x-circle"></i>
+                                {{-- Item 54: Block, not Reject — a verified resident who sends
+                                     fake or prank reports is locked out, not deleted. --}}
+                                <button class="action-btn block" title="Block"
+                                        data-bs-toggle="modal" data-bs-target="#blockModal{{ $citizen->id }}">
+                                    <i class="bi bi-slash-circle"></i>
                                 </button>
                             </td>
                         </tr>
@@ -475,6 +503,75 @@
                         <tr>
                             <td colspan="7" class="empty-state">
                                 No verified Residents yet.
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ══ TAB: BLOCKED (item 54) ══ -->
+        <div id="tab-blocked" class="tab-panel">
+            <div class="tab-note">
+                <i class="bi bi-info-circle"></i>
+                <span>Blocked residents can't log in, send reports or SOS — not even as a guest with their mobile number — or sign up again with the same email or number. Their account and reports are kept. Unblock gives it all back.</span>
+            </div>
+            <div class="table-card">
+                <table class="evac-table">
+                    <thead>
+                        <tr>
+                            <th>Resident</th>
+                            <th>Contact</th>
+                            <th>Municipality / Barangay</th>
+                            <th>Blocked</th>
+                            <th>Reason</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($blockedCitizens as $citizen)
+                        <tr>
+                            <td class="td-name">
+                                {{ $citizen->full_name }}
+                                <div class="td-sub">{{ $citizen->verification_status === 'verified' ? 'Was verified' : 'Was waiting for review' }}</div>
+                            </td>
+                            <td>
+                                @if($citizen->isMobileAccount())
+                                    {{ $citizen->mobile }}
+                                    <div class="td-sub">Logs in with mobile number</div>
+                                @else
+                                    {{ $citizen->email }}
+                                    @if($citizen->mobile)
+                                        <div class="td-sub">{{ $citizen->mobile }}</div>
+                                    @endif
+                                @endif
+                            </td>
+                            <td>
+                                {{ $citizen->municipality ?? '—' }}
+                                @if($citizen->barangay)
+                                    <div class="td-sub">Brgy. {{ $citizen->barangay }}</div>
+                                @endif
+                            </td>
+                            <td>
+                                <span class="badge-blocked">Blocked</span>
+                                <div class="td-sub" style="margin-top:4px;white-space:nowrap;">{{ $citizen->blocked_at->format('M d, Y g:i A') }}</div>
+                                @if($citizen->blockedBy)
+                                    <div class="td-sub">by {{ $citizen->blockedBy->name }}</div>
+                                @endif
+                            </td>
+                            <td class="block-reason">{{ $citizen->block_reason ?: '—' }}</td>
+                            <td>
+                                <form action="{{ route('citizen-verification.unblock', $citizen) }}" method="POST" class="unblock-form" data-name="{{ $citizen->full_name }}">
+                                    @csrf
+                                    <button type="submit" class="btn-unblock"><i class="bi bi-unlock"></i> Unblock</button>
+                                </form>
+                            </td>
+                        </tr>
+                        @empty
+                        <tr>
+                            <td colspan="6" class="empty-state">
+                                No blocked residents. Block a fake or prank account from Pending Review or Verified.
                             </td>
                         </tr>
                         @endforelse
@@ -565,6 +662,63 @@
                     </div>
                 </div>
             </div>
+
+            {{-- Block (item 54): a reason from the list, or "Other" typed. --}}
+            @unless($citizen->isBlocked())
+            <div class="modal fade" id="blockModal{{ $citizen->id }}" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content" style="border-radius:14px;border:none;">
+                        <form action="{{ route('citizen-verification.block', $citizen) }}" method="POST" class="block-form" data-name="{{ $citizen->full_name }}">
+                            @csrf
+                            <div class="modal-header border-0 pb-0">
+                                <h5 class="modal-title-custom">Block {{ $citizen->full_name }}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body pt-3">
+                                <label class="form-label-m" for="blockReason{{ $citizen->id }}">Reason</label>
+                                <select name="block_reason" id="blockReason{{ $citizen->id }}" class="form-control-m">
+                                    <option value="" disabled selected style="color:#9ca3af;">Select a reason...</option>
+                                    @foreach(\App\Models\Citizen::BLOCK_REASONS as $why)
+                                        <option value="{{ $why }}">{{ $why }}</option>
+                                    @endforeach
+                                    <option value="Other">Other (type the reason)</option>
+                                </select>
+
+                                <div class="block-other" style="display:none;">
+                                    <label class="form-label-m" for="blockOther{{ $citizen->id }}" style="margin-top:12px;">Type the reason</label>
+                                    <textarea name="block_reason_other" id="blockOther{{ $citizen->id }}"
+                                              class="form-control-m" rows="3" maxlength="255"
+                                              placeholder="e.g. Sent five fake fire reports in one night."></textarea>
+                                    <div class="reject-other-meta">
+                                        <span>The resident sees it when the app refuses them.</span>
+                                        <span class="block-count">0/255</span>
+                                    </div>
+                                </div>
+
+                                <div class="reject-error block-error" role="alert" style="display:none;"></div>
+
+                                <p class="reject-note">
+                                    <i class="bi bi-info-circle"></i>
+                                    <span>
+                                        They're signed out and can't log in, send reports or SOS
+                                        @if($citizen->mobile) — not even as a guest with {{ $citizen->mobile }} — @endif
+                                        or sign up again with {{ $citizen->isMobileAccount() ? 'this mobile number' : 'this email or mobile number' }}.
+                                        The account and its reports are kept; unblock it any time in the Blocked tab.
+                                        @if($citizen->verification_status !== 'verified')
+                                            If the ID is only unclear, use Reject instead — they can sign up again.
+                                        @endif
+                                    </span>
+                                </p>
+                            </div>
+                            <div class="modal-footer border-0 pt-0">
+                                <button type="submit" class="btn-block-confirm"><i class="bi bi-slash-circle"></i> Block</button>
+                                <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            @endunless
         @endforeach
 
     </div>
@@ -695,6 +849,117 @@
             }
         });
     });
+
+    // Block (item 54) — like Reject: a reason from the list or "Other"
+    // typed, shown inside the modal if missing; then the modal closes and
+    // one last confirmation shows the reason the resident will see.
+    document.querySelectorAll('.block-form').forEach(form => {
+        const reasonSelect = form.querySelector('select[name="block_reason"]');
+        const otherBox     = form.querySelector('.block-other');
+        const otherText    = form.querySelector('textarea[name="block_reason_other"]');
+        const counter      = form.querySelector('.block-count');
+        const errorBox     = form.querySelector('.block-error');
+
+        const showError = message => {
+            errorBox.textContent = message || '';
+            errorBox.style.display = message ? '' : 'none';
+        };
+
+        reasonSelect.addEventListener('change', () => {
+            const other = reasonSelect.value === 'Other';
+            otherBox.style.display = other ? '' : 'none';
+            showError('');
+            if (other) otherText.focus();
+        });
+        otherText.addEventListener('input', () => {
+            counter.textContent = otherText.value.length + '/255';
+            showError('');
+        });
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            if (!reasonSelect.value) {
+                showError('Select a reason for blocking the resident.');
+                reasonSelect.focus();
+                return;
+            }
+
+            let reason = reasonSelect.value;
+            if (reason === 'Other') {
+                reason = otherText.value.trim().replace(/\s+/g, ' ');
+                if (reason.length < 5) {
+                    showError(reason
+                        ? 'The reason is too short. Say why the resident is blocked.'
+                        : 'Type the reason for blocking the resident.');
+                    otherText.focus();
+                    return;
+                }
+            }
+            showError('');
+
+            const parentModalEl = form.closest('.modal');
+            const bsModal = parentModalEl ? bootstrap.Modal.getOrCreateInstance(parentModalEl) : null;
+
+            // As text (never as HTML), for the confirm box.
+            const reasonEl = document.createElement('div');
+            reasonEl.textContent = reason;
+            const nameEl = document.createElement('span');
+            nameEl.textContent = form.dataset.name;
+
+            const confirmBlock = () => {
+                Swal.fire({
+                    ...swalTheme,
+                    icon: 'warning',
+                    title: 'Block this resident?',
+                    html: '<strong>' + nameEl.innerHTML + '</strong> is signed out and can\'t log in, send reports or SOS, or sign up again. You can unblock them later.'
+                        + '<div style="margin-top:12px;text-align:left;background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;color:#111827;font-size:.9em;">'
+                        + '<strong>Reason the resident will see:</strong><br>' + reasonEl.innerHTML + '</div>',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, Block',
+                    cancelButtonText: 'Cancel',
+                    confirmButtonColor: '#1f2937',
+                }).then(result => {
+                    if (result.isConfirmed) form.submit();
+                });
+            };
+
+            if (bsModal && parentModalEl.classList.contains('show')) {
+                parentModalEl.addEventListener('hidden.bs.modal', confirmBlock, { once: true });
+                bsModal.hide();
+            } else {
+                confirmBlock();
+            }
+        });
+    });
+
+    // Unblock — a yes/no.
+    document.querySelectorAll('.unblock-form').forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const nameEl = document.createElement('span');
+            nameEl.textContent = form.dataset.name;
+            Swal.fire({
+                ...swalTheme,
+                icon: 'question',
+                title: 'Unblock this resident?',
+                html: '<strong>' + nameEl.innerHTML + '</strong> can log in and send reports and SOS again.',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, Unblock',
+                cancelButtonText: 'Cancel',
+            }).then(result => {
+                if (result.isConfirmed) form.submit();
+            });
+        });
+    });
+
+    // Opens the tab named in the address — #pending, #verified or #blocked —
+    // e.g. Blocked after blocking someone.
+    (function () {
+        const id = location.hash.replace('#', '');
+        const btn = document.querySelector('.tab-btn[data-tab="' + id + '"]');
+        if (btn) switchTab(id, btn);
+    })();
 
     @if(session('success'))
         Swal.fire({

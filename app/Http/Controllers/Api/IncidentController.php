@@ -51,6 +51,28 @@ class IncidentController extends Controller
     }
 
     /**
+     * A report or SOS from a resident MDRRMO blocked (item 54): refused,
+     * with the reason, and the login on that phone ends here — the same as
+     * on any signed-in call (RejectBlockedCitizens). The app goes back to
+     * guest mode and shows the reason.
+     */
+    private function blockedReply(Request $request, Citizen $citizen)
+    {
+        PersonalAccessToken::findToken((string) $request->bearerToken())?->delete();
+
+        return response()->json(['message' => $citizen->blockedMessage(), 'blocked' => true], 401);
+    }
+
+    /**
+     * A guest report or SOS with the mobile number of a blocked account
+     * (item 54) — refused, the same as from the account itself.
+     */
+    private function blockedNumberReply()
+    {
+        return response()->json(['message' => Citizen::BLOCKED_NUMBER_MESSAGE, 'blocked' => true], 403);
+    }
+
+    /**
      * Guests (no account) must give their full name and mobile number
      * before an SOS or a report goes through, so MDRRMO can call them back
      * to confirm it and pranks can be traced to someone. Logged-in
@@ -149,6 +171,9 @@ class IncidentController extends Controller
         BarangayLocationService $locationService
     ) {
         $citizen = $this->resolveOptionalCitizen($request);
+        if ($citizen?->isBlocked()) {
+            return $this->blockedReply($request, $citizen);
+        }
         $isGuest = ! $citizen;
         [$guestRules, $guestMessages] = $this->prepareGuestDetails($request, $isGuest);
 
@@ -170,6 +195,10 @@ class IncidentController extends Controller
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+        }
+
+        if ($isGuest && Citizen::numberIsBlocked($request->guest_mobile)) {
+            return $this->blockedNumberReply();
         }
 
         $guest = $isGuest ? ['name' => $request->guest_name, 'mobile' => $request->guest_mobile] : null;
@@ -257,6 +286,9 @@ class IncidentController extends Controller
         BarangayLocationService $locationService
     ) {
         $citizen = $this->resolveOptionalCitizen($request);
+        if ($citizen?->isBlocked()) {
+            return $this->blockedReply($request, $citizen);
+        }
         $isGuest = ! $citizen;
         [$guestRules, $guestMessages] = $this->prepareGuestDetails($request, $isGuest);
 
@@ -274,6 +306,10 @@ class IncidentController extends Controller
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+        }
+
+        if ($isGuest && Citizen::numberIsBlocked($request->guest_mobile)) {
+            return $this->blockedNumberReply();
         }
 
         $guest = $isGuest ? ['name' => $request->guest_name, 'mobile' => $request->guest_mobile] : null;
