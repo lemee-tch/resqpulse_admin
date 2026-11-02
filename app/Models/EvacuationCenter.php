@@ -4,8 +4,19 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * An evacuation center. Centers are always open (item 58): status is
+ * 'open' (has room — never shown as a word) or 'full', which MSWD sets
+ * in Resqponder when it can't take more evacuees. There's no "closed".
+ */
 class EvacuationCenter extends Model
 {
+    /** Has room: the usual state, not shown anywhere. */
+    public const HAS_ROOM = 'open';
+
+    /** Can't take more evacuees (MSWD in Resqponder). */
+    public const FULL = 'full';
+
     protected $fillable = [
         'name',
         'barangay',
@@ -63,6 +74,12 @@ class EvacuationCenter extends Model
         $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
 
         return round($earthRadiusKm * $c, 1);
+    }
+
+    /** Marked full: it can't take new evacuees until it has room again. */
+    public function isFull(): bool
+    {
+        return $this->status === self::FULL;
     }
 
     public function getOccupancyPercentAttribute(): int

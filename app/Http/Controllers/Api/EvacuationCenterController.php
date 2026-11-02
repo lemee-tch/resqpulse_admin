@@ -63,14 +63,20 @@ class EvacuationCenterController extends Controller
             // admin can set the real number later from the web panel
             // once it's actually known.
             'capacity'  => ['nullable', 'integer', 'min:1'],
-            'status'    => ['required', 'in:open,full,closed'],
+            // Centers are always open (item 58): a new one has room. The
+            // app still sends 'open'; 'full' is set later from the list.
+            'status'    => ['nullable', 'in:open,full'],
         ]);
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        $center = EvacuationCenter::create($validator->validated() + ['occupancy' => 0, 'capacity' => $request->capacity ?? 0]);
+        $center = EvacuationCenter::create([
+            'status'    => $request->input('status') ?: EvacuationCenter::HAS_ROOM,
+            'occupancy' => 0,
+            'capacity'  => $request->capacity ?? 0,
+        ] + $validator->validated());
 
         AuditLogService::responder($user, 'created', "Added evacuation center {$center->name} (Brgy. {$center->barangay}).");
 
@@ -81,12 +87,10 @@ class EvacuationCenterController extends Controller
     }
 
     /**
-     * The Add Center form no longer asks for a status up front — every
-     * new center simply starts 'open' (set server-side, see store()
-     * above's validator still requiring the Flutter side to send it as
-     * 'open'). Changing it afterward is this action instead, e.g. an
-     * MSWD responder marking a center 'full' once it fills up or
-     * 'closed' when it's no longer in use. Same MSWD-only gate as store().
+     * MSWD marks a center full once it fills up (Resqponder → Evacuation
+     * Centers → Mark Full), and takes that off when it has room again
+     * ('open'). Centers are always open (item 58): there's no "closed".
+     * Same MSWD-only gate as store().
      */
     public function updateStatus(Request $request, EvacuationCenter $center)
     {
@@ -99,11 +103,16 @@ class EvacuationCenterController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'status' => ['required', 'in:open,full,closed'],
+            'status' => ['required', 'in:open,full'],
+        ], [
+            'status.in' => 'A center can only be marked full, or as having room again.',
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+            return response()->json([
+                'message' => $validator->errors()->first(),
+                'errors'  => $validator->errors(),
+            ], 422);
         }
 
         $oldStatus = $center->status;
@@ -113,13 +122,15 @@ class EvacuationCenterController extends Controller
             AuditLogService::responder(
                 $user,
                 'updated',
-                "Set evacuation center {$center->name} to " . ucfirst($center->status) . '.',
+                $center->isFull()
+                    ? "Marked evacuation center {$center->name} as full."
+                    : "Marked evacuation center {$center->name} as having room again.",
                 ['status' => $center->status, 'was' => $oldStatus]
             );
         }
 
         return response()->json([
-            'message' => 'Status updated.',
+            'message' => $center->isFull() ? "{$center->name} is marked full." : "{$center->name} has room again.",
             'center'  => $center,
         ]);
     }
@@ -141,19 +152,17 @@ class EvacuationCenterController extends Controller
             ], 403);
         }
 
-        // A center that's full or closed shouldn't take new arrivals.
-        // The Flutter screen already blocks this client-side (the "Log
-        // Evacuee" button is disabled and the form itself shows a
-        // blocking message instead of the form), but that's just a
-        // convenience for a responder looking at a fresh list — this is
-        // the actual enforcement, so a stale cached screen, a center
-        // that changed status while the form was open, or a direct API
-        // call can't bypass it.
-        if (in_array($center->status, ['full', 'closed'], true)) {
+        // A center that's full shouldn't take new arrivals (centers are
+        // always open — item 58). The Flutter screen already blocks this
+        // client-side (the "Log Evacuee" button is disabled and the form
+        // itself shows a blocking message instead of the form), but that's
+        // just a convenience for a responder looking at a fresh list —
+        // this is the actual enforcement, so a stale cached screen, a
+        // center marked full while the form was up, or a direct API call
+        // can't bypass it.
+        if ($center->isFull()) {
             return response()->json([
-                'message' => $center->status === 'closed'
-                    ? "{$center->name} is closed and can't accept new evacuees."
-                    : "{$center->name} is full and can't accept new evacuees.",
+                'message' => "{$center->name} is full and can't accept new evacuees.",
             ], 422);
         }
 

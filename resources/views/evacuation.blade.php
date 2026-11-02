@@ -102,10 +102,9 @@
         .occ-mid    { background: #f59e0b; }
         .occ-high   { background: #ef4444; }
 
-        /* Status badge */
-        .badge-open   { background: #d1fae5; color: #065f46; font-size: .72rem; font-weight: 700; padding: 3px 12px; border-radius: 20px; }
-        .badge-full   { background: #fee2e2; color: #991b1b; font-size: .72rem; font-weight: 700; padding: 3px 12px; border-radius: 20px; }
-        .badge-closed { background: #f3f4f6; color: #6b7280; font-size: .72rem; font-weight: 700; padding: 3px 12px; border-radius: 20px; }
+        /* Centers are always open (item 58): only a full one gets a badge. */
+        .badge-full   { background: #fee2e2; color: #991b1b; font-size: .72rem; font-weight: 700; padding: 3px 12px; border-radius: 20px; white-space: nowrap; }
+        .td-name .badge-full { margin-left: 8px; vertical-align: 1px; }
 
         /* Action buttons */
         .action-btn {
@@ -114,15 +113,6 @@
             border-radius: 6px; transition: color .2s, background .2s;
         }
         .action-btn:hover { color: #1a3c8f; background: #eff2fb; }
-
-        /* Inline status-change select in the Action column */
-        .status-select {
-            font-size: .74rem; font-weight: 600; color: #374151;
-            border: 1px solid #d1d5db; border-radius: 6px;
-            padding: 4px 6px; background: #fff; cursor: pointer;
-            vertical-align: middle;
-        }
-        .status-select:hover { border-color: #1a3c8f; }
 
         .empty-state { text-align: center; padding: 48px 20px; color: #9ca3af; font-size: .9rem; }
 
@@ -316,22 +306,19 @@
                         <th>Center Name</th>
                         <th>Barangay</th>
                         <th>Distance from HQ</th>
-                        <th>Status</th>
                         <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($centers as $c)
                     @php
-                        $badge = 'badge-' . $c->status;
-                        $label = ucfirst($c->status);
-                        $dist  = $c->distance_from_hq;
+                        $dist = $c->distance_from_hq;
                     @endphp
                     <tr>
-                        <td class="td-name">{{ $c->name }}</td>
+                        {{-- Always open (item 58): only "Full" is shown, when MSWD marked it. --}}
+                        <td class="td-name">{{ $c->name }}@if($c->isFull())<span class="badge-full" title="MSWD marked it full: it can't take new evacuees">Full</span>@endif</td>
                         <td>{{ $c->barangay }}</td>
                         <td>{{ $dist !== null ? $dist . ' km' : '—' }}</td>
-                        <td><span class="{{ $badge }}">{{ $label }}</span></td>
                         <td>
                             <button class="action-btn" title="View details" data-bs-toggle="modal" data-bs-target="#viewModal{{ $c->id }}">
                                 <i class="bi bi-eye"></i>
@@ -343,7 +330,7 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="5">
+                        <td colspan="4">
                             <div class="empty-state">
                                 No evacuation centers added yet. Use "Add Center" to add the first one.
                             </div>
@@ -375,7 +362,9 @@
                             <div><i class="bi bi-signpost-split" style="color:#1a3c8f;width:16px;"></i>
                                 {{ $c->distance_from_hq !== null ? $c->distance_from_hq . ' km from MDRRMO HQ' : 'Distance unavailable' }}
                             </div>
-                            <div><span class="badge-{{ $c->status }}">{{ ucfirst($c->status) }}</span></div>
+                            @if($c->isFull())
+                                <div><span class="badge-full">Full</span> <span style="color:#6b7280;font-size:.8rem;">MSWD marked it full: it can't take new evacuees.</span></div>
+                            @endif
                         </div>
 
                         <a href="https://www.google.com/maps?q={{ $c->latitude }},{{ $c->longitude }}" target="_blank"

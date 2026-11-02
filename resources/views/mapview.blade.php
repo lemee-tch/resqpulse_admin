@@ -170,9 +170,8 @@
         .pop-awaiting { background: #ffedd5; color: #c2410c; }
         .pop-needsteam { background: #ffedd5; color: #9a3412; }
         .pop-declined { background: #f3f4f6; color: #6b7280; }
-        .pop-open     { background: #d1fae5; color: #065f46; }
+        /* Evacuation centers are always open (item 58): only "Full" shows. */
         .pop-full     { background: #fee2e2; color: #991b1b; }
-        .pop-closed   { background: #f3f4f6; color: #6b7280; }
 
         /* Plain text labels (municipality + barangay names) drawn over the map */
         .map-text-label {
@@ -482,8 +481,6 @@
         responding: 'pop-responding', for_review: 'pop-for_review', resolved: 'pop-resolved', declined: 'pop-declined',
     };
 
-    const evacStatusLabel = { open: 'Open', full: 'Full', closed: 'Closed' };
-    const evacStatusClass = { open: 'pop-open', full: 'pop-full', closed: 'pop-closed' };
 
     // MDRRMO HQ
     const HQ_LAT = 15.8955;
@@ -948,15 +945,14 @@
             const lng = parseFloat(center.longitude);
             if (isNaN(lat) || isNaN(lng)) return;
 
-            const statusKey = (center.status || 'open').toLowerCase();
-            const badgeClass = evacStatusClass[statusKey] || 'pop-open';
-            const badgeLabel = evacStatusLabel[statusKey] || center.status || 'Open';
+            // Always open (item 58): a badge only when MSWD marked it full.
+            const isFull = String(center.status || '').toLowerCase() === 'full';
 
             const content = `
                 <div class="incident-popup">
                     <div class="pop-type">🏕️ ${center.name}</div>
                     <div class="pop-row">Brgy. ${center.barangay ?? ''}</div>
-                    <span class="pop-status ${badgeClass}">${badgeLabel}</span>
+                    ${isFull ? '<span class="pop-status pop-full">Full</span>' : ''}
                 </div>`;
 
             const marker = emojiOverlay(lat, lng, '🏕️', '#1a3c8f', { popupContent: content });
