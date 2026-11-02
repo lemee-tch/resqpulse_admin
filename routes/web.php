@@ -89,6 +89,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/incidents/{incident}/decline', [IncidentController::class, 'decline'])->name('incident.decline');
     // Active: change the priority, the team(s) and the notes for the team.
     Route::patch('/incidents/{incident}/assignment', [IncidentController::class, 'updateAssignment'])->name('incident.assignment');
+    // Active, a team responding (item 55): send backup — on the team's
+    // request from Resqponder or on MDRRMO's own — or say why it can't.
+    Route::post('/incidents/{incident}/backup', [IncidentController::class, 'sendBackup'])->name('incident.backup');
+    Route::post('/incidents/{incident}/backup/{backup}/decline', [IncidentController::class, 'declineBackup'])->name('incident.backup.decline');
     // For Review: correct the team's Initial report, approve it as
     // resolved, or send it back (item 49).
     Route::get('/incidents/{incident}/report/edit', [IncidentController::class, 'editReport'])->name('incident.report.edit');

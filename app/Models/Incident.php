@@ -411,6 +411,31 @@ class Incident extends Model
     }
 
     /**
+     * Backup for the responding team (item 55), oldest first: the team on
+     * scene asks in Resqponder, and MDRRMO sends teams (or says it can't) —
+     * or MDRRMO sends backup on its own. See BackupRequest.
+     */
+    public function backupRequests()
+    {
+        return $this->hasMany(BackupRequest::class)->orderBy('created_at')->orderBy('id');
+    }
+
+    /** The team's backup request MDRRMO hasn't answered yet, if any. */
+    public function waitingBackup(): ?BackupRequest
+    {
+        return $this->backupRequests->where('status', BackupRequest::WAITING)->last();
+    }
+
+    /**
+     * The responders on it, the first to accept (the lead) first — as the
+     * Response Assignment card lists them.
+     */
+    public function teamInOrder()
+    {
+        return $this->responders->sortBy(fn ($r) => (string) $r->pivot->accepted_at)->values();
+    }
+
+    /**
      * "SOS Alert — Accident", "SOS Alert — Fire", etc. — what admins and
      * responders actually want to see instead of a bare "SOS Emergency"
      * label, once the citizen has picked a hazard type on the SOS screen

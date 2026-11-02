@@ -80,6 +80,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\RejectBlockedCitizens::c
 
     Route::post('/responder/incidents/{incident}/accept', [IncidentController::class, 'accept']);
     Route::post('/responder/incidents/{incident}/decline', [IncidentController::class, 'decline']);
+    // Item 55: the team on scene asks MDRRMO for backup.
+    Route::post('/responder/incidents/{incident}/backup', [IncidentController::class, 'requestBackup']);
     // Files the MDRRMC Incident Report: Initial (stays editable, incident
     // stays open) or Final (resolves the incident, locks the report).
     Route::post('/responder/incidents/{incident}/resolve', [IncidentController::class, 'resolve']);

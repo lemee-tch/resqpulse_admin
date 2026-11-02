@@ -64,6 +64,8 @@
     // Active: an Initial report the team saved before item 49 (it reaches
     // For Review when they send it from the app).
     $initialReport = $tab === 'active' ? $sos->teamReport() : null;
+    // Active: the team on scene asked for backup (item 55).
+    $askedBackup = $tab === 'active' ? $sos->waitingBackup() : null;
     // For Review: "Initial report" — or "Final report" for one sent before item 49.
     $reportKind = is_array($sos->report_data) && ($sos->report_data['report_type'] ?? 'final') !== 'initial'
         ? 'Final report' : 'Initial report';
@@ -145,6 +147,11 @@
                 </span>
             @elseif($tab === 'for-review' && $sos->report_returned_at)
                 <span class="sos-flag" title="Sent again after you returned it">Sent again</span>
+            @endif
+            @if($askedBackup)
+                <span class="sos-flag sos-flag--backup" title="{{ $askedBackup->responder ? \App\Models\BackupRequest::label($askedBackup->responder) : 'The team' }} asked for backup {{ $askedBackup->created_at->format('M d, g:i A') }}. Open View to send it.">
+                    <i class="bi bi-person-plus-fill"></i>Backup requested · {{ $askedBackup->created_at->gt(now()->subMinute()) ? 'just now' : $askedBackup->created_at->diffForHumans() }}
+                </span>
             @endif
             @if($tab === 'for-review' && ! empty($sos->report_data['edited_by']))
                 <span class="sos-flag sos-flag--corrected" title="Corrected by {{ $sos->report_data['edited_by'] }}"><i class="bi bi-pencil"></i>Corrected</span>

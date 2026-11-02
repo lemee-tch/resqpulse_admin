@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BackupRequest;
 use App\Models\Citizen;
 use App\Models\Incident;
 use App\Models\Responder;
@@ -14,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class IncidentController extends Controller
@@ -413,7 +415,7 @@ class IncidentController extends Controller
             return response()->json(['message' => 'Not a responder account.'], 403);
         }
 
-        $incidents = Incident::with(['citizen', 'responders'])
+        $incidents = Incident::with(['citizen', 'responders', 'backupRequests.responder'])
             // Resolved, or the team's report is with MDRRMO for review (it
             // comes back here if MDRRMO sends the report back). Both are
             // listed in Report History instead.
@@ -453,9 +455,60 @@ class IncidentController extends Controller
                 });
             })
             ->orderByDesc('created_at')
-            ->get();
+            ->get()
+            ->each(fn (Incident $incident) => $this->addBackupCall($incident, $responder));
 
         return response()->json($incidents);
+    }
+
+    /**
+     * Backup for the responding team (item 55), with each incident sent to
+     * Resqponder:
+     *
+     *   backup_requests  every request on it, oldest first: who asked
+     *                    (requested_by), teams, needs, status (waiting /
+     *                    sent / declined), sent_teams, reply, created_at,
+     *                    handled_at
+     *   backup_call      for a responder MDRRMO sent as backup who isn't on
+     *                    it yet: the latest backup sent to their team —
+     *                    teams, needs, sent_at and lead (who's on scene).
+     *                    Null otherwise. The app shows "Backup needed".
+     */
+    private function addBackupCall(Incident $incident, Responder $responder): Incident
+    {
+        $incident->loadMissing(['responders', 'backupRequests.responder']);
+
+        $call = null;
+        if ($incident->stage === 'active' && ! $incident->responders->contains('id', $responder->id)) {
+            $sent = $incident->backupRequests
+                ->filter(fn (BackupRequest $b) => $b->isSent() && in_array($responder->agency, $b->sentTeamCodes(), true))
+                ->sortBy(fn (BackupRequest $b) => (string) $b->handled_at)
+                ->last();
+
+            if ($sent) {
+                $lead = $incident->teamInOrder()->first();
+                $call = [
+                    'id'      => $sent->id,
+                    'teams'   => $sent->sentTeamCodes(),
+                    'needs'   => $sent->needs,
+                    'sent_at' => $sent->handled_at?->toJSON(),
+                    'lead'    => $lead ? BackupRequest::label($lead) : null,
+                ];
+            }
+        }
+
+        // Shown in the JSON only — this copy is never saved.
+        $incident->setAttribute('backup_call', $call);
+
+        return $incident;
+    }
+
+    /** The incident as Resqponder shows it, after a change by this responder. */
+    private function forResponder(Incident $incident, Responder $responder): Incident
+    {
+        $incident->refresh()->load(['responders', 'citizen', 'backupRequests.responder']);
+
+        return $this->addBackupCall($incident, $responder);
     }
 
     /**
@@ -609,13 +662,11 @@ class IncidentController extends Controller
             );
         }
 
-        $incident->refresh()->load(['responders', 'citizen']);
-
         return response()->json([
             'message'  => $alreadyJoined
                 ? "You're already responding to this incident."
                 : 'Mission accepted.',
-            'incident' => $incident,
+            'incident' => $this->forResponder($incident, $responder),
         ]);
     }
 
@@ -668,6 +719,102 @@ class IncidentController extends Controller
         );
 
         return response()->json(['message' => 'Mission declined.']);
+    }
+
+    /**
+     * Resqponder → Request Backup (item 55): someone on the team responding
+     * asks MDRRMO for backup — which team(s), and what they need. MDRRMO
+     * sees it right away (a notice on every admin page, and on the
+     * incident), then sends teams (Admin\IncidentController::sendBackup())
+     * or says why it can't (declineBackup()). The team is told either way.
+     *
+     *   teams[]  BFP / PNP / SARS / HCU — their own team too, for more of
+     *            its people
+     *   needs    what they need, e.g. "Two people trapped — rescue tools"
+     *
+     * Only a responder on the incident can ask, while it's being responded
+     * to. One request waits at a time: asking again before MDRRMO answers
+     * gets 409 with the one that's waiting.
+     */
+    public function requestBackup(Request $request, Incident $incident)
+    {
+        $responder = $request->user();
+
+        if (! $responder instanceof Responder || $responder->agency === 'MSWD') {
+            return response()->json(['message' => 'Only a response team can ask for backup.'], 403);
+        }
+
+        if (! $incident->responders()->where('responder_id', $responder->id)->exists()) {
+            return response()->json([
+                'message' => 'Only the team responding to this incident can ask for backup. Accept it first.',
+            ], 403);
+        }
+
+        if ($incident->stage !== 'active') {
+            return response()->json([
+                'message' => $incident->stage === 'for_review'
+                    ? "Your report is already with MDRRMO, so backup can't be requested for this incident anymore."
+                    : "This incident is closed, so backup can't be requested anymore.",
+            ], 409);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'teams'   => ['required', 'array', 'min:1'],
+            'teams.*' => ['string', Rule::in(array_keys(Incident::TEAMS))],
+            'needs'   => ['required', 'string', 'min:3', 'max:255'],
+        ], [
+            'teams.required' => 'Choose the team you need.',
+            'teams.min'      => 'Choose the team you need.',
+            'teams.*.in'     => 'Choose the team from the list.',
+            'needs.required' => 'Say what you need, e.g. more people or rescue tools.',
+            'needs.min'      => 'Say a bit more about what you need.',
+            'needs.max'      => 'Keep it under 255 characters.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => $validator->errors()->first(),
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $waiting = $incident->backupRequests()->where('status', BackupRequest::WAITING)->with('responder')->get()->last();
+        if ($waiting) {
+            return response()->json([
+                'message'  => 'MDRRMO already has a backup request for this incident'
+                    . ($waiting->responder ? ' from ' . $waiting->responder->full_name : '')
+                    . ' (' . $waiting->created_at->format('g:i A') . "). They'll send help or tell you why they can't.",
+                'incident' => $this->forResponder($incident, $responder),
+            ], 409);
+        }
+
+        $teams = array_values(array_intersect(array_keys(Incident::TEAMS), array_unique((array) $request->input('teams'))));
+        $needs = trim((string) preg_replace('/\s+/u', ' ', (string) $request->input('needs')));
+
+        $backup = $incident->backupRequests()->create([
+            'responder_id' => $responder->id,
+            'teams'        => $teams,
+            'needs'        => $needs,
+            'status'       => BackupRequest::WAITING,
+        ]);
+
+        AuditLogService::responder(
+            $responder,
+            'backup',
+            'Asked MDRRMO for backup from ' . BackupRequest::teamList($teams) . ' at the '
+                . AuditLogService::describeIncident($incident) . ' — ' . rtrim($needs, '. ') . '.',
+            [
+                'incident'       => AuditLogService::describeIncident($incident),
+                'backup_request' => $backup->id,
+                'teams'          => $teams,
+                'needs'          => $needs,
+            ]
+        );
+
+        return response()->json([
+            'message'  => 'Backup requested. MDRRMO will send a team and let you know.',
+            'incident' => $this->forResponder($incident, $responder),
+        ], 201);
     }
 
     /**

@@ -211,7 +211,7 @@
         .btn-add-report:hover { background: #0d2e7a; color: #fff; box-shadow: 0 4px 12px rgba(26,60,143,.25); }
 
         /* Small tags next to the type. */
-        .tag-manual, .tag-resent, .tag-returned, .tag-initial, .tag-corrected {
+        .tag-manual, .tag-resent, .tag-returned, .tag-initial, .tag-corrected, .tag-backup {
             display: inline-flex; align-items: center; gap: 3px; margin-left: 6px;
             padding: 1px 8px; border-radius: 20px; font-size: .66rem; font-weight: 700;
             vertical-align: middle; white-space: nowrap;
@@ -223,6 +223,8 @@
         .tag-initial  { background: #fef3c7; color: #92400e; }
         /* For Review: you corrected the report (item 49). */
         .tag-corrected { background: #ede9fe; color: #5b21b6; }
+        /* Active: the team on scene asked for backup (item 55). */
+        .tag-backup { background: #ffedd5; color: #c2410c; }
 
         /* For Review: reports waiting — purple, like the count in the menu. */
         .tab-count {
@@ -538,6 +540,7 @@
                     <option value="pending">Awaiting Responder</option>
                     <option value="responding">Responding</option>
                     <option value="initial_report">Initial report saved</option>
+                    <option value="backup">Backup requested</option>
                 </select>
 
                 <select class="filter-select" id="filterType">
@@ -584,6 +587,7 @@
                         @php
                             extract($rowData($inc));
                             $teamReport = $inc->teamReport(); // an Initial report the team saved before item 49
+                            $askedBackup = $inc->waitingBackup(); // item 55
                         @endphp
                         {{-- Photos, reporter, description and responders are on the
                              Incident Details page (the row and View open it). --}}
@@ -592,6 +596,7 @@
                             data-priority="{{ $priorityVal }}"
                             data-status="{{ $inc->awaitingTeam() ? 'needs_team' : $inc->status }}"
                             data-report="{{ $teamReport ? $teamReport['type'] : '' }}"
+                            data-backup="{{ $askedBackup ? '1' : '' }}"
                             data-type="{{ $inc->emergency_type }}"
                             data-date="{{ $inc->created_at->format('Y-m-d') }}"
                             data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
@@ -607,6 +612,11 @@
                                 @if($teamReport)
                                     <span class="tag-initial" title="{{ $teamReport['revision'] > 1 ? 'Initial report updated' : 'Initial report saved' }} {{ $teamReport['at']->format('M d, g:i A') }} — not sent to MDRRMO yet. Open View to read it.">
                                         <i class="bi bi-file-earmark-text"></i> Initial report · {{ $teamReport['at']->gt(now()->subMinute()) ? 'just now' : $teamReport['at']->diffForHumans() }}
+                                    </span>
+                                @endif
+                                @if($askedBackup)
+                                    <span class="tag-backup" title="{{ $askedBackup->responder ? \App\Models\BackupRequest::label($askedBackup->responder) : 'The team' }} asked for backup {{ $askedBackup->created_at->format('M d, g:i A') }}. Open View to send it.">
+                                        <i class="bi bi-person-plus-fill"></i> Backup requested · {{ $askedBackup->created_at->gt(now()->subMinute()) ? 'just now' : $askedBackup->created_at->diffForHumans() }}
                                     </span>
                                 @endif
                             </td>
@@ -901,7 +911,8 @@
                 // "Initial report sent": responding, and the team sent one.
                 const statusOk = !status
                         || row.dataset.status === status
-                        || (status === 'initial_report' && row.dataset.report === 'initial');
+                        || (status === 'initial_report' && row.dataset.report === 'initial')
+                        || (status === 'backup' && row.dataset.backup === '1');
                 const ok = (!priority || row.dataset.priority === priority)
                         && statusOk
                         && (!type     || row.dataset.type     === type)

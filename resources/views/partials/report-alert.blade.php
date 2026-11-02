@@ -12,6 +12,8 @@
               last day
       open    amber — an Initial report a team saved before item 49 (not
               sent to MDRRMO yet); from the last 3 hours
+      backup  orange — a team on scene asked for backup in Resqponder
+              (item 55) and MDRRMO hasn't answered yet; from the last day
     A notice stays, on every page, until the admin opens the incident (its
     page marks it as seen: data-report-seen, see incident-details) or
     closes it (×). It also goes when it's no longer new: the report was
@@ -51,6 +53,7 @@
 }
 .report-alert--open { --ra-accent: #f59e0b; --ra-tint: #fef3c7; --ra-ink: #92400e; }
 .report-alert--new  { --ra-accent: #dc2626; --ra-tint: #fee2e2; --ra-ink: #991b1b; }
+.report-alert--backup { --ra-accent: #ea580c; --ra-tint: #ffedd5; --ra-ink: #9a3412; }
 .ra-icon {
     width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
     background: var(--ra-tint); color: var(--ra-ink);
@@ -100,6 +103,7 @@
 }
 .ra-pill.open-only .ra-dot { background: #f59e0b; }
 .ra-pill.has-new .ra-dot { background: #dc2626; }
+.ra-pill.has-backup .ra-dot { background: #ea580c; }
 .ra-pill:hover, .ra-pill:focus-visible { background: #1f2937; outline: none; }
 
 @keyframes raIn {
@@ -174,7 +178,14 @@
         const hours = Math.floor(minutes / 60);
         return hours + (hours === 1 ? ' hour ago' : ' hours ago');
     }
-    const plural = n => n === 1 ? '1 new report' : n + ' new reports';
+    // "2 new reports", "1 backup request" — or "3 new notices" for both.
+    function plural(list) {
+        const n = list.length;
+        const backups = list.filter(r => r.kind === 'backup').length;
+        if (backups === n) return n === 1 ? '1 backup request' : n + ' backup requests';
+        if (backups === 0) return n === 1 ? '1 new report' : n + ' new reports';
+        return n + ' new notices';
+    }
 
     // ── The sound: browsers only play it after a click or key press on
     // the page, so it's unlocked silently on the first one. ──
@@ -199,8 +210,9 @@
     }
 
     // ── The notices: new (a resident's report), review (a team's report on
-    // For Review), open (an Initial report saved before item 49) ──
-    const ICONS = { new: 'bi-megaphone-fill', review: 'bi-clipboard2-check-fill', open: 'bi-file-earmark-text-fill' };
+    // For Review), open (an Initial report saved before item 49), backup
+    // (a team on scene asked for backup, item 55) ──
+    const ICONS = { new: 'bi-megaphone-fill', review: 'bi-clipboard2-check-fill', open: 'bi-file-earmark-text-fill', backup: 'bi-person-plus-fill' };
     const kindOf = r => (ICONS[r.kind] ? r.kind : 'review');
     function card(r) {
         const el = document.createElement('div');
@@ -240,7 +252,7 @@
     // Made once and kept, so they don't flash at every check.
     let barEl = null;
     let pillEl = null;
-    function bar(count) {
+    function bar(list) { // the open notices
         if (!barEl) {
             barEl = document.createElement('div');
             barEl.className = 'ra-bar';
@@ -254,7 +266,7 @@
                 if (what) render();
             });
         }
-        barEl.querySelector('span').textContent = plural(count);
+        barEl.querySelector('span').textContent = plural(list);
         return barEl;
     }
     function pill(open) {
@@ -265,11 +277,12 @@
             pillEl.innerHTML = '<span class="ra-dot"><i class="bi bi-bell-fill"></i></span><span class="ra-count"></span><i class="bi bi-chevron-up"></i>';
             pillEl.addEventListener('click', () => { write(HIDDEN_KEY, null); render(); });
         }
-        // The dot: red with a resident's new report, purple with a report to
-        // review, amber otherwise.
+        // The dot: red with a resident's new report, orange with a backup
+        // request, purple with a report to review, amber otherwise.
         const kinds = open.map(kindOf);
-        pillEl.className = 'ra-pill' + (kinds.includes('new') ? ' has-new' : (kinds.includes('review') ? '' : ' open-only'));
-        pillEl.querySelector('.ra-count').textContent = plural(open.length);
+        pillEl.className = 'ra-pill' + (kinds.includes('new') ? ' has-new'
+            : (kinds.includes('backup') ? ' has-backup' : (kinds.includes('review') ? '' : ' open-only')));
+        pillEl.querySelector('.ra-count').textContent = plural(open);
         return pillEl;
     }
     function putLast(el) {
@@ -302,7 +315,7 @@
             putLast(pill(open));
         } else {
             pillEl?.remove();
-            if (open.length > 1) putLast(bar(open.length));
+            if (open.length > 1) putLast(bar(open));
             else barEl?.remove();
         }
 

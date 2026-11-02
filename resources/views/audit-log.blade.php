@@ -67,6 +67,8 @@
         /* A resident MDRRMO blocked or unblocked (item 54). */
         .badge-blocked   { background: #1f2937; color: #fff; }
         .badge-unblocked { background: #e0e7ff; color: #3730a3; }
+        /* Backup for a responding team (item 55): asked, sent or not sent. */
+        .badge-backup    { background: #ffedd5; color: #c2410c; }
 
         /* Who did it — one tag per group. */
         .actor-name { font-weight: 600; color: #111827; }

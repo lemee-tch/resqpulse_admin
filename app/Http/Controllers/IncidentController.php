@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BackupRequest;
 use App\Models\Incident;
 use App\Services\AuditLogService;
 use App\Services\BarangayLocationService;
@@ -32,7 +33,7 @@ class IncidentController extends Controller
      */
     public function index()
     {
-        $incidents = Incident::with(['citizen', 'responders'])
+        $incidents = Incident::with(['citizen', 'responders', 'backupRequests'])
             ->where('emergency_type', '!=', 'SOS Emergency')
             ->orderByRaw("CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'low' THEN 3 ELSE 4 END ASC")
             ->orderByDesc('created_at')
@@ -69,7 +70,7 @@ class IncidentController extends Controller
 
     public function sosIndex()
     {
-        $sosAlerts = Incident::with(['citizen', 'responders'])
+        $sosAlerts = Incident::with(['citizen', 'responders', 'backupRequests'])
             ->where('emergency_type', 'SOS Emergency')
             ->orderByDesc('created_at')
             ->get();
@@ -275,12 +276,11 @@ class IncidentController extends Controller
 
     /**
      * Incident Details → Notify specific responders, while the incident is
-     * Active. Approving sent it to the team(s) the admin chose (approve());
-     * this notifies the teams the admin ticks now:
-     *
-     *   no one has accepted yet  "🚨 Fire report — no one has accepted yet"
-     *   someone is on it         "🚨 Fire — MDRRMO needs your team", so the
-     *                            team can join as backup
+     * Active and no one has accepted it yet. Approving sent it to the
+     * team(s) the admin chose (approve()); this notifies the teams the admin
+     * ticks now: "🚨 Fire report — no one has accepted yet". Once a team is
+     * responding, more teams are sent as backup instead (sendBackup(), item
+     * 55) — this then says so.
      *
      *   teams[]           BFP / PNP / SARS / HCU — the teams to notify
      *   assignment_notes  instructions for the team (optional): saved,
@@ -320,6 +320,14 @@ class IncidentController extends Controller
             return back()->with('success', "Sent to all responders. They've been notified.");
         }
 
+        // A team accepted it (maybe while this page was open): more teams
+        // go as backup now — the page shows Send Backup.
+        $lead = $incident->load('responders')->teamInOrder()->first();
+        if ($lead) {
+            return back()->withInput()->withErrors(['assignment' => BackupRequest::label($lead)
+                . ' is responding now. To get more teams there, use Send Backup.']);
+        }
+
         $request->validate($this->assignmentRules(), $this->assignmentMessages());
 
         $teams = $this->orderedTeams($request->input('teams'));
@@ -340,7 +348,6 @@ class IncidentController extends Controller
             RateLimiter::hit($this->notifyKey($incident, $team), 60);
         }
 
-        $someoneOnIt = $incident->responders()->exists();
         $before      = $incident->assignedTeamCodes();
         // No list at all (approved before teams were assigned): every team
         // sees it already.
@@ -358,8 +365,7 @@ class IncidentController extends Controller
             $incident->declinedBy()->detach($declined);
         }
 
-        $kind = $someoneOnIt ? 'help' : 'again';
-        $push->dispatchToRespondersForIncident($incident->fresh(), $teams, $kind);
+        $push->dispatchToRespondersForIncident($incident->fresh(), $teams, 'again');
 
         $teamList = $this->teamList($teams);
         $also = array_filter([
@@ -369,23 +375,180 @@ class IncidentController extends Controller
 
         AuditLogService::log(
             'updated',
-            ($someoneOnIt
-                ? "Notified {$teamList} to help with the {$this->describeIncident($incident)}"
-                : "Notified {$teamList} again about the {$this->describeIncident($incident)} — no one had accepted yet")
+            "Notified {$teamList} again about the {$this->describeIncident($incident)} — no one had accepted yet"
                 . ($also ? ' (' . implode(', ', $also) . ')' : '') . '.',
             $incident,
             $old,
             [
                 'notified'         => $teams,
-                'kind'             => $kind,
+                'kind'             => 'again',
                 'teams'            => $incident->assignedTeamCodes(),
                 'assignment_notes' => $notes,
             ]
         );
 
-        return back()->with('success', $someoneOnIt
-            ? "Asked {$teamList} to help. " . (count($teams) > 1 ? "They've" : "It's") . ' been notified.'
-            : "Sent again to {$teamList}.");
+        return back()->with('success', "Sent again to {$teamList}.");
+    }
+
+    /**
+     * Incident Details → Send Backup (item 55), while a team is responding.
+     * The ticked teams get "🆘 Backup needed" — it rings like a new incident
+     * and says who's on scene and what's needed — and can join the team on
+     * scene. The team on scene is told backup is on the way.
+     *
+     *   teams[]  BFP / PNP / SARS / HCU — the team on scene's own team too,
+     *            for more of its people (their own phones don't ring)
+     *   needs    what's needed (optional), sent along
+     *
+     * It answers the team's request from Resqponder when one is waiting
+     * (the form starts with its teams and what they need), or MDRRMO sends
+     * backup on its own. A ticked team that couldn't see the incident yet
+     * is added, and anyone on it who declined gets it back. Each team can be
+     * notified once a minute, so a double click doesn't send it twice.
+     */
+    public function sendBackup(Request $request, Incident $incident, PushNotificationService $push)
+    {
+        $onIt = $incident->load('responders')->teamInOrder();
+
+        if ($incident->stage !== 'active' || $onIt->isEmpty()) {
+            return back()->withErrors(['backup' => $incident->stage !== 'active'
+                ? 'Backup can only be sent while the incident is active.'
+                : "Backup is for a team that's responding, and no one has accepted this yet. Use Notify specific responders."]);
+        }
+
+        $request->validate([
+            'teams'   => ['required', 'array', 'min:1'],
+            'teams.*' => ['string', Rule::in(array_keys(Incident::TEAMS))],
+            'needs'   => ['nullable', 'string', 'max:255'],
+        ], [
+            'teams.required' => 'Choose at least one team to send as backup.',
+            'teams.min'      => 'Choose at least one team to send as backup.',
+            'teams.*.in'     => 'Choose the team from the list.',
+            'needs.max'      => "Keep what's needed under 255 characters.",
+        ]);
+
+        $teams = $this->orderedTeams($request->input('teams'));
+        $needs = $this->cleanText($request->input('needs'));
+
+        $justNotified = array_values(array_filter(
+            $teams,
+            fn ($team) => RateLimiter::tooManyAttempts($this->notifyKey($incident, $team), 1)
+        ));
+        if ($justNotified) {
+            $many = count($justNotified) > 1;
+
+            return back()->withInput()->withErrors(['backup' => $this->teamList($justNotified)
+                . ($many ? ' were' : ' was') . ' just notified. Wait a minute before notifying '
+                . ($many ? 'them' : 'it') . ' again.']);
+        }
+        foreach ($teams as $team) {
+            RateLimiter::hit($this->notifyKey($incident, $team), 60);
+        }
+
+        // The teams can see it and accept it, and anyone on them who
+        // declined gets it back. No list at all (approved before teams were
+        // assigned): every team sees it already.
+        $before = $incident->assignedTeamCodes();
+        $added  = $incident->assigned_teams === null ? [] : array_values(array_diff($teams, $before));
+        if ($added) {
+            $incident->update(['assigned_teams' => $this->orderedTeams(array_merge($before, $added))]);
+        }
+        $declined = $incident->declinedBy()->whereIn('responders.agency', $teams)->pluck('responders.id');
+        if ($declined->isNotEmpty()) {
+            $incident->declinedBy()->detach($declined);
+        }
+
+        // The team's request it answers, if one is waiting. What's needed is
+        // what MDRRMO sent (the form starts with the team's words).
+        $waiting = $incident->backupRequests()->where('status', BackupRequest::WAITING)->with('responder')->get()->last();
+        $answer  = [
+            'status'      => BackupRequest::SENT,
+            'sent_teams'  => $teams,
+            'added_teams' => $added ?: null,
+            'needs'       => $needs ?? $waiting?->needs,
+            'handled_by'  => auth('web')->id(),
+            'handled_at'  => now(),
+        ];
+        if ($waiting) {
+            $waiting->update($answer);
+            $backup = $waiting;
+        } else {
+            $backup = $incident->backupRequests()->create($answer + ['teams' => $teams]);
+        }
+
+        $teamList = $this->teamList($teams);
+        $push->dispatchBackup($incident->fresh(), $teams, $backup->needs);
+        $push->notifyResponders(
+            $onIt,
+            "Backup on the way — {$teamList}",
+            "MDRRMO sent {$teamList} to back you up at " . $this->placeOf($incident) . '.',
+            $incident,
+            'backup'
+        );
+
+        // What's needed goes last: a long one is what gets cut when the
+        // line is too long for the Audit Log (AuditLogService).
+        AuditLogService::log(
+            'backup',
+            "Sent {$teamList} as backup to the {$this->describeIncident($incident)}."
+                . ($waiting?->responder ? ' Asked for by ' . BackupRequest::label($waiting->responder) . '.' : '')
+                . ($added ? ' ' . $this->teamList($added) . " added to the incident's teams." : '')
+                . ($backup->needs ? ' Needed: ' . rtrim($backup->needs, '. ') . '.' : ''),
+            $incident,
+            null,
+            ['backup_request' => $backup->id, 'teams' => $teams, 'needs' => $backup->needs, 'answered' => (bool) $waiting]
+        );
+
+        return back()->with('success', "Backup sent to {$teamList}. "
+            . ($onIt->count() > 1 ? 'The team on scene was' : $onIt->first()->full_name . ' was')
+            . " told it's on the way.");
+    }
+
+    /**
+     * Incident Details → Can't Send (item 55): MDRRMO can't send the backup
+     * the team asked for. The reply is required — it's what the team on
+     * scene reads ("MDRRMO can't send backup right now").
+     */
+    public function declineBackup(Request $request, Incident $incident, BackupRequest $backup, PushNotificationService $push)
+    {
+        abort_unless((int) $backup->incident_id === (int) $incident->id, 404);
+
+        if (! $backup->isWaiting()) {
+            return back()->with('success', 'That backup request was already answered.');
+        }
+
+        $request->validate([
+            'reply' => ['required', 'string', 'min:5', 'max:255'],
+        ], [
+            'reply.required' => "Tell the team why you can't send backup.",
+            'reply.min'      => 'Say a bit more, so the team knows what to do.',
+            'reply.max'      => 'Keep the answer under 255 characters.',
+        ]);
+
+        $reply = $this->cleanText($request->input('reply'));
+
+        $backup->update([
+            'status'     => BackupRequest::DECLINED,
+            'reply'      => $reply,
+            'handled_by' => auth('web')->id(),
+            'handled_at' => now(),
+        ]);
+
+        $onIt = $incident->load('responders')->teamInOrder();
+        $push->notifyResponders($onIt, "MDRRMO can't send backup right now", $reply, $incident, 'backup');
+
+        $asker = $backup->responder ? BackupRequest::label($backup->responder) : 'the team';
+
+        AuditLogService::log(
+            'backup',
+            "Answered the backup request from {$asker} for the {$this->describeIncident($incident)}: can't send — "
+                . rtrim($reply, '. ') . '.',
+            $incident,
+            null,
+            ['backup_request' => $backup->id, 'reply' => $reply]
+        );
+
+        return back()->with('success', 'Your answer was sent to ' . ($onIt->count() > 1 ? 'the team on scene' : $asker) . '.');
     }
 
     /**
@@ -1035,7 +1198,7 @@ class IncidentController extends Controller
 
     public function show(Incident $incident)
     {
-        $incident->load(['citizen', 'responders', 'resolvedBy', 'reviewedBy']);
+        $incident->load(['citizen', 'responders', 'resolvedBy', 'reviewedBy', 'backupRequests.responder', 'backupRequests.handledBy']);
         return view('incident-details', ['incident' => $incident, 'isSos' => false]);
     }
 
@@ -1047,7 +1210,7 @@ class IncidentController extends Controller
      */
     public function sosShow(Incident $incident)
     {
-        $incident->load(['citizen', 'responders', 'resolvedBy', 'reviewedBy']);
+        $incident->load(['citizen', 'responders', 'resolvedBy', 'reviewedBy', 'backupRequests.responder', 'backupRequests.handledBy']);
         return view('sos-details', compact('incident'));
     }
 
@@ -1172,11 +1335,44 @@ class IncidentController extends Controller
             ->get()
             ->map(fn (Incident $incident) => $this->newReportNotice($incident));
 
+        // A team on scene asked for backup (item 55) and MDRRMO hasn't
+        // answered yet.
+        $backups = BackupRequest::with(['incident', 'responder'])
+            ->where('status', BackupRequest::WAITING)
+            ->where('created_at', '>=', $since['review'])
+            ->orderByDesc('created_at')
+            ->limit(10)
+            ->get()
+            ->filter(fn (BackupRequest $backup) => $backup->incident && $backup->incident->stage === 'active')
+            ->map(fn (BackupRequest $backup) => $this->backupNotice($backup));
+
         return response()->json([
-            'reports'   => $reports->concat($newReports)->sortByDesc('at')->take(10)->values(),
+            'reports'   => $reports->concat($newReports)->concat($backups)->sortByDesc('at')->take(10)->values(),
             'forReview' => Incident::forReviewCounts(),
             'now'       => $now->getTimestamp(),
         ]);
+    }
+
+    /**
+     * A team's backup request waiting for MDRRMO, as partials/report-alert
+     * shows it. Opening the incident counts as seeing it — the page marks
+     * "backup-{id}" as seen.
+     */
+    private function backupNotice(BackupRequest $backup): array
+    {
+        $teams = $backup->teamCodes();
+
+        return [
+            'key'    => 'backup-' . $backup->id,
+            'kind'   => 'backup',
+            'title'  => 'Backup requested',
+            'what'   => $backup->incident->display_type . ($teams ? ' · needs ' . $this->teamList($teams) : ''),
+            'where'  => $this->placeOf($backup->incident),
+            'from'   => $backup->responder ? BackupRequest::label($backup->responder) : 'The team on scene',
+            'at'     => $backup->created_at->getTimestamp(),
+            'action' => 'Respond',
+            'url'    => $this->detailsUrl($backup->incident) . '#backup',
+        ];
     }
 
     /** "SOS Alert — Brgy. Acop, Rosales" → "Brgy. Acop, Rosales" */

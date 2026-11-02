@@ -20,8 +20,10 @@ use Kreait\Laravel\Firebase\Facades\Firebase;
  * which ones ring (IncidentAlertService in the responder app):
  *
  *   type=incident  a report or SOS sent to the team — rings, with
- *                  incident_id (and kind: new / again / help)
+ *                  incident_id (and kind: new / again / backup)
  *   type=report    MDRRMO approved or sent back the team's report
+ *   type=backup    MDRRMO answered the team's backup request (item 55):
+ *                  backup is on the way, or it can't send any
  *   type=alert     a disaster alert from Alerts & Broadcast
  *
  * Incident pushes also go on the app's ringing Android channel
@@ -103,14 +105,15 @@ class PushNotificationService
 
     /**
      * Notifies the responders on one incident — e.g. when MDRRMO sends
-     * their report back for changes, or approves it as resolved.
+     * their report back for changes, or approves it as resolved ($type
+     * report), or answers their backup request ($type backup, item 55).
      * Best-effort like the rest: never throws back to the caller, and
      * responders with no phone signed in (or a deactivated account) are
      * skipped. Every phone signed in to their accounts gets it.
      *
      * @param  iterable<Responder>  $responders
      */
-    public function notifyResponders(iterable $responders, string $title, string $body, ?Incident $incident = null): void
+    public function notifyResponders(iterable $responders, string $title, string $body, ?Incident $incident = null, string $type = 'report'): void
     {
         try {
             $tokens = $this->tokensOf(
@@ -123,7 +126,7 @@ class PushNotificationService
             ]);
 
             $this->sendToTokens($tokens, $title, $body, 'incident team', array_filter([
-                'type'        => 'report',
+                'type'        => $type,
                 'incident_id' => $incident ? (string) $incident->id : null,
             ]));
         } catch (\Throwable $e) {
@@ -191,8 +194,9 @@ class PushNotificationService
      *
      *   new    "🚨 New Fire Report — High priority" (approving)
      *   again  "🚨 Fire report — no one has accepted yet"
-     *   help   "🚨 Fire — MDRRMO needs your team" (someone is on it; the
-     *          team is asked to help)
+     *
+     * Once a team is on it, more teams are sent as backup instead
+     * (dispatchBackup(), item 55).
      *
      * Goes to the teams the admin assigned (assigned_teams). Incidents
      * approved before teams were assigned fall back to the usual routing
@@ -228,8 +232,6 @@ class PushNotificationService
             }
             if ($kind === 'again') {
                 $title = ($isSos ? '🆘 SOS' : "🚨 {$incident->emergency_type} report") . ' — no one has accepted yet';
-            } elseif ($kind === 'help') {
-                $title = ($isSos ? '🆘 SOS' : "🚨 {$incident->emergency_type}") . ' — MDRRMO needs your team';
             }
 
             $bodyParts = [$incident->location];
@@ -267,6 +269,85 @@ class PushNotificationService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * "🆘 Backup needed" to the teams MDRRMO sends as backup (item 55,
+     * Admin\IncidentController::sendBackup()). It rings like a new incident
+     * (type incident, kind backup) and opens it, and says who's on scene and
+     * what's needed:
+     *
+     *   🆘 Backup needed — Fire
+     *   Juan Dela Cruz (BFP) is on scene at Rizal St, Brgy. Carmay East,
+     *   Rosales. Needed: Two people trapped — rescue tools.
+     *
+     * Every phone signed in to an active responder of those teams gets it,
+     * except the responders already on the incident (sending BFP as backup
+     * to a BFP team doesn't ring their own phones). Best-effort, like the
+     * rest.
+     */
+    public function dispatchBackup(Incident $incident, array $teams, ?string $needs = null): void
+    {
+        try {
+            [$title, $body] = self::backupAlert($incident, $needs);
+
+            $onIt = $incident->responders()->pluck('responders.id');
+            $tokens = $this->tokensOf(
+                Responder::whereIn('agency', array_values(array_unique($teams)))
+                    ->where('status', 'active')
+                    ->whereNotIn('id', $onIt)
+                    ->with('pushTokens')
+                    ->get()
+            );
+
+            Log::info('FCM backup dispatch attempt', [
+                'incident_id' => $incident->id,
+                'teams' => $teams,
+                'token_count' => count($tokens),
+            ]);
+
+            $this->sendToTokens($tokens, $title, $body, 'backup dispatch (' . implode(', ', $teams) . ')', [
+                'type'        => 'incident',
+                'kind'        => 'backup',
+                'incident_id' => (string) $incident->id,
+            ], self::INCIDENT_CHANNEL);
+        } catch (\Throwable $e) {
+            Log::error('Backup dispatch failed', [
+                'incident_id' => $incident->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * The title and text of the "Backup needed" alert: who's on scene (the
+     * first responder to accept), where, and what's needed.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function backupAlert(Incident $incident, ?string $needs = null): array
+    {
+        $what = $incident->emergency_type === 'SOS Emergency'
+            ? 'SOS' . ($incident->sos_emergency_type ? " ({$incident->sos_emergency_type})" : '')
+            : (string) $incident->emergency_type;
+
+        $lead = $incident->responders()->get()
+            ->sortBy(fn ($r) => (string) $r->pivot->accepted_at)
+            ->first();
+        $who = $lead
+            ? trim((string) $lead->full_name) . ($lead->agency ? " ({$lead->agency})" : '')
+            : 'The team';
+        $place = trim((string) preg_replace('/^(SOS Alert|Guest Report)\s*[—,]\s*/u', '', (string) $incident->location));
+
+        $body = "{$who} is on scene" . ($place !== '' ? " at {$place}" : '') . '.';
+        if (filled($needs)) {
+            $needed = Str::limit(trim((string) $needs), 160);
+            $body .= ' Needed: ' . $needed . (preg_match('/[.!?…]$/u', $needed) ? '' : '.');
+        } else {
+            $body .= ' MDRRMO is sending your team to help.';
+        }
+
+        return ["🆘 Backup needed — {$what}", $body];
     }
 
     /**

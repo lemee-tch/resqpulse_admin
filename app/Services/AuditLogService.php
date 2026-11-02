@@ -37,7 +37,7 @@ class AuditLogService
             'action'         => $action,
             'auditable_type' => $auditable ? get_class($auditable) : null,
             'auditable_id'   => $auditable?->id,
-            'description'    => $description,
+            'description'    => self::fit($description),
             'old_values'     => $old,
             'new_values'     => $new,
             'ip_address'     => request()->ip(),
@@ -61,11 +61,27 @@ class AuditLogService
             'action'         => $action,
             'auditable_type' => Responder::class,
             'auditable_id'   => $responder->id,
-            'description'    => $description,
+            'description'    => self::fit($description),
             'old_values'     => null,
             'new_values'     => $details,
             'ip_address'     => request()->ip(),
         ]);
+    }
+
+    /**
+     * A log line holds up to 255 characters (audit_logs.description). A
+     * longer one — a long reason typed in, e.g. Block → Other or what a
+     * backup team needs (item 55) — is cut there with "…"; the whole text
+     * is in the row's details (old/new values). Saving it whole failed with
+     * a database error ("Data too long"), and the action with it.
+     */
+    private static function fit(string $description): string
+    {
+        $description = trim($description);
+
+        return mb_strlen($description) > 255
+            ? rtrim(mb_substr($description, 0, 254)) . '…'
+            : $description;
     }
 
     /** "Juan Dela Cruz (BFP)", or "BFP responder" when there's no name. */

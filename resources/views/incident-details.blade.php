@@ -277,6 +277,38 @@
         .role-tag { font-size: .62rem; font-weight: 800; padding: 1px 7px; border-radius: 8px; background: #e0e7ff; color: #3730a3; }
         .role-tag.backup { background: #f3f4f6; color: #4b5563; }
 
+        /* Backup for the responding team (item 55) */
+        .chip-backup { background: #ffedd5; color: #9a3412; text-decoration: none; }
+        .chip-backup:hover { background: #fed7aa; color: #7c2d12; }
+        .backup-ask {
+            border: 1.5px solid #fdba74; background: #fff7ed; border-radius: 10px; padding: 11px 12px; margin-bottom: 14px;
+            scroll-margin-top: 16px; color: #7c2d12; font-size: .82rem; line-height: 1.5;
+        }
+        .backup-ask-head { display: flex; align-items: center; gap: 6px; font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #c2410c; }
+        .backup-ask-head .ago { font-weight: 600; letter-spacing: 0; text-transform: none; color: #9a3412; opacity: .8; }
+        .backup-ask-who { margin-top: 4px; }
+        .backup-ask-needs { margin-top: 3px; font-weight: 700; color: #431407; overflow-wrap: anywhere; }
+        .backup-ask-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: .76rem; color: #9a3412; }
+        .btn-cant-send {
+            background: #fff; border: 1.5px solid #fdba74; color: #c2410c; border-radius: 8px; padding: 4px 11px;
+            font-size: .76rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+        }
+        .btn-cant-send:hover { background: #ffedd5; }
+        .btn-backup-x { background: #ea580c; color: #fff; flex: 1; }
+        .btn-backup-x:hover:not(:disabled) { background: #c2410c; color: #fff; box-shadow: 0 4px 12px rgba(234,88,12,.28); }
+        .team-choice .scene-tag {
+            position: absolute; top: -9px; right: 8px;
+            font-size: .6rem; font-weight: 800; color: #1e40af; background: #dbeafe; border: 1px solid #bfdbfe;
+            border-radius: 8px; padding: 1px 6px; white-space: nowrap;
+        }
+        .backup-item + .backup-item { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e5e7eb; }
+        .backup-item .b-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .backup-item .b-sub { font-size: .78rem; color: #6b7280; line-height: 1.45; margin-top: 2px; overflow-wrap: anywhere; }
+        .b-state { font-size: .62rem; font-weight: 800; padding: 1px 7px; border-radius: 8px; white-space: nowrap; }
+        .b-state.waiting  { background: #ffedd5; color: #9a3412; }
+        .b-state.sent     { background: #dcfce7; color: #166534; }
+        .b-state.declined { background: #f3f4f6; color: #4b5563; }
+
         /* Internal note */
         .note-box { background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 8px; padding: 10px 12px; font-size: .84rem; line-height: 1.55; color: #374151; white-space: pre-line; overflow-wrap: anywhere; }
 
@@ -529,6 +561,26 @@
     // the admin notifies their team.
     $noOneYet   = $stage === 'active' && ! $needsTeam && $teamOnIt->isEmpty();
     $declinedBy = $noOneYet ? $incident->declinedBy()->orderBy('incident_declines.declined_at')->get() : collect();
+
+    // Backup for the responding team (item 55). The team on scene asks in
+    // Resqponder — the request waits here for an answer (Send Backup, or
+    // Can't Send) — or the admin sends backup on its own. Send Backup
+    // replaces Notify specific responders once a team is responding; it
+    // starts with what the team asked for.
+    $backups       = $incident->backupRequests;
+    $waitingBackup = $incident->waitingBackup();
+    $canBackup     = $stage === 'active' && ! $needsTeam && $teamOnIt->isNotEmpty();
+    $onSceneTeams  = $teamOnIt->pluck('agency')->filter()->unique()->values()->all();
+    $backupTeams   = (array) old('teams', $waitingBackup ? $waitingBackup->teamCodes() : []);
+    $backupNeeds   = old('needs', $waitingBackup?->needs);
+    $leadLabel     = $teamOnIt->isNotEmpty() ? \App\Models\BackupRequest::label($teamOnIt->first()) : null;
+    $askedBy       = fn ($b) => $b->responder ? \App\Models\BackupRequest::label($b->responder) : 'A responder';
+    $lastSent      = $backups->where('status', 'sent')->sortBy(fn ($b) => (string) $b->handled_at)->last();
+    // "Sent SARS and HCU as backup 5 minutes ago." — or, for an incident
+    // from before item 55, when the admin asked a team to help.
+    $helpNote      = $lastSent
+        ? 'Sent ' . $teamList($lastSent->sentTeamCodes()) . ' as backup ' . $ago($lastSent->handled_at ?? $lastSent->updated_at) . '.'
+        : (($notifiedHelp && $notifiedAt) ? 'Asked ' . $teamList($notifiedTeams) . ' to help ' . $ago($notifiedAt) . '.' : null);
 @endphp
 
 <!-- ════ MAIN ════ -->
@@ -547,6 +599,10 @@
         @elseif($incident->needs_review && ! $isSos && ! $isDeclined)
             <span hidden data-report-seen="new-{{ $incident->id }}"></span>
         @endif
+        {{-- A team's backup request waiting here (item 55). --}}
+        @foreach($backups->where('status', 'waiting') as $waitingOne)
+            <span hidden data-report-seen="backup-{{ $waitingOne->id }}"></span>
+        @endforeach
 
         <!-- HEADER -->
         <div class="incident-head prio-{{ $priority ?: 'unset' }}">
@@ -560,6 +616,11 @@
                             <a href="#report" class="chip {{ $teamReport['review'] ? 'chip-report-review' : 'chip-report-open' }}" title="Sent {{ $teamReport['at']->format('M d, g:i A') }} — go to the report">
                                 <i class="bi {{ $teamReport['review'] ? 'bi-clipboard2-check-fill' : 'bi-file-earmark-text-fill' }}"></i>
                                 {{ $teamReport['type'] === 'final' ? 'Final report' : 'Initial report' }} · {{ $ago($teamReport['at']) }}
+                            </a>
+                        @endif
+                        @if($canBackup && $waitingBackup)
+                            <a href="#backup" class="chip chip-backup" title="{{ $askedBy($waitingBackup) }} asked for backup {{ $waitingBackup->created_at->format('M d, g:i A') }} — go to it">
+                                <i class="bi bi-person-plus-fill"></i> Backup requested · {{ $ago($waitingBackup->created_at) }}
                             </a>
                         @endif
                         <span class="chip chip-source">Source: {{ $incident->source_label }}</span>
@@ -858,12 +919,15 @@
                                             && $incident->assigned_at->gt(\Illuminate\Support\Carbon::parse($firstAccepted));
                                         $assignedAt    = $changedLater ? $incident->reviewed_at : ($incident->assigned_at ?? $incident->reviewed_at);
                                         $teamChangedAt = $changedLater ? $incident->assigned_at : null;
+                                        // Teams added later by Send Backup (item 55) are under Backup sent.
+                                        $addedByBackup = $backups->flatMap(fn ($b) => $b->addedTeamCodes())->unique()->values()->all();
+                                        $firstTeams    = array_values(array_diff($assigned, $addedByBackup));
                                     @endphp
                                     <li class="done">
                                         <span class="dot"><i class="bi bi-check"></i></span>
                                         <div class="tl-label">Assigned <span class="tl-time">{{ $assignedAt?->format('M d, g:i A') }}</span></div>
                                         <div class="tl-sub">
-                                            {{ $assigned ? 'Sent to ' . $sentTo . '.' : 'Sent to the responders (before teams were assigned).' }}
+                                            {{ $assigned ? 'Sent to ' . ($addedByBackup && $firstTeams ? $teamList($firstTeams) : $sentTo) . '.' : 'Sent to the responders (before teams were assigned).' }}
                                             @if($teamChangedAt) Team changed {{ $teamChangedAt->format('M d, g:i A') }}. @endif
                                             @if($notifiedAt)
                                                 {{ $notifiedHelp ? 'Asked ' . $teamList($notifiedTeams) . ' to help' : 'Notified ' . $teamList($notifiedTeams) . ' again' }} {{ $notifiedAt->format('M d, g:i A') }}.
@@ -885,6 +949,29 @@
                                             <div class="tl-sub">No responder has accepted it yet.</div>
                                         </li>
                                     @endif
+
+                                    {{-- Backup (item 55) --}}
+                                    @foreach($backups as $b)
+                                        @if($b->status === 'sent')
+                                            <li class="done">
+                                                <span class="dot"><i class="bi bi-check"></i></span>
+                                                <div class="tl-label">Backup sent <span class="tl-time">{{ $b->handled_at?->format('M d, g:i A') }}</span></div>
+                                                <div class="tl-sub">{{ $teamList($b->sentTeamCodes()) }}{{ $b->askedByTeam() ? ' — ' . $askedBy($b) . ' asked at ' . $b->created_at->format('g:i A') : '' }}{{ $b->handledBy ? '. By ' . $b->handledBy->name : '' }}.</div>
+                                            </li>
+                                        @elseif($b->status === 'declined')
+                                            <li class="back">
+                                                <span class="dot"><i class="bi bi-x"></i></span>
+                                                <div class="tl-label">Backup not sent <span class="tl-time">{{ $b->handled_at?->format('M d, g:i A') }}</span></div>
+                                                <div class="tl-sub">{{ $askedBy($b) }} asked for {{ $teamList($b->teamCodes()) }}. {{ $b->handledBy ? $b->handledBy->name . ': ' : '' }}{{ $b->reply }}</div>
+                                            </li>
+                                        @elseif($stage === 'active')
+                                            <li class="current">
+                                                <span class="dot"></span>
+                                                <div class="tl-label">Backup requested — waiting for you <span class="tl-time">{{ $b->created_at->format('M d, g:i A') }}</span></div>
+                                                <div class="tl-sub">{{ $askedBy($b) }} asked for {{ $teamList($b->teamCodes()) }}.</div>
+                                            </li>
+                                        @endif
+                                    @endforeach
 
                                     {{-- 5. Report --}}
                                     @if($incident->report_returned_at)
@@ -1109,7 +1196,7 @@
                                     @else
                                         Waiting for the team to send it again.
                                     @endif
-                                    @if($notifiedHelp && $notifiedAt) Asked {{ $teamList($notifiedTeams) }} to help {{ $ago($notifiedAt) }}. @endif
+                                    {{ $helpNote }}
                                 </span>
                             </div>
                         @elseif($teamOnIt->isEmpty())
@@ -1133,7 +1220,7 @@
                                 <span>
                                     <strong>{{ $teamOnIt->first()->full_name }}</strong> {{ $teamReport['revision'] > 1 ? 'updated an' : 'saved an' }} <strong>Initial report</strong> {{ $ago($teamReport['at']) }}, but hasn't sent it to MDRRMO yet.
                                     When they send it from the app, it moves to <strong>For Review</strong> for you to approve.
-                                    @if($notifiedHelp && $notifiedAt) Asked {{ $teamList($notifiedTeams) }} to help {{ $ago($notifiedAt) }}. @endif
+                                    {{ $helpNote }}
                                 </span>
                             </div>
                             @if($report)
@@ -1148,27 +1235,75 @@
                                 <i class="bi bi-lightning-charge-fill"></i>
                                 <span>
                                     {{ $teamOnIt->first()->full_name }} {{ $teamOnIt->count() > 1 ? 'and ' . ($teamOnIt->count() - 1) . ' more are' : 'is' }} responding. You'll see their report here when they send it.
-                                    @if($notifiedHelp && $notifiedAt) Asked {{ $teamList($notifiedTeams) }} to help {{ $ago($notifiedAt) }}. @endif
+                                    {{ $helpNote }}
                                 </span>
                             </div>
                         @endif
 
+                        {{-- The priority is chosen when the report is approved (Pending)
+                             and can't be changed after that. --}}
+                        <div class="field">
+                            <span class="field-label">Priority level</span>
+                            @if($isSos)
+                                <span class="fixed-value"><i class="bi bi-exclamation-octagon-fill"></i> Critical — every SOS</span>
+                            @else
+                                <span class="fixed-value fixed-{{ $priority ?: 'unset' }}">
+                                    <i class="bi bi-lock-fill"></i> {{ $priority ? ucfirst($priority) : 'Not set' }}
+                                </span>
+                            @endif
+                        </div>
+
+                        @if($canBackup)
+                            {{-- ── A team is responding: Send Backup (item 55) ── --}}
+                            @if($waitingBackup)
+                                <div class="backup-ask" id="backup">
+                                    <div class="backup-ask-head">
+                                        <i class="bi bi-person-plus-fill"></i> Backup requested
+                                        <span class="ago">· {{ $ago($waitingBackup->created_at) }}</span>
+                                    </div>
+                                    <div class="backup-ask-who">
+                                        <strong>{{ $askedBy($waitingBackup) }}</strong> asks for
+                                        <strong>{{ $teamList($waitingBackup->teamCodes()) ?: 'more people' }}</strong>:
+                                    </div>
+                                    <div class="backup-ask-needs">“{{ $waitingBackup->needs }}”</div>
+                                    <div class="backup-ask-foot">
+                                        <span>Send Backup below starts with what they asked for.</span>
+                                        <button type="button" class="btn-cant-send" data-bs-toggle="modal" data-bs-target="#backupDeclineModal">Can't send?</button>
+                                    </div>
+                                </div>
+                            @endif
+
+                            <form action="{{ route('incident.backup', $incident) }}" method="POST" id="backupForm">
+                                @csrf
+                                <div class="field" @unless($waitingBackup) id="backup" style="scroll-margin-top:16px;" @endunless>
+                                    <span class="field-label">Send backup</span>
+                                    @include('partials.team-choices', ['checked' => $backupTeams, 'previous' => null, 'onScene' => $onSceneTeams])
+                                    <div class="field-help">
+                                        Tick the teams to send to {{ $leadLabel }}{{ $teamOnIt->count() > 1 ? ' and the others on scene' : '' }}.
+                                        @if($onSceneTeams) Tick {{ $teamList($onSceneTeams) }} too for more of {{ count($onSceneTeams) > 1 ? 'their' : 'its' }} people. @endif
+                                    </div>
+                                </div>
+
+                                <div class="field">
+                                    <label class="field-label" for="backup_needs">What's needed <span class="opt">(optional)</span></label>
+                                    <textarea name="needs" id="backup_needs" rows="2" maxlength="255" class="f-input"
+                                              placeholder="e.g. Two more people with rescue tools.">{{ $backupNeeds }}</textarea>
+                                </div>
+
+                                <button type="submit" class="btn-x btn-backup-x btn-block" id="backupSubmit">
+                                    <i class="bi bi-person-plus-fill"></i> Send Backup
+                                </button>
+                                <div class="why-disabled" id="backupHint" hidden></div>
+                                <div class="action-help">
+                                    <i class="bi bi-info-circle"></i>
+                                    The ticked teams get <strong>“Backup needed”</strong> — it rings like a new incident — and can join as backup.
+                                    {{ $teamOnIt->count() > 1 ? 'The team on scene is' : $teamOnIt->first()->full_name . ' is' }} told backup is on the way.
+                                </div>
+                            </form>
+                        @else
                         <form action="{{ route('incident.assignment', $incident->id) }}" method="POST" id="assignmentForm">
                             @csrf
                             @method('PATCH')
-
-                            {{-- The priority is chosen when the report is approved (Pending)
-                                 and can't be changed after that. --}}
-                            <div class="field">
-                                <span class="field-label">Priority level</span>
-                                @if($isSos)
-                                    <span class="fixed-value"><i class="bi bi-exclamation-octagon-fill"></i> Critical — every SOS</span>
-                                @else
-                                    <span class="fixed-value fixed-{{ $priority ?: 'unset' }}">
-                                        <i class="bi bi-lock-fill"></i> {{ $priority ? ucfirst($priority) : 'Not set' }}
-                                    </span>
-                                @endif
-                            </div>
 
                             @if($needsTeam)
                                 <button type="submit" class="btn-x btn-primary-x btn-block" id="assignmentSubmit">
@@ -1185,14 +1320,11 @@
                                     <span class="field-label">Notify specific responders</span>
                                     @include('partials.team-choices', ['checked' => $checkedTeams, 'previous' => null])
                                     <div class="field-help">
-                                        @if($teamOnIt->isEmpty())
-                                            Tick the teams to notify again.
-                                            @if($toAll || $incident->assigned_teams === null) Every team can already see it and accept it. @else A team it wasn't sent to is added and can accept it. @endif
-                                            Usually needed for {{ $isSos ? ($incident->sos_emergency_type ?: 'an SOS') : $incident->emergency_type }}: {{ $teamList($suggested) }}.
-                                            @if($declinedBy->isNotEmpty()) Anyone on a ticked team who declined gets it back in their list. @endif
-                                        @else
-                                            Tick a team to ask it to help — it's notified and can join the responders on it.
-                                        @endif
+                                        Tick the teams to notify again.
+                                        @if($toAll || $incident->assigned_teams === null) Every team can already see it and accept it. @else A team it wasn't sent to is added and can accept it. @endif
+                                        Usually needed for {{ $isSos ? ($incident->sos_emergency_type ?: 'an SOS') : $incident->emergency_type }}: {{ $teamList($suggested) }}.
+                                        @if($declinedBy->isNotEmpty()) Anyone on a ticked team who declined gets it back in their list. @endif
+                                        Once a team accepts, you can send backup here.
                                     </div>
                                 </div>
 
@@ -1208,14 +1340,11 @@
                                 <div class="why-disabled" id="assignmentHint" hidden></div>
                                 <div class="action-help">
                                     <i class="bi bi-info-circle"></i>
-                                    @if($teamOnIt->isEmpty())
-                                        The ticked teams get the alert again, marked "no one has accepted yet".
-                                    @else
-                                        The ticked teams get "MDRRMO needs your team" and can accept it as backup.
-                                    @endif
+                                    The ticked teams get the alert again, marked "no one has accepted yet".
                                 </div>
                             @endif
                         </form>
+                        @endif
                     @endif
                 </section>
 
@@ -1268,6 +1397,41 @@
 
                             <dt>Notes</dt>
                             <dd>{!! $incident->assignment_notes ? e($incident->assignment_notes) : '<span class="muted">—</span>' !!}</dd>
+
+                            @if($backups->isNotEmpty())
+                                <dt>Backup</dt>
+                                <dd>
+                                    @foreach($backups as $b)
+                                        <div class="backup-item">
+                                            <div class="b-line">
+                                                @if($b->status === 'sent')
+                                                    <span>Sent {{ $teamList($b->sentTeamCodes()) }}</span>
+                                                    <span class="b-state sent">Sent</span>
+                                                @elseif($b->status === 'declined')
+                                                    <span>Asked for {{ $teamList($b->teamCodes()) }}</span>
+                                                    <span class="b-state declined">Not sent</span>
+                                                @else
+                                                    <span>Asked for {{ $teamList($b->teamCodes()) }}</span>
+                                                    <span class="b-state waiting">{{ $stage === 'active' ? 'Waiting for you' : 'Not answered' }}</span>
+                                                @endif
+                                                <span class="small-note">{{ ($b->handled_at ?? $b->created_at)->format('g:i A') }}</span>
+                                            </div>
+                                            <div class="b-sub">
+                                                @if(! $b->askedByTeam())
+                                                    Sent by MDRRMO.
+                                                @elseif($b->status === 'waiting')
+                                                    By {{ $askedBy($b) }}.
+                                                @else
+                                                    {{ $askedBy($b) }} asked at {{ $b->created_at->format('g:i A') }}{{ $b->status === 'sent' && $b->teamCodes() !== $b->sentTeamCodes() ? ' for ' . $teamList($b->teamCodes()) : '' }}.
+                                                @endif
+                                                @if($b->needs) “{{ $b->needs }}” @endif
+                                                @if($b->status === 'declined') Answer: {{ $b->reply }} @endif
+                                                @if($b->handledBy) — {{ $b->handledBy->name }} @endif
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </dd>
+                            @endif
                         @endunless
 
                         <dt>Status</dt>
@@ -1350,6 +1514,39 @@
                      style="width:100%;max-height:520px;object-fit:contain;border-radius:10px;border:1px solid #e5e7eb;"
                      alt="Photo from the scene">
             </div>
+        </div>
+    </div>
+</div>
+@endif
+
+@if($canBackup && $waitingBackup)
+{{-- Can't send the backup the team asked for (item 55) — opened from the request. --}}
+<div class="modal fade" id="backupDeclineModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius:14px;border:none;">
+            <form action="{{ route('incident.backup.decline', [$incident, $waitingBackup]) }}" method="POST" id="backupDeclineForm">
+                @csrf
+                <div class="modal-header border-0 pb-0">
+                    <h5 style="font-family:'Barlow',sans-serif;font-weight:800;font-size:1.1rem;">Can't send backup?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body pt-3">
+                    <div class="backup-ask">
+                        <div class="backup-ask-who"><strong>{{ $askedBy($waitingBackup) }}</strong> asked for <strong>{{ $teamList($waitingBackup->teamCodes()) }}</strong>:</div>
+                        <div class="backup-ask-needs">“{{ $waitingBackup->needs }}”</div>
+                    </div>
+                    <p style="font-size:.82rem;color:#6b7280;margin-bottom:12px;">
+                        Tell them why. They see it in Resqponder as <strong>“MDRRMO can't send backup right now”</strong>.
+                    </p>
+                    <label class="form-label-m" for="backupReply">Your answer to the team</label>
+                    <textarea name="reply" id="backupReply" class="form-control-m" rows="3" maxlength="255" minlength="5" required
+                              placeholder="e.g. All units are out. We'll send SARS as soon as one is free — call #2441 if it gets worse.">{{ old('reply') }}</textarea>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="submit" class="btn-decline-confirm">Send Answer</button>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:8px;font-size:.85rem;">Cancel</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -1483,8 +1680,8 @@
     });
 
     // Approve & Send: stays off until a priority is chosen (reports) and a
-    // team is ticked. Notify Selected: stays off until a team is ticked.
-    // (Send to All Responders has no teams to tick.)
+    // team is ticked. Notifying teams again, and Send Backup (item 55): off
+    // until a team is ticked. (Send to All Responders has no teams to tick.)
     function wireAssignmentForm(formId, submitId, hintId, needsPriority, needsTeam) {
         const form = document.getElementById(formId);
         if (!form) return;
@@ -1516,6 +1713,7 @@
     }
     wireAssignmentForm('approveForm', 'approveSubmit', 'approveHint', {{ $isSos ? 'false' : 'true' }}, true);
     wireAssignmentForm('assignmentForm', 'assignmentSubmit', 'assignmentHint', false, true);
+    wireAssignmentForm('backupForm', 'backupSubmit', 'backupHint', false, true);
 
     // Decline: a reason is required, then one last confirmation.
     (function () {

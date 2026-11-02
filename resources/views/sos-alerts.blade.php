@@ -201,6 +201,8 @@
         }
         /* Active: an Initial report the team saved before item 49. */
         .sos-flag--initial { color: #92400e; background: #fef3c7; }
+        /* The team on scene asked for backup (item 55). */
+        .sos-flag--backup { color: #c2410c; background: #ffedd5; }
         /* For Review: you corrected the report (item 49). */
         .sos-flag--corrected { color: #5b21b6; background: #ede9fe; }
         .sos-flag i { margin-right: 3px; }
