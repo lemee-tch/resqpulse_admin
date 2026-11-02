@@ -31,9 +31,55 @@ use Illuminate\Support\Str;
  * PAUSE_MINUTES: isAvailable() says no, so the app stops offering
  * "Text me a code" and uses email where it can, instead of every resident
  * running into the same error. It tries again after the pause.
+ *
+ * Broadcasts (item 56): every Quick Broadcast on Alerts & Broadcast is
+ * texted too (Admin\AlertController::store()). broadcast() sends one text
+ * to many numbers — Semaphore takes up to 1,000 in one call. An admin sends
+ * it, so the limits above don't hold it back and it doesn't count toward
+ * SMS_DAILY_LIMIT; it goes out even while texting is paused for codes.
  */
 class SmsService
 {
+    /** Semaphore takes up to this many numbers in one call (api.semaphore.co/docs). */
+    public const BULK_LIMIT = 1000;
+
+    /** Numbers per call to textbee, which texts them from one phone. */
+    private const TEXTBEE_BULK_LIMIT = 50;
+
+    /** Every broadcast text starts with it: "MDRRMO Rosales: Flood Warning". */
+    public const BROADCAST_FROM = 'MDRRMO Rosales';
+
+    /** A broadcast text longer than this many texts is cut short… */
+    public const BROADCAST_MAX_PARTS = 4;
+
+    /** …and ends with this. */
+    public const BROADCAST_CUT = '... Full alert in the app.';
+
+    /** A phone counts these as two characters each (GSM's extension table). */
+    public const DOUBLE = '^{}\\[]~|';
+
+    /**
+     * Turned into plain letters before the rest is transliterated (plain()),
+     * so a text holds 160 characters: Unicode in a text would cut that to
+     * 70. alerts.blade.php's preview uses the same list.
+     */
+    public const PLAIN = [
+        "\u{2018}" => "'", "\u{2019}" => "'", "\u{201A}" => "'", "\u{201B}" => "'",
+        "\u{2032}" => "'", "\u{00B4}" => "'", '`' => "'",
+        "\u{201C}" => '"', "\u{201D}" => '"', "\u{201E}" => '"', "\u{201F}" => '"',
+        "\u{2033}" => '"', "\u{00AB}" => '"', "\u{00BB}" => '"',
+        "\u{2010}" => '-', "\u{2011}" => '-', "\u{2012}" => '-', "\u{2013}" => '-',
+        "\u{2014}" => '-', "\u{2015}" => '-', "\u{2212}" => '-',
+        "\u{2026}" => '...', "\u{2022}" => '-', "\u{00B7}" => '-', "\u{00D7}" => 'x',
+        "\u{20B1}" => 'P', "\u{20AC}" => 'EUR',
+        "\u{00DF}" => 'ss', "\u{00E6}" => 'ae', "\u{00C6}" => 'AE', "\u{0153}" => 'oe', "\u{0152}" => 'OE',
+        "\u{00F8}" => 'o', "\u{00D8}" => 'O', "\u{0111}" => 'd', "\u{0110}" => 'D',
+        "\u{0142}" => 'l', "\u{0141}" => 'L',
+    ];
+
+    /** Semaphore's credit balance, read at most every 5 minutes (balance()). */
+    private const BALANCE_KEY = 'sms-semaphore-balance';
+
     /** Seconds before the same number can get another code. */
     private const COOLDOWN_SECONDS = 60;
 
@@ -324,10 +370,11 @@ class SmsService
             : null;
     }
 
-    private function postToTextbee(string $number, string $message): bool
+    /** One number, or several (a broadcast). */
+    private function postToTextbee(string|array $numbers, string $message): bool
     {
         $body = [
-            'recipients' => ['+' . $number],
+            'recipients' => array_map(fn ($number) => '+' . $number, (array) $numbers),
             'message'    => $message,
         ];
 
@@ -377,6 +424,296 @@ class SmsService
     private function notSent(string $reason, ?int $retryAfter = null): array
     {
         return ['sent' => false, 'code' => null, 'reason' => $reason, 'retry_after' => $retryAfter];
+    }
+
+    // ── Broadcasts (item 56) ──────────────────────────────────────────
+
+    /**
+     * Broadcasts can be texted: a gateway is set up. Unlike codes, a
+     * broadcast isn't held back by the pause or SMS_DAILY_LIMIT.
+     */
+    public function canBroadcast(): bool
+    {
+        return $this->isConfigured();
+    }
+
+    /**
+     * Semaphore credits for each text of a broadcast: 1 on the regular
+     * route, 2 on the priority route (SEMAPHORE_BROADCAST_ROUTE=priority).
+     * Null for textbee (the phone's own load) and log (nothing is sent).
+     */
+    public function creditsPerText(): ?int
+    {
+        if ($this->driver() !== 'semaphore') {
+            return null;
+        }
+
+        return $this->priorityBroadcasts() ? 2 : 1;
+    }
+
+    private function priorityBroadcasts(): bool
+    {
+        return strtolower(trim((string) config('services.semaphore.broadcast_route', 'regular'))) === 'priority';
+    }
+
+    /**
+     * Semaphore's credit balance, read at most every 5 minutes (Semaphore
+     * allows 2 reads a minute) and again after a broadcast. Null when the
+     * gateway isn't Semaphore or the balance couldn't be read.
+     */
+    public function balance(): ?int
+    {
+        if ($this->driver() !== 'semaphore' || ! $this->isConfigured()) {
+            return null;
+        }
+
+        $balance = Cache::remember(self::BALANCE_KEY, now()->addMinutes(5), function () {
+            try {
+                $response = Http::acceptJson()
+                    ->connectTimeout(3)
+                    ->timeout(5)
+                    ->get('https://api.semaphore.co/api/v4/account', [
+                        'apikey' => config('services.semaphore.api_key'),
+                    ]);
+                $credits = $response->json('credit_balance') ?? $response->json('0.credit_balance');
+
+                return $response->successful() && is_numeric($credits) ? (int) floor((float) $credits) : -1;
+            } catch (\Throwable $e) {
+                return -1; // unknown — not asked again for 5 minutes
+            }
+        });
+
+        return $balance >= 0 ? $balance : null;
+    }
+
+    /**
+     * Texts one broadcast to many numbers (639XXXXXXXXX, from
+     * normalizeNumber()), up to BULK_LIMIT per call. Returns:
+     *
+     *   sent     numbers the gateway took
+     *   failed   numbers it didn't
+     *   credits  about how many Semaphore credits it used (0 for textbee
+     *            and log)
+     *   error    what went wrong, in a line for the admin, when some
+     *            weren't sent
+     *
+     * When none went out, texting is paused like after a failed code.
+     */
+    public function broadcast(array $numbers, string $message): array
+    {
+        $numbers = array_values(array_unique(array_filter($numbers)));
+        $result  = ['sent' => 0, 'failed' => 0, 'credits' => 0, 'error' => null];
+
+        if ($numbers === [] || ! $this->canBroadcast()) {
+            return $result;
+        }
+
+        $chunks = array_chunk($numbers, $this->driver() === 'textbee' ? self::TEXTBEE_BULK_LIMIT : self::BULK_LIMIT);
+        if (count($chunks) > 1) {
+            @set_time_limit(60 + 30 * count($chunks)); // each call can take a while
+        }
+
+        foreach ($chunks as $chunk) {
+            try {
+                [$sent, $error] = match ($this->driver()) {
+                    'semaphore' => $this->bulkToSemaphore($chunk, $message),
+                    'textbee'   => $this->postToTextbee($chunk, $message)
+                        ? [count($chunk), null]
+                        : [0, "textbee didn't send the text."],
+                    'log'       => $this->logBroadcast($chunk, $message),
+                };
+            } catch (\Throwable $e) {
+                Log::warning('SMS: could not reach the ' . $this->driver() . ' gateway for a broadcast.', [
+                    'error' => $e->getMessage(),
+                ]);
+                [$sent, $error] = [0, ucfirst($this->driver()) . " couldn't be reached."];
+            }
+
+            $result['sent']   += $sent;
+            $result['failed'] += count($chunk) - $sent;
+            $result['error']  ??= $error;
+        }
+
+        $result['credits'] = $result['sent'] * self::parts($message) * (int) $this->creditsPerText();
+
+        if ($result['sent'] === 0) {
+            $this->pause(); // the gateway isn't sending: codes go by email meanwhile
+        }
+        Cache::forget(self::BALANCE_KEY);
+
+        return $result;
+    }
+
+    /**
+     * One call to Semaphore with up to BULK_LIMIT numbers, on the regular
+     * route (or priority). Returns how many it took, and what went wrong
+     * when it didn't take them all.
+     *
+     * @return array{0: int, 1: ?string}
+     */
+    private function bulkToSemaphore(array $numbers, string $message): array
+    {
+        $params = [
+            'apikey'  => config('services.semaphore.api_key'),
+            'number'  => implode(',', array_map(fn ($number) => '0' . substr($number, 2), $numbers)),
+            'message' => $message,
+        ];
+
+        if (filled(config('services.semaphore.sender_name'))) {
+            $params['sendername'] = config('services.semaphore.sender_name');
+        }
+
+        $response = Http::asForm()
+            ->acceptJson()
+            ->connectTimeout(5)
+            ->timeout(30)
+            ->post('https://api.semaphore.co/api/v4/' . ($this->priorityBroadcasts() ? 'priority' : 'messages'), $params);
+
+        // On success Semaphore answers with a list: one entry per number.
+        $entries = $response->json();
+
+        if (! $response->successful() || ! is_array($entries) || ! array_is_list($entries)) {
+            $this->logRejected('semaphore', $response->status(), $response->body());
+
+            return [0, $this->semaphoreSaid($response)];
+        }
+
+        $taken = min(count($numbers), count(array_filter($entries, fn ($entry) => is_array($entry)
+            && ! empty($entry['message_id'])
+            && ! in_array(strtolower((string) ($entry['status'] ?? '')), ['failed', 'refunded'], true))));
+
+        if ($taken < count($numbers)) {
+            $this->logRejected('semaphore', $response->status(), $response->body());
+
+            return [$taken, "Semaphore didn't take " . (count($numbers) - $taken) . ' of the numbers.'];
+        }
+
+        return [$taken, null];
+    }
+
+    /** What Semaphore said when it refused, in a line for the admin — never the API key. */
+    private function semaphoreSaid(\Illuminate\Http\Client\Response $response): string
+    {
+        $said = null;
+        $json = $response->json();
+
+        if (is_array($json)) {
+            array_walk_recursive($json, function ($value) use (&$said) {
+                if ($said === null && is_string($value) && trim($value) !== '') {
+                    $said = trim($value);
+                }
+            });
+        }
+
+        $said = $said !== null
+            ? rtrim(Str::limit(strip_tags($said), 120), '. ') . '.'
+            : ($response->successful() ? "it didn't take the text." : 'error ' . $response->status() . '.');
+
+        return 'Semaphore: ' . str_replace((string) config('services.semaphore.api_key'), '***', $said);
+    }
+
+    /** SMS_DRIVER=log: the broadcast is written to the log, not sent. */
+    private function logBroadcast(array $numbers, string $message): array
+    {
+        $shown = implode(', ', array_map(fn ($number) => '+' . $number, array_slice($numbers, 0, 10)));
+        $more  = count($numbers) > 10 ? ' and ' . (count($numbers) - 10) . ' more' : '';
+
+        Log::info("SMS broadcast (not sent, SMS_DRIVER=log) to {$shown}{$more}: {$message}");
+
+        return [count($numbers), null];
+    }
+
+    /**
+     * The text of a broadcast: who it's from and the title, the place when
+     * one was picked, then the message —
+     *
+     *   MDRRMO Rosales: Flood Warning
+     *   Brgy. Carmen East, Rosales
+     *   Flooding is expected in low-lying areas. Residents in ...
+     *
+     * In plain letters (plain()), so each text holds 160 characters. Past
+     * BROADCAST_MAX_PARTS texts it's cut at a word and ends with
+     * BROADCAST_CUT. alerts.blade.php builds the same text for its preview
+     * (smsText()); keep the two the same.
+     */
+    public static function broadcastText(string $title, ?string $where, string $body): string
+    {
+        $lines = [self::BROADCAST_FROM . ': ' . self::plain($title), self::plain((string) $where)];
+
+        foreach (preg_split('/\R/u', $body) ?: [] as $line) {
+            $lines[] = self::plain($line);
+        }
+
+        return self::shorten(implode("\n", array_filter($lines, fn ($line) => $line !== '')));
+    }
+
+    /**
+     * One line in plain letters: “quotes”, dashes, ñ and é become ", -, n
+     * and e; emoji and other symbols are left out; spaces are single.
+     */
+    public static function plain(string $text): string
+    {
+        $text = preg_replace('/[\x{200B}-\x{200D}\x{2060}\x{FEFF}]/u', '', $text) ?? $text;
+        $text = preg_replace('/[\s\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]+/u', ' ', $text) ?? $text;
+        $text = Str::ascii(strtr($text, self::PLAIN), 'en');
+        $text = preg_replace('/[^\x20-\x7E]+/', '', $text) ?? '';
+
+        return trim(preg_replace('/ {2,}/', ' ', $text) ?? '');
+    }
+
+    /** The characters as a phone counts them: those in DOUBLE take two. */
+    public static function units(string $text): int
+    {
+        return strlen($text) + (strlen($text) - strlen(str_replace(str_split(self::DOUBLE), '', $text)));
+    }
+
+    /** How many texts it goes as: one holds 160 characters, or 153 each when it's longer. */
+    public static function parts(string $text): int
+    {
+        $units = self::units($text);
+
+        return $units <= 160 ? 1 : (int) ceil($units / 153);
+    }
+
+    /** Cut to BROADCAST_MAX_PARTS texts, at a word, ending with BROADCAST_CUT. */
+    private static function shorten(string $text): string
+    {
+        if (self::parts($text) <= self::BROADCAST_MAX_PARTS) {
+            return $text;
+        }
+
+        $room  = self::BROADCAST_MAX_PARTS * 153 - self::units(self::BROADCAST_CUT);
+        $units = 0;
+        $end   = 0;
+        while ($end < strlen($text)) {
+            $units += str_contains(self::DOUBLE, $text[$end]) ? 2 : 1;
+            if ($units > $room) {
+                break;
+            }
+            $end++;
+        }
+
+        $cut = substr($text, 0, $end);
+
+        // Back to the end of the last whole sentence when it's near; else,
+        // mid-word, back to the word before (unless that's too far back).
+        $look = $cut . $text[$end];
+        $stop = -1;
+        foreach (['. ', '! ', '? ', ".\n", "!\n", "?\n"] as $mark) {
+            $at   = strrpos($look, $mark);
+            $stop = $at !== false && $at > $stop ? $at : $stop;
+        }
+
+        if ($stop >= 0 && $stop >= strlen($cut) - 100) {
+            $cut = substr($cut, 0, $stop);
+        } elseif ($text[$end] !== ' ' && $text[$end] !== "\n") {
+            $space = max((int) strrpos($cut, ' '), (int) strrpos($cut, "\n"));
+            if ($space > strlen($cut) - 30) {
+                $cut = substr($cut, 0, $space);
+            }
+        }
+
+        return rtrim($cut, " \n.,;:-") . self::BROADCAST_CUT;
     }
 
     /** One counter per Philippine calendar day. */

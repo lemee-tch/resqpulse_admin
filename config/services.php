@@ -72,6 +72,9 @@ return [
     |
     | SMS_DAILY_LIMIT caps how many codes are texted per day, so nobody can
     | use up the credits. Past it, codes go by email until the next day.
+    |
+    | Broadcasts from Alerts & Broadcast are texted too (item 56), with the
+    | same gateway. They don't count toward SMS_DAILY_LIMIT.
     */
     'sms' => [
         'driver'      => env('SMS_DRIVER', 'none'),
@@ -84,6 +87,10 @@ return [
         // otp     = Semaphore's OTP route: delivered first, 2 credits per text
         // regular = normal route: 1 credit per text, can be slower when busy
         'route'       => env('SEMAPHORE_ROUTE', 'otp'),
+        // Broadcasts (item 56):
+        // regular  = 1 credit per text (default)
+        // priority = 2 credits per text, sent ahead of other traffic
+        'broadcast_route' => env('SEMAPHORE_BROADCAST_ROUTE', 'regular'),
     ],
 
     'textbee' => [

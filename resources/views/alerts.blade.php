@@ -232,6 +232,47 @@
             display: flex; align-items: center; gap: 6px;
         }
 
+        /* ── TEXTED TOO (item 56) ── */
+        .sms-box {
+            border: 1.5px solid #c7d2fe; background: #f5f7ff;
+            border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;
+        }
+        .sms-box.is-off { border-color: #fde68a; background: #fffbeb; }
+        .sms-head {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px;
+            font-size: .8rem; font-weight: 700; color: #1a3c8f; margin-bottom: 8px;
+        }
+        .sms-box.is-off .sms-head { color: #92400e; margin-bottom: 4px; }
+        .sms-tag {
+            font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px;
+            background: #e0e7ff; color: #1a3c8f;
+        }
+        .sms-box.is-off .sms-tag { background: #fef3c7; color: #92400e; }
+        .sms-bubble {
+            background: #fff; border: 1px solid #e5e7eb;
+            border-radius: 14px 14px 14px 4px;
+            padding: 10px 13px; max-width: 460px;
+            font-size: .82rem; line-height: 1.45; color: #111827;
+            white-space: pre-wrap; overflow-wrap: anywhere;
+        }
+        .sms-bubble.is-empty { color: #9ca3af; font-style: italic; }
+        .sms-meta { font-size: .76rem; color: #374151; margin-top: 8px; line-height: 1.5; }
+        .sms-meta b { color: #111827; }
+        .sms-meta .warn { color: #b45309; font-weight: 600; }
+        .sms-meta .bad  { color: #b91c1c; font-weight: 600; }
+        .sms-off-note { font-size: .78rem; color: #92400e; line-height: 1.5; }
+
+        .badge-sms {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+        }
+        .badge-sms.ok   { background: #dbeafe; color: #1e40af; }
+        .badge-sms.warn { background: #fef3c7; color: #92400e; }
+        .badge-sms.bad  { background: #fee2e2; color: #b91c1c; }
+        .badge-sms.off  { background: #f3f4f6; color: #6b7280; }
+        .alert-time .sms-sent, .alert-time .sms-partial { color: #1e40af; font-weight: 600; }
+        .alert-time .sms-failed { color: #b91c1c; font-weight: 600; }
+
         /* ── HISTORY TABLE ── */
         .history-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
         .history-table th {
@@ -439,6 +480,9 @@
                         <div class="alert-desc">{{ $alert->body }}</div>
                         <div class="alert-time">
                             {{ $alert->created_at->format('M d, Y g:i A') }} · Sent to {{ $meta['label'] }}
+                            @if($alert->smsShort())
+                                · <span class="sms-{{ $alert->smsState() }}" title="{{ $alert->smsLine() }}">{{ $alert->smsShort() }}</span>
+                            @endif
                             @if($alert->clearsIn())
                                 · <span class="clears" title="Clears from the apps {{ $alert->expires_at->format('M d, Y g:i A') }}">Clears in {{ $alert->clearsIn() }}</span>
                             @endif
@@ -557,6 +601,24 @@
                     <label class="form-label-s">Message</label>
                     <textarea id="messageBody" name="body" class="broadcast-textarea" placeholder="Type your message here, or pick a template above..." required></textarea>
 
+                    {{-- Item 56: every broadcast is texted too, to the same
+                         audience — residents MDRRMO verified and active
+                         responders. The bubble is the text as it goes out,
+                         built like SmsService::broadcastText(). --}}
+                    @php $sms = $smsInfo ?? ['on' => false]; @endphp
+                    <div class="sms-box{{ $sms['on'] ? '' : ' is-off' }}" id="smsBox">
+                        <div class="sms-head">
+                            <i class="bi bi-chat-left-text"></i> Text message (SMS)
+                            <span class="sms-tag">{{ $sms['on'] ? 'Sent with every broadcast' : 'Off' }}</span>
+                        </div>
+                        @if($sms['on'])
+                            <div class="sms-bubble is-empty" id="smsPreview">Choose a title and type the message to see the text.</div>
+                            <div class="sms-meta" id="smsMeta"></div>
+                        @else
+                            <div class="sms-off-note">Texting is off on this server (SMS_DRIVER in .env), so broadcasts go to the apps only.</div>
+                        @endif
+                    </div>
+
                     <button type="submit" class="btn-send">
                         <i class="bi bi-broadcast"></i> Send Broadcast
                     </button>
@@ -564,7 +626,7 @@
 
                     <div class="push-note">
                         <i class="bi bi-info-circle"></i>
-                        This sends a real push notification to whichever audience you select above and adds it to their Alerts. It clears from their Alerts by itself {{ $clearsAfter ?? '24 hours' }} after it's sent.
+                        This sends a real push notification to whichever audience you select above and adds it to their Alerts{{ $sms['on'] ? ', and texts it to them' : '' }}. It clears from their Alerts by itself {{ $clearsAfter ?? '24 hours' }} after it's sent.
                     </div>
                 </form>
             </div>
@@ -585,6 +647,7 @@
                             <th>Title</th>
                             <th>Message</th>
                             <th>Sent To</th>
+                            <th>Texted</th>
                             <th>Sent By</th>
                             <th>Date &amp; Time</th>
                             <th>Status</th>
@@ -604,6 +667,31 @@
                                 <span class="badge-audience" style="background: {{ $meta['bg'] }};">
                                     {{ $meta['emoji'] }} {{ $meta['label'] }}
                                 </span>
+                            </td>
+                            <td>
+                                {{-- Item 56: how it went by text. --}}
+                                @switch($alert->smsState())
+                                    @case('sent')
+                                        <span class="badge-sms ok" title="{{ $alert->smsLine() }}{{ $alert->sms_credits ? ' About ' . number_format($alert->sms_credits) . ' credits.' : '' }}"><i class="bi bi-check2"></i> {{ number_format($alert->sms_sent) }}</span>
+                                        @break
+                                    @case('partial')
+                                        <span class="badge-sms warn" title="{{ $alert->smsLine() }}">{{ number_format($alert->sms_sent) }} of {{ number_format($alert->smsTotal()) }}</span>
+                                        <div class="status-note" title="{{ $alert->sms_note }}">{{ number_format($alert->sms_failed) }} not sent</div>
+                                        @break
+                                    @case('failed')
+                                        <span class="badge-sms bad" title="{{ $alert->sms_note }}">Not sent</span>
+                                        <div class="status-note" title="{{ $alert->sms_note }}">{{ \Illuminate\Support\Str::limit($alert->sms_note, 30) }}</div>
+                                        @break
+                                    @case('none')
+                                        <span class="badge-sms off" title="{{ $alert->sms_note }}">No numbers</span>
+                                        @break
+                                    @case('off')
+                                        <span class="badge-sms off" title="{{ $alert->sms_note }}">Off</span>
+                                        <div class="status-note">texting was off</div>
+                                        @break
+                                    @default
+                                        <span style="color:#9ca3af;" title="Sent before broadcasts were texted">—</span>
+                                @endswitch
                             </td>
                             <td>{{ $alert->user->name ?? 'MDRRMO Admin' }}</td>
                             <td>{{ $alert->created_at->format('M d, Y g:i A') }}</td>
@@ -638,7 +726,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="7" class="empty-state">No broadcast history yet.</td>
+                            <td colspan="8" class="empty-state">No broadcast history yet.</td>
                         </tr>
                         @endforelse
                     </tbody>
@@ -651,10 +739,12 @@
 
 <!-- Toast -->
 <div class="toast-wrap">
-    <div id="toastMsg" class="toast align-items-center {{ session('error') ? 'text-bg-danger' : 'text-bg-success' }} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    {{-- warning: the broadcast went out, but not all of the texts (item 56). --}}
+    <div id="toastMsg" class="toast align-items-center {{ session('error') ? 'text-bg-danger' : (session('warning') ? 'text-bg-warning' : 'text-bg-success') }} border-0" role="alert" aria-live="assertive" aria-atomic="true"
+         @if(session('warning')) data-bs-delay="12000" @endif>
         <div class="d-flex">
-            <div class="toast-body fw-semibold" id="toastText">{{ session('error') ?: session('success') }}</div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            <div class="toast-body fw-semibold" id="toastText">{{ session('error') ?: (session('warning') ?: session('success')) }}</div>
+            <button type="button" class="btn-close {{ session('warning') ? '' : 'btn-close-white' }} me-2 m-auto" data-bs-dismiss="toast"></button>
         </div>
     </div>
 </div>
@@ -693,9 +783,10 @@
     function applyMessageTemplate(template) {
         if (!template) return;
         document.getElementById('messageBody').value = template;
+        if (typeof updateSms === 'function') updateSms();
     }
 
-    @if(session('success') || session('error'))
+    @if(session('success') || session('error') || session('warning'))
         document.addEventListener('DOMContentLoaded', function () {
             const toast = new bootstrap.Toast(document.getElementById('toastMsg'));
             toast.show();
@@ -704,6 +795,124 @@
 </script>
 <script>
     const broadcastForm = document.getElementById('broadcastForm');
+
+    // ── Texted too (item 56) ──────────────────────────────────────────
+    // The bubble shows the text as it goes out. It's built the same way as
+    // SmsService::broadcastText(): "MDRRMO Rosales: <title>", the place,
+    // then the message, in plain letters, and cut at a word when it's
+    // longer than SMS.maxParts texts. Keep the two the same.
+    const SMS = @json($sms);
+    const smsPreview = document.getElementById('smsPreview');
+    const smsMeta = document.getElementById('smsMeta');
+    const fmt = n => Number(n).toLocaleString('en-US');
+
+    function smsPlain(s) {
+        s = String(s || '').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
+        s = s.replace(/[\s\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+/g, ' ');
+        s = Array.from(s).map(ch => (SMS.plain && SMS.plain[ch] !== undefined ? SMS.plain[ch] : ch)).join('');
+        s = s.normalize('NFKD').replace(/[\u0300-\u036F]/g, '');
+        s = s.replace(/[^\x20-\x7E]+/g, '');
+        return s.replace(/ {2,}/g, ' ').trim();
+    }
+
+    // As a phone counts them: ^ { } \ [ ] ~ | take two.
+    function smsUnits(t) {
+        let units = 0;
+        for (const ch of t) units += SMS.double.includes(ch) ? 2 : 1;
+        return units;
+    }
+
+    function smsParts(t) {
+        const units = smsUnits(t);
+        return units <= 160 ? 1 : Math.ceil(units / 153);
+    }
+
+    function smsShorten(text) {
+        if (smsParts(text) <= SMS.maxParts) return text;
+        const room = SMS.maxParts * 153 - smsUnits(SMS.cut);
+        let units = 0, end = 0;
+        while (end < text.length) {
+            units += SMS.double.includes(text[end]) ? 2 : 1;
+            if (units > room) break;
+            end++;
+        }
+        let cut = text.slice(0, end);
+        const look = cut + text[end];
+        let stop = -1;
+        for (const mark of ['. ', '! ', '? ', '.\n', '!\n', '?\n']) stop = Math.max(stop, look.lastIndexOf(mark));
+        if (stop >= 0 && stop >= cut.length - 100) {
+            cut = cut.slice(0, stop);
+        } else if (text[end] !== ' ' && text[end] !== '\n') {
+            const space = Math.max(cut.lastIndexOf(' '), cut.lastIndexOf('\n'), 0);
+            if (space > cut.length - 30) cut = cut.slice(0, space);
+        }
+        return cut.replace(/[ \n.,;:-]+$/, '') + SMS.cut;
+    }
+
+    function smsText(title, where, body) {
+        const lines = [SMS.from + ': ' + smsPlain(title), smsPlain(where)];
+        String(body || '').split(/\r\n|[\n\v\f\r\u0085\u2028\u2029]/).forEach(line => lines.push(smsPlain(line)));
+        return smsShorten(lines.filter(line => line !== '').join('\n'));
+    }
+
+    // The title or place as picked, or as typed under "Other".
+    function fieldValue(selectId, customId) {
+        const select = document.getElementById(selectId);
+        return select.value === '__custom__' ? document.getElementById(customId).value : select.value;
+    }
+
+    function smsNow() {
+        const title = fieldValue('titleSelect', 'titleCustom');
+        const body = document.getElementById('messageBody').value;
+        const type = broadcastForm.querySelector('select[name="type"]').value;
+        const text = smsText(title, fieldValue('locationSelect', 'locationCustom'), body);
+        const count = (SMS.counts || {})[type] || 0;
+        const parts = smsParts(text);
+        return {
+            ready: smsPlain(title) !== '' && smsPlain(body) !== '',
+            text, parts, count,
+            who: (SMS.who || {})[type] || '',
+            credits: SMS.perText ? count * parts * SMS.perText : 0,
+        };
+    }
+
+    function updateSms() {
+        if (!SMS.on || !smsPreview) return;
+        const s = smsNow();
+
+        smsPreview.textContent = s.ready ? s.text : 'Choose a title and type the message to see the text.';
+        smsPreview.classList.toggle('is-empty', !s.ready);
+
+        const lines = [];
+        if (s.ready) {
+            lines.push(`<b>${fmt(smsUnits(s.text))}</b> characters · <b>${s.parts}</b> ${s.parts === 1 ? 'text' : 'texts'} each`
+                + (s.text.endsWith(SMS.cut) ? ` <span class="warn">— cut to fit ${SMS.maxParts} texts</span>` : ''));
+        }
+        if (s.count === 0) {
+            lines.push(`<span class="warn">No ${s.who.replace(' and ', ' or ')} have a mobile number, so no one will be texted.</span>`);
+        } else {
+            let to = `To <b>${fmt(s.count)}</b> ${s.who} with a mobile number`;
+            if (SMS.driver === 'log') to += ' · test mode: written to the server log, not sent';
+            if (SMS.driver === 'textbee') to += ' · sent from the textbee phone';
+            if (s.ready && s.credits) to += ` · about <b>${fmt(s.credits)}</b> Semaphore credits`;
+            lines.push(to);
+        }
+        if (SMS.balance !== null && SMS.balance !== undefined) {
+            lines.push(s.ready && s.credits > SMS.balance
+                ? `<span class="bad">Semaphore balance: ${fmt(SMS.balance)} credits — not enough to text all of them.</span>`
+                : `Semaphore balance: <b>${fmt(SMS.balance)}</b> credits`);
+        }
+        smsMeta.innerHTML = lines.join('<br>');
+    }
+
+    ['titleSelect', 'titleCustom', 'locationSelect', 'locationCustom', 'messageBody'].forEach(id => {
+        const field = document.getElementById(id);
+        if (!field) return;
+        field.addEventListener('input', updateSms);
+        field.addEventListener('change', updateSms);
+    });
+    broadcastForm.querySelector('select[name="type"]').addEventListener('change', updateSms);
+    updateSms();
 
     broadcastForm.addEventListener('submit', function (e) {
         e.preventDefault();
@@ -715,10 +924,21 @@
         // Every alert clears from the apps by itself 24 hours after it's sent.
         const clearsAfter = @json($clearsAfter ?? '24 hours');
 
+        // Item 56: and who's texted.
+        const s = SMS.on ? smsNow() : null;
+        let texted = '';
+        if (s && s.count > 0) {
+            texted = ` and text it to ${fmt(s.count)} mobile ${s.count === 1 ? 'number' : 'numbers'}`
+                + (s.credits ? ` (about ${fmt(s.credits)} Semaphore credits)` : '');
+        }
+        const noText = !SMS.on
+            ? 'Texting is off on this server, so no texts. '
+            : (s.count === 0 ? 'No one in it has a mobile number to text. ' : '');
+
         Swal.fire({
             icon: 'question',
             title: 'Send this broadcast?',
-            text: `This will send a real push notification to ${audienceLabel}. `
+            text: `This will send a real push notification to ${audienceLabel}${texted}. ${noText}`
                 + `It clears from the apps by itself after ${clearsAfter}.`,
             showCancelButton: true,
             confirmButtonText: 'Yes, Send',

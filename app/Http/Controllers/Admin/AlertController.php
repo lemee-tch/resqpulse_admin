@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Alert;
 use App\Services\PushNotificationService;
 use App\Services\AuditLogService;
+use App\Services\SmsService;
 use Illuminate\Http\Request;
 
 class AlertController extends Controller
@@ -40,7 +41,7 @@ class AlertController extends Controller
      * each with when it clears and a Clear button. Broadcast History:
      * every broadcast ever sent, cleared ones included.
      */
-    public function index()
+    public function index(SmsService $sms)
     {
         $showingAlerts = Alert::showing()
             ->orderByDesc('created_at')
@@ -67,12 +68,56 @@ class AlertController extends Controller
         // "24 hours": every alert clears from the apps by itself then.
         $clearsAfter = Alert::clearsAfterLabel();
 
+        $smsInfo = $this->smsInfo($sms);
+
         return view('alerts', compact(
-            'showingAlerts', 'alerts', 'titlePresets', 'customTitles', 'clearsAfter'
+            'showingAlerts', 'alerts', 'titlePresets', 'customTitles', 'clearsAfter', 'smsInfo'
         ));
     }
 
-    public function store(Request $request, PushNotificationService $push)
+    /**
+     * For the text message box on Quick Broadcast (item 56): whether
+     * texting is on, how many numbers each audience has, the credits and
+     * Semaphore's balance — and what the page needs to build the same text
+     * as SmsService::broadcastText().
+     */
+    private function smsInfo(SmsService $sms): array
+    {
+        $info = [
+            'on'       => $sms->canBroadcast(),
+            'driver'   => $sms->driver(),
+            'counts'   => [],
+            'who'      => [],
+            'perText'  => $sms->creditsPerText(),
+            'balance'  => null,
+            'from'     => SmsService::BROADCAST_FROM,
+            'maxParts' => SmsService::BROADCAST_MAX_PARTS,
+            'cut'      => SmsService::BROADCAST_CUT,
+            'double'   => SmsService::DOUBLE,
+            'plain'    => SmsService::PLAIN,
+        ];
+
+        if (! $info['on']) {
+            return $info;
+        }
+
+        $citizens   = Alert::smsNumbers('Citizens');
+        $responders = Alert::smsNumbers('Responders');
+
+        $info['counts'] = [
+            'Citizens'   => count($citizens),
+            'Responders' => count($responders),
+            'Both'       => count(array_unique(array_merge($citizens, $responders))),
+        ];
+        foreach (['Citizens', 'Responders', 'Both'] as $type) {
+            $info['who'][$type] = Alert::smsAudience($type);
+        }
+        $info['balance'] = $sms->balance();
+
+        return $info;
+    }
+
+    public function store(Request $request, PushNotificationService $push, SmsService $sms)
     {
         $request->validate([
             'title'    => ['required', 'string', 'max:255'],
@@ -103,12 +148,6 @@ class AlertController extends Controller
 
         $after = Alert::clearsAfterLabel();
 
-        AuditLogService::log(
-            'created',
-            "Sent broadcast \"{$alert->title}\" to {$label} — clears from the apps after {$after}.",
-            $alert
-        );
-
         if (in_array($audience, ['Citizens', 'Both'], true)) {
             $push->broadcastToAllCitizens($alert->title, $alert->body);
         }
@@ -117,10 +156,55 @@ class AlertController extends Controller
             $push->broadcastToAllResponders($alert->title, $alert->body);
         }
 
-        return back()->with(
-            'success',
-            "Broadcast sent to {$label}. It clears from the apps by itself in {$after}, on {$alert->expires_at->format('M j, g:i A')}."
+        // Item 56: every broadcast is texted too, to the same audience.
+        $alert->update($this->textBroadcast($alert, $sms));
+        $texted = $alert->smsLine();
+
+        AuditLogService::log(
+            'created',
+            "Sent broadcast \"{$alert->title}\" to {$label} — clears from the apps after {$after}. {$texted}",
+            $alert
         );
+
+        // The yellow notice when some or all of the texts didn't go out.
+        return back()->with(
+            in_array($alert->smsState(), ['sent', 'none'], true) ? 'success' : 'warning',
+            "Broadcast sent to {$label}. {$texted} It clears from the apps by itself in {$after}, on {$alert->expires_at->format('M j, g:i A')}."
+        );
+    }
+
+    /**
+     * Texts the broadcast (item 56) to verified residents and/or active
+     * responders, and says how it went — for the alert's sms_* columns.
+     */
+    private function textBroadcast(Alert $alert, SmsService $sms): array
+    {
+        if (! $sms->canBroadcast()) {
+            return ['sms_note' => 'Texting is off on this server (SMS_DRIVER in .env).'];
+        }
+
+        $numbers = Alert::smsNumbers($alert->type);
+
+        if ($numbers === []) {
+            return [
+                'sms_sent'    => 0,
+                'sms_failed'  => 0,
+                'sms_credits' => 0,
+                'sms_note'    => 'No ' . str_replace(' and ', ' or ', Alert::smsAudience($alert->type))
+                    . ' have a mobile number to text.',
+            ];
+        }
+
+        $result = $sms->broadcast($numbers, SmsService::broadcastText($alert->title, $alert->subtitle, $alert->body));
+
+        return [
+            'sms_sent'    => $result['sent'],
+            'sms_failed'  => $result['failed'],
+            'sms_credits' => $result['credits'],
+            'sms_note'    => $result['failed'] > 0
+                ? \Illuminate\Support\Str::limit($result['error'] ?? "Some numbers weren't texted.", 250)
+                : null,
+        ];
     }
 
     /**
