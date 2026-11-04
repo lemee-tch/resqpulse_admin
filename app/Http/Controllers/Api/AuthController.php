@@ -205,8 +205,7 @@ class AuthController extends Controller
         // Resident activity trail — same convention as login()/
         // updateProfile() below: no admin session here, so user_id/
         // user_name stay null and the actor is named directly via
-        // $auditable (this Citizen). Also what the Residents Log page
-        // reads to show "who registered" (Admin\ResidentsLogController).
+        // $auditable (this Citizen). It shows on the Audit Log.
         if ($replaceable->isEmpty()) {
             AuditLogService::log('created', "Citizen {$citizen->full_name} registered.", $citizen);
         } else {
@@ -701,6 +700,29 @@ class AuthController extends Controller
      * app builds send "email"). Mobile accounts have no email, so they
      * always use the number.
      */
+    /** Wrong passwords allowed a minute, per account and phone (item 61). */
+    public const MAX_LOGIN_TRIES = 5;
+
+    /**
+     * Counts wrong passwords for one account from one address (item 61).
+     * Shared with the responder app's login (ResponderAuthController).
+     */
+    public static function loginTriesKey(string $login, Request $request): string
+    {
+        return 'app-login:' . mb_strtolower(trim($login)) . '|' . $request->ip();
+    }
+
+    /** "Too many wrong tries. Wait 45 seconds and try again." (item 61) */
+    public static function tooManyLoginsReply(string $key)
+    {
+        $seconds = max(1, RateLimiter::availableIn($key));
+
+        return response()->json([
+            'message'     => "Too many wrong tries. Wait {$seconds} seconds and try again.",
+            'retry_after' => $seconds,
+        ], 429);
+    }
+
     public function login(Request $request)
     {
         $login = $this->inputString($request, 'login');
@@ -724,15 +746,25 @@ class AuthController extends Controller
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
+        // Item 61: 5 wrong passwords a minute for an account from one
+        // phone, like the admin panel's login — no endless guessing.
+        $tries = self::loginTriesKey($login, $request);
+        if (RateLimiter::tooManyAttempts($tries, self::MAX_LOGIN_TRIES)) {
+            return self::tooManyLoginsReply($tries);
+        }
+
         $citizen = Citizen::findByLogin($login);
 
         if (! $citizen || ! $citizen->password || ! Hash::check($request->password, $citizen->password)) {
+            RateLimiter::hit($tries, 60);
+
             return response()->json([
                 'message' => str_contains($login, '@')
                     ? 'Invalid email or password'
                     : 'Invalid mobile number or password',
             ], 401);
         }
+        RateLimiter::clear($tries);
 
         // MDRRMO blocked the account (item 54): no login, with the reason.
         if ($citizen->isBlocked()) {

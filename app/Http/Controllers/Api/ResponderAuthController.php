@@ -8,6 +8,7 @@ use App\Models\ResponderPushToken;
 use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -36,11 +37,21 @@ class ResponderAuthController extends Controller
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
+        // Item 61: 5 wrong passwords a minute for a team's account from one
+        // phone — each team shares one login, so no endless guessing.
+        $tries = AuthController::loginTriesKey('responder:' . $request->email, $request);
+        if (RateLimiter::tooManyAttempts($tries, AuthController::MAX_LOGIN_TRIES)) {
+            return AuthController::tooManyLoginsReply($tries);
+        }
+
         $responder = Responder::where('email', $request->email)->first();
 
         if (! $responder || ! Hash::check($request->password, $responder->password)) {
+            RateLimiter::hit($tries, 60);
+
             return response()->json(['message' => 'Invalid email or password.'], 401);
         }
+        RateLimiter::clear($tries);
 
         if ($responder->status !== 'active') {
             return response()->json(['message' => 'This account has been deactivated. Contact your MDRRMO admin.'], 403);

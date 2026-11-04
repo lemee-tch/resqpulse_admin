@@ -83,8 +83,12 @@ class ImageAnalysisService
             // raises the success rate for a best-effort feature like this,
             // with no real downside since we still fall through to null
             // (and the incident still saves fine) if all attempts fail.
+            //
+            // Item 61: this runs after the SOS reply is sent
+            // (Api\IncidentController::checkPhotoLater()), so it no longer
+            // holds up the SOS — 2 tries of up to 20 seconds each.
             $attempts = 0;
-            $maxAttempts = 3;
+            $maxAttempts = 2;
             $response = null;
 
             do {
@@ -94,7 +98,7 @@ class ImageAnalysisService
                     $response = Http::withHeaders([
                         'x-goog-api-key' => $apiKey,
                         'Content-Type'   => 'application/json',
-                    ])->timeout(30)->post(
+                    ])->connectTimeout(5)->timeout(20)->post(
                         "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent",
                         [
                             'contents' => [[

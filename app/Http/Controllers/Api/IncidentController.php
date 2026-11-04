@@ -12,11 +12,14 @@ use App\Services\BarangayLocationService;
 use App\Services\ImageAnalysisService;
 use App\Services\IncidentReportService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Laravel\Sanctum\PersonalAccessToken;
+
+use function Illuminate\Support\defer;
 
 class IncidentController extends Controller
 {
@@ -32,6 +35,27 @@ class IncidentController extends Controller
 
     /** Report Emergency without the phone's location (item 49). */
     private const NO_LOCATION_MESSAGE = 'Your location is needed to send a report. Turn on your phone\'s location and try again.';
+
+    // ── Repeats and limits (item 61) ──────────────────────────────────
+    // The app shows "the connection is too slow, try again" when it gives
+    // up waiting, even if the SOS or report did reach MDRRMO — so the same
+    // one sent again within REPEAT_SECONDS is answered with the one already
+    // received instead of making a second. And one account or guest number
+    // can send at most MAX_SOS alerts and MAX_REPORTS reports in
+    // LIMIT_SECONDS, so a prank can't flood MDRRMO with alarms. There's no
+    // limit per internet connection on purpose: phones on mobile data share
+    // addresses, and a real SOS must never be refused because of a stranger.
+
+    /** The same person sending again within this many seconds: the same SOS or report. */
+    public const REPEAT_SECONDS = 120;
+
+    /** SOS alerts one account or guest number can send in LIMIT_SECONDS. */
+    public const MAX_SOS = 3;
+
+    /** Reports one account or guest number can send in LIMIT_SECONDS. */
+    public const MAX_REPORTS = 5;
+
+    public const LIMIT_SECONDS = 600;
 
     /**
      * Resolves the citizen from the bearer token if one was sent, WITHOUT
@@ -237,6 +261,25 @@ class IncidentController extends Controller
             return $this->blockedNumberReply();
         }
 
+        // Item 61: sent again (the app gave up waiting) — the report
+        // already received; or too many from one person.
+        $repeat = $this->recentFrom($citizen, $request->guest_mobile, false, $request->emergency_type);
+        if ($repeat) {
+            return response()->json([
+                'message'  => 'Report already sent. MDRRMO has it and will review it, then send responders.',
+                'incident' => $repeat,
+                'repeat'   => true,
+            ], 201);
+        }
+        $limitKey = $this->limitKey('report', $citizen, $request->guest_mobile);
+        if (RateLimiter::tooManyAttempts($limitKey, self::MAX_REPORTS)) {
+            return $this->tooManyReply(
+                'You\'ve sent ' . self::MAX_REPORTS . ' reports in the last 10 minutes, and MDRRMO has them. '
+                    . 'If someone is in danger now, use SOS or call MDRRMO.',
+                $limitKey
+            );
+        }
+
         $guest = $isGuest ? ['name' => $request->guest_name, 'mobile' => $request->guest_mobile] : null;
         $guestLabel = $guest ? "{$guest['name']} ({$guest['mobile']})" : null;
 
@@ -281,6 +324,7 @@ class IncidentController extends Controller
             // No priority yet — the admin sets it when approving.
             'priority'       => null,
         ] + $this->pinDetails($request) + $this->guestColumns($guest));
+        RateLimiter::hit($limitKey, self::LIMIT_SECONDS);
 
         // Resident activity trail — shows up in the admin Audit Log page
         // (filterable by action=created). Same convention as login() in
@@ -348,6 +392,32 @@ class IncidentController extends Controller
             return $this->blockedNumberReply();
         }
 
+        // Item 61: sent again (the app gave up waiting) — the SOS already
+        // received, with this photo added if it came without one; or too
+        // many from one person.
+        $repeat = $this->recentFrom($citizen, $request->guest_mobile, true);
+        if ($repeat) {
+            if ($request->hasFile('photo') && ! $repeat->photo_path) {
+                $photoPath = $request->file('photo')->store('incident_photos', 'public');
+                $repeat->update(['photo_path' => json_encode([$photoPath])]);
+                $this->checkPhotoLater($repeat, $photoPath, $request->emergency_type, $imageAnalysis);
+            }
+
+            return response()->json([
+                'message'  => 'SOS already sent. MDRRMO has it and will verify it right away.',
+                'incident' => $repeat,
+                'repeat'   => true,
+            ], 201);
+        }
+        $limitKey = $this->limitKey('sos', $citizen, $request->guest_mobile);
+        if (RateLimiter::tooManyAttempts($limitKey, self::MAX_SOS)) {
+            return $this->tooManyReply(
+                'You\'ve sent ' . self::MAX_SOS . ' SOS alerts in the last 10 minutes, and MDRRMO has them. '
+                    . 'For a new emergency, call MDRRMO.',
+                $limitKey
+            );
+        }
+
         $guest = $isGuest ? ['name' => $request->guest_name, 'mobile' => $request->guest_mobile] : null;
         $guestLabel = $guest ? "{$guest['name']} ({$guest['mobile']})" : null;
 
@@ -385,16 +455,11 @@ class IncidentController extends Controller
             // Every SOS waits for an admin to verify it, same as reports.
             'needs_review'       => true,
         ] + $this->pinDetails($request) + $this->guestColumns($guest));
+        RateLimiter::hit($limitKey, self::LIMIT_SECONDS);
 
+        // The AI's look at the photo, after the reply (item 61).
         if ($photoPath) {
-            $analysis = $imageAnalysis->classify($photoPath, $request->emergency_type);
-            if ($analysis) {
-                $incident->update([
-                    'ai_detected_type' => $analysis['type'],
-                    'ai_confidence'    => $analysis['confidence'],
-                    'ai_analysis'      => $analysis['notes'],
-                ]);
-            }
+            $this->checkPhotoLater($incident, $photoPath, $request->emergency_type, $imageAnalysis);
         }
 
         // Same resident activity trail as store() above — an SOS is still
@@ -422,6 +487,65 @@ class IncidentController extends Controller
     }
 
     /**
+     * Item 61: the SOS (or report of this type) this resident or guest
+     * number sent in the last REPEAT_SECONDS — the app sends it again when
+     * it gave up waiting for the reply. Declined ones don't count.
+     */
+    private function recentFrom(?Citizen $citizen, ?string $guestMobile, bool $sos, ?string $type = null): ?Incident
+    {
+        if (! $citizen && (! $guestMobile || ! $this->hasGuestColumns())) {
+            return null;
+        }
+
+        return Incident::query()
+            ->when($citizen,
+                fn ($q) => $q->where('citizen_id', $citizen->id),
+                fn ($q) => $q->whereNull('citizen_id')->where('guest_mobile', $guestMobile))
+            ->when($sos,
+                fn ($q) => $q->where('emergency_type', 'SOS Emergency'),
+                fn ($q) => $q->where('emergency_type', (string) $type))
+            ->whereNull('declined_at')
+            ->where('created_at', '>=', now()->subSeconds(self::REPEAT_SECONDS))
+            ->latest('id')
+            ->first();
+    }
+
+    /** "sos:citizen:12", "report:guest:09171234567" — whose SOS alerts or reports are counted (item 61). */
+    private function limitKey(string $what, ?Citizen $citizen, ?string $guestMobile): string
+    {
+        return $citizen ? "{$what}:citizen:{$citizen->id}" : "{$what}:guest:" . (string) $guestMobile;
+    }
+
+    /** Too many SOS alerts or reports from one person (item 61). */
+    private function tooManyReply(string $message, string $limitKey)
+    {
+        return response()->json([
+            'message'     => $message,
+            'retry_after' => RateLimiter::availableIn($limitKey),
+        ], 429);
+    }
+
+    /**
+     * The AI's look at an SOS photo, after the reply is sent (item 61).
+     * It can take a while — before, the SOS waited for it and the app gave
+     * up after 30 seconds, showing "try again" for an SOS MDRRMO already
+     * had. The incident shows the AI's reading once it's in.
+     */
+    private function checkPhotoLater(Incident $incident, string $photoPath, ?string $reportedType, ImageAnalysisService $imageAnalysis): void
+    {
+        defer(function () use ($incident, $photoPath, $reportedType, $imageAnalysis) {
+            $analysis = $imageAnalysis->classify($photoPath, $reportedType);
+            if ($analysis) {
+                $incident->update([
+                    'ai_detected_type' => $analysis['type'],
+                    'ai_confidence'    => $analysis['confidence'],
+                    'ai_analysis'      => $analysis['notes'],
+                ]);
+            }
+        });
+    }
+
+    /**
      * The resident's own reports (My Reports). MDRRMO's internal notes,
      * the responders' MDRRMC report (it names casualties) and what MDRRMO
      * asked the responders to fix stay out of it — the app shows none of
@@ -429,6 +553,12 @@ class IncidentController extends Controller
      */
     public function mine(Request $request)
     {
+        // A responder login has an id too — it must not read the reports of
+        // the resident with the same id (item 61).
+        if (! $request->user() instanceof Citizen) {
+            return response()->json(['message' => 'Not a resident account.'], 403);
+        }
+
         $incidents = Incident::with('responders')
             ->where('citizen_id', $request->user()->id)
             ->orderByDesc('created_at')
