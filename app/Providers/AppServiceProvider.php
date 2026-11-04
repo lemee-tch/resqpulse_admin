@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use App\Models\Incident;
@@ -21,6 +22,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Page links ($logs->links() on the Audit Log) in Bootstrap 5
+        // markup: the admin panel uses Bootstrap, not Tailwind, so
+        // Laravel's default links showed giant arrows (item 60).
+        Paginator::useBootstrapFive();
+
         View::composer('*', function ($view) {
             static $sosCount = null;
             if ($sosCount === null) {

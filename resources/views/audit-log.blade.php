@@ -83,6 +83,23 @@
         .filter-select.is-set { border-color: #1a3c8f; color: #1a3c8f; font-weight: 600; }
 
         .empty-state { text-align: center; padding: 48px 20px; color: #9ca3af; font-size: .9rem; }
+
+        /* Page links: Bootstrap 5 (AppServiceProvider), in the panel's blue (item 60). */
+        .log-pages .pagination {
+            --bs-pagination-color: #1a3c8f;
+            --bs-pagination-hover-color: #152f72;
+            --bs-pagination-focus-color: #152f72;
+            --bs-pagination-focus-box-shadow: 0 0 0 .2rem rgba(26,60,143,.2);
+            --bs-pagination-active-bg: #1a3c8f;
+            --bs-pagination-active-border-color: #1a3c8f;
+            --bs-pagination-border-color: #e5e7eb;
+            --bs-pagination-font-size: .8rem;
+            --bs-pagination-padding-x: .7rem;
+            --bs-pagination-padding-y: .38rem;
+            margin: 0;
+        }
+        .log-pages .page-link { font-weight: 600; }
+        .log-pages p { margin: 0; font-size: .8rem; color: #6b7280; }
         .ip-cell { font-size: .74rem; color: #9ca3af; }
 
         /* ── RESPONSIVE (mobile / tablet) ── */
@@ -298,7 +315,7 @@
             </table>
         </div>
 
-        <div style="margin-top:16px;">
+        <div class="log-pages" style="margin-top:16px;">
             {{ $logs->links() }}
         </div>
     </div>

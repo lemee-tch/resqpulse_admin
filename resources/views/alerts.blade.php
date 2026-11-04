@@ -232,35 +232,14 @@
             display: flex; align-items: center; gap: 6px;
         }
 
-        /* ── TEXTED TOO (item 56) ── */
-        .sms-box {
-            border: 1.5px solid #c7d2fe; background: #f5f7ff;
-            border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;
+        /* ── TEXTED TOO (item 56): only Semaphore's credits are shown (item 60) ── */
+        .sms-credits {
+            display: inline-flex; align-items: center; gap: 7px;
+            font-size: .8rem; color: #374151; margin-bottom: 14px;
+            background: #f5f7ff; border: 1px solid #e0e7ff; border-radius: 20px; padding: 6px 14px;
         }
-        .sms-box.is-off { border-color: #fde68a; background: #fffbeb; }
-        .sms-head {
-            display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px;
-            font-size: .8rem; font-weight: 700; color: #1a3c8f; margin-bottom: 8px;
-        }
-        .sms-box.is-off .sms-head { color: #92400e; margin-bottom: 4px; }
-        .sms-tag {
-            font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px;
-            background: #e0e7ff; color: #1a3c8f;
-        }
-        .sms-box.is-off .sms-tag { background: #fef3c7; color: #92400e; }
-        .sms-bubble {
-            background: #fff; border: 1px solid #e5e7eb;
-            border-radius: 14px 14px 14px 4px;
-            padding: 10px 13px; max-width: 460px;
-            font-size: .82rem; line-height: 1.45; color: #111827;
-            white-space: pre-wrap; overflow-wrap: anywhere;
-        }
-        .sms-bubble.is-empty { color: #9ca3af; font-style: italic; }
-        .sms-meta { font-size: .76rem; color: #374151; margin-top: 8px; line-height: 1.5; }
-        .sms-meta b { color: #111827; }
-        .sms-meta .warn { color: #b45309; font-weight: 600; }
-        .sms-meta .bad  { color: #b91c1c; font-weight: 600; }
-        .sms-off-note { font-size: .78rem; color: #92400e; line-height: 1.5; }
+        .sms-credits i { color: #1a3c8f; }
+        .sms-credits b { color: #111827; }
 
         .badge-sms {
             display: inline-flex; align-items: center; gap: 4px;
@@ -603,21 +582,15 @@
 
                     {{-- Item 56: every broadcast is texted too, to the same
                          audience — residents MDRRMO verified and active
-                         responders. The bubble is the text as it goes out,
-                         built like SmsService::broadcastText(). --}}
+                         responders. Item 60: only Semaphore's credit balance
+                         is shown here; Send Broadcast's confirmation says
+                         how many get the text and about how many credits. --}}
                     @php $sms = $smsInfo ?? ['on' => false]; @endphp
-                    <div class="sms-box{{ $sms['on'] ? '' : ' is-off' }}" id="smsBox">
-                        <div class="sms-head">
-                            <i class="bi bi-chat-left-text"></i> Text message (SMS)
-                            <span class="sms-tag">{{ $sms['on'] ? 'Sent with every broadcast' : 'Off' }}</span>
+                    @if($sms['on'] && ($sms['balance'] ?? null) !== null)
+                        <div class="sms-credits" id="smsCredits">
+                            <i class="bi bi-chat-left-text"></i> Semaphore balance: <b>{{ number_format($sms['balance']) }}</b> credits
                         </div>
-                        @if($sms['on'])
-                            <div class="sms-bubble is-empty" id="smsPreview">Choose a title and type the message to see the text.</div>
-                            <div class="sms-meta" id="smsMeta"></div>
-                        @else
-                            <div class="sms-off-note">Texting is off on this server (SMS_DRIVER in .env), so broadcasts go to the apps only.</div>
-                        @endif
-                    </div>
+                    @endif
 
                     <button type="submit" class="btn-send">
                         <i class="bi bi-broadcast"></i> Send Broadcast
@@ -783,7 +756,6 @@
     function applyMessageTemplate(template) {
         if (!template) return;
         document.getElementById('messageBody').value = template;
-        if (typeof updateSms === 'function') updateSms();
     }
 
     @if(session('success') || session('error') || session('warning'))
@@ -797,13 +769,12 @@
     const broadcastForm = document.getElementById('broadcastForm');
 
     // ── Texted too (item 56) ──────────────────────────────────────────
-    // The bubble shows the text as it goes out. It's built the same way as
-    // SmsService::broadcastText(): "MDRRMO Rosales: <title>", the place,
-    // then the message, in plain letters, and cut at a word when it's
-    // longer than SMS.maxParts texts. Keep the two the same.
+    // Send Broadcast's confirmation says how many get the text and about
+    // how many Semaphore credits it takes. The text is worked out the same
+    // way as SmsService::broadcastText(): "MDRRMO Rosales: <title>", the
+    // place, then the message, in plain letters, and cut at a word when
+    // it's longer than SMS.maxParts texts. Keep the two the same.
     const SMS = @json($sms);
-    const smsPreview = document.getElementById('smsPreview');
-    const smsMeta = document.getElementById('smsMeta');
     const fmt = n => Number(n).toLocaleString('en-US');
 
     function smsPlain(s) {
@@ -861,58 +832,15 @@
         return select.value === '__custom__' ? document.getElementById(customId).value : select.value;
     }
 
+    // How many get the text, and about how many Semaphore credits it takes.
     function smsNow() {
         const title = fieldValue('titleSelect', 'titleCustom');
         const body = document.getElementById('messageBody').value;
         const type = broadcastForm.querySelector('select[name="type"]').value;
-        const text = smsText(title, fieldValue('locationSelect', 'locationCustom'), body);
+        const parts = smsParts(smsText(title, fieldValue('locationSelect', 'locationCustom'), body));
         const count = (SMS.counts || {})[type] || 0;
-        const parts = smsParts(text);
-        return {
-            ready: smsPlain(title) !== '' && smsPlain(body) !== '',
-            text, parts, count,
-            who: (SMS.who || {})[type] || '',
-            credits: SMS.perText ? count * parts * SMS.perText : 0,
-        };
+        return { count, credits: SMS.perText ? count * parts * SMS.perText : 0 };
     }
-
-    function updateSms() {
-        if (!SMS.on || !smsPreview) return;
-        const s = smsNow();
-
-        smsPreview.textContent = s.ready ? s.text : 'Choose a title and type the message to see the text.';
-        smsPreview.classList.toggle('is-empty', !s.ready);
-
-        const lines = [];
-        if (s.ready) {
-            lines.push(`<b>${fmt(smsUnits(s.text))}</b> characters · <b>${s.parts}</b> ${s.parts === 1 ? 'text' : 'texts'} each`
-                + (s.text.endsWith(SMS.cut) ? ` <span class="warn">— cut to fit ${SMS.maxParts} texts</span>` : ''));
-        }
-        if (s.count === 0) {
-            lines.push(`<span class="warn">No ${s.who.replace(' and ', ' or ')} have a mobile number, so no one will be texted.</span>`);
-        } else {
-            let to = `To <b>${fmt(s.count)}</b> ${s.who} with a mobile number`;
-            if (SMS.driver === 'log') to += ' · test mode: written to the server log, not sent';
-            if (SMS.driver === 'textbee') to += ' · sent from the textbee phone';
-            if (s.ready && s.credits) to += ` · about <b>${fmt(s.credits)}</b> Semaphore credits`;
-            lines.push(to);
-        }
-        if (SMS.balance !== null && SMS.balance !== undefined) {
-            lines.push(s.ready && s.credits > SMS.balance
-                ? `<span class="bad">Semaphore balance: ${fmt(SMS.balance)} credits — not enough to text all of them.</span>`
-                : `Semaphore balance: <b>${fmt(SMS.balance)}</b> credits`);
-        }
-        smsMeta.innerHTML = lines.join('<br>');
-    }
-
-    ['titleSelect', 'titleCustom', 'locationSelect', 'locationCustom', 'messageBody'].forEach(id => {
-        const field = document.getElementById(id);
-        if (!field) return;
-        field.addEventListener('input', updateSms);
-        field.addEventListener('change', updateSms);
-    });
-    broadcastForm.querySelector('select[name="type"]').addEventListener('change', updateSms);
-    updateSms();
 
     broadcastForm.addEventListener('submit', function (e) {
         e.preventDefault();
@@ -934,11 +862,15 @@
         const noText = !SMS.on
             ? 'Texting is off on this server, so no texts. '
             : (s.count === 0 ? 'No one in it has a mobile number to text. ' : '');
+        // Not enough Semaphore credits for all of them.
+        const short = (s && s.credits && SMS.balance !== null && SMS.balance !== undefined && s.credits > SMS.balance)
+            ? `Semaphore has only ${fmt(SMS.balance)} credits left, so not everyone will get the text. `
+            : '';
 
         Swal.fire({
             icon: 'question',
             title: 'Send this broadcast?',
-            text: `This will send a real push notification to ${audienceLabel}${texted}. ${noText}`
+            text: `This will send a real push notification to ${audienceLabel}${texted}. ${noText}${short}`
                 + `It clears from the apps by itself after ${clearsAfter}.`,
             showCancelButton: true,
             confirmButtonText: 'Yes, Send',
