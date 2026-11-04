@@ -118,6 +118,9 @@
         .call-link { color: #1a3c8f; font-weight: 700; text-decoration: none; white-space: nowrap; }
         .call-link:hover { text-decoration: underline; }
         .small-note { font-size: .78rem; color: #6b7280; line-height: 1.5; }
+        /* Item 59: an approximate or old GPS pin. */
+        .gps-warn { margin-top: 4px; font-size: .78rem; color: #b45309; line-height: 1.45; }
+        .gps-warn i { margin-right: 3px; }
 
         /* Location */
         #detail-map { width: 100%; height: 210px; border-radius: 10px; overflow: hidden; background: #eef1f6; margin-top: 14px; }
@@ -478,9 +481,13 @@
         };
     }
 
-    // Location: barangay, GPS pin, map.
-    $barangay = app(\App\Services\BarangayLocationService::class)->barangayFromText($incident->location);
+    // Location: barangay, GPS pin, map. The barangay comes from the pin and
+    // the official borders when there is one (item 59) — older location
+    // texts can name the wrong barangay.
+    $barangay = app(\App\Services\BarangayLocationService::class)->barangayOf($incident->location, $incident->latitude, $incident->longitude);
     $hasPin = $incident->latitude && $incident->longitude;
+    $gpsAccuracy = $hasPin ? $incident->gpsAccuracyLabel() : null;
+    $gpsAge = $hasPin ? $incident->gpsAgeMinutes() : null;
     $approxPoint = (! $hasPin && $barangay) ? (\App\Services\BarangayLocationService::allCoordinates()[$barangay] ?? null) : null;
     $lat = $incident->latitude  ?? ($approxPoint[0] ?? 15.8952);
     $lng = $incident->longitude ?? ($approxPoint[1] ?? 120.6263);
@@ -719,10 +726,25 @@
                         <dt>Address</dt>
                         <dd>{{ $incident->location ?: '—' }}</dd>
 
+                        {{-- Item 59: what the resident typed to find the spot. --}}
+                        @if($incident->landmark)
+                            <dt>Landmark</dt>
+                            <dd>{{ $incident->landmark }} <span class="small-note">from the reporter</span></dd>
+                        @endif
+
                         <dt>GPS</dt>
                         <dd>
                             @if($hasPin)
                                 {{ number_format((float) $incident->latitude, 5) }}, {{ number_format((float) $incident->longitude, 5) }}
+                                @if($gpsAccuracy)
+                                    <span class="small-note">{{ $gpsAccuracy }}</span>
+                                @endif
+                                @if($incident->gpsIsApproximate())
+                                    <div class="gps-warn"><i class="bi bi-exclamation-triangle-fill"></i> Approximate — the phone couldn't get an exact fix. Call the reporter for the exact spot.</div>
+                                @endif
+                                @if($gpsAge)
+                                    <div class="gps-warn"><i class="bi bi-clock-history"></i> This pin is from {{ $gpsAge >= 120 ? round($gpsAge / 60) . ' hours' : $gpsAge . ' minutes' }} before the report was sent — the phone couldn't get a new one.</div>
+                                @endif
                             @else
                                 <span class="muted">No GPS pin{{ $approxPoint ? " — the map shows the middle of Brgy. {$barangay}" : '' }}</span>
                             @endif

@@ -140,6 +140,9 @@
         .review-actions { display: flex; gap: 8px; }
         .review-actions { align-items: center; white-space: nowrap; }
         .td-location { max-width: 360px; }
+        /* What the resident typed to find the spot (item 59). */
+        .td-landmark { display: block; margin-top: 3px; font-size: .74rem; color: #6b7280; }
+        .td-landmark i { color: #1a3c8f; }
         .td-action { width: 1%; text-align: right; white-space: nowrap; }
         .btn-view {
             display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
@@ -493,6 +496,7 @@
                             <td>{{ $inc->emergency_type }}</td>
                             <td class="td-location">
                                 {{ $inc->location ?: '—' }}
+                                @if($inc->landmark)<span class="td-landmark"><i class="bi bi-signpost-2"></i> {{ $inc->landmark }}</span>@endif
                                 @if($inc->latitude && $inc->longitude)
                                     <a href="https://www.google.com/maps?q={{ $inc->latitude }},{{ $inc->longitude }}" target="_blank"
                                        class="map-link" title="Open the pin in Google Maps" onclick="event.stopPropagation()">
@@ -599,7 +603,7 @@
                             data-backup="{{ $askedBackup ? '1' : '' }}"
                             data-type="{{ $inc->emergency_type }}"
                             data-date="{{ $inc->created_at->format('Y-m-d') }}"
-                            data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
+                            data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$inc->landmark.' '.$reporterName) }}"
                             data-href="{{ route('incident.detail', $inc->id) }}"
                         >
                             {{-- Set when the report was approved; it can't be changed after that. --}}
@@ -620,7 +624,7 @@
                                     </span>
                                 @endif
                             </td>
-                            <td class="td-location">{{ $inc->location ?: '—' }}</td>
+                            <td class="td-location">{{ $inc->location ?: '—' }}@if($inc->landmark)<span class="td-landmark"><i class="bi bi-signpost-2"></i> {{ $inc->landmark }}</span>@endif</td>
                             <td>
                                 <span class="{{ $statusBadge }}" @if($inc->awaitingTeam()) title="Approved but not sent yet. Open View to send it to the responders." @endif>{{ $statusLabel }}</span>
                                 @if($inc->assignedTeamCodes())
@@ -681,7 +685,7 @@
                                     <span class="tag-corrected" title="Corrected by {{ $inc->report_data['edited_by'] }}"><i class="bi bi-pencil"></i> Corrected</span>
                                 @endif
                             </td>
-                            <td class="td-location">{{ $inc->location ?: '—' }}</td>
+                            <td class="td-location">{{ $inc->location ?: '—' }}@if($inc->landmark)<span class="td-landmark"><i class="bi bi-signpost-2"></i> {{ $inc->landmark }}</span>@endif</td>
                             <td>{{ $teamSummary($inc) }}</td>
                             <td style="white-space:nowrap;">
                                 {{ $sentAt->format('M d, Y g:i A') }}
@@ -806,7 +810,7 @@
                             data-type="{{ $inc->emergency_type }}"
                             data-result="{{ $isDeclined ? 'declined' : ($isManual ? 'manual' : 'resolved') }}"
                             data-date="{{ $inc->created_at->format('Y-m-d') }}"
-                            data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$reporterName) }}"
+                            data-search="{{ strtolower($inc->emergency_type.' '.$inc->location.' '.$inc->landmark.' '.$reporterName) }}"
                             data-href="{{ route('incident.detail', $inc->id) }}">
                             <td><span class="{{ $priorityClass }}">{{ $priorityLabel }}</span></td>
                             <td>
@@ -815,7 +819,7 @@
                                     <span class="tag-manual" title="Handled outside the app — added by MDRRMO{{ $inc->reported_via ? ' (' . strtolower($inc->reported_via) . ')' : '' }}"><i class="bi bi-pencil-square"></i> Added by MDRRMO</span>
                                 @endif
                             </td>
-                            <td class="td-location">{{ $inc->location ?: '—' }}</td>
+                            <td class="td-location">{{ $inc->location ?: '—' }}@if($inc->landmark)<span class="td-landmark"><i class="bi bi-signpost-2"></i> {{ $inc->landmark }}</span>@endif</td>
                             <td><span class="{{ $statusBadge }}">{{ $statusLabel }}</span></td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
                             <td class="td-action" onclick="event.stopPropagation()">

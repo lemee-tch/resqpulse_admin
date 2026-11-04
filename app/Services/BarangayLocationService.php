@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class BarangayLocationService
 {
@@ -27,50 +28,53 @@ class BarangayLocationService
     protected const MAX_BARANGAY_DISTANCE_KM = 5;
 
     /**
-     * Offline fallback only — used when Google Geocoding can't be reached
-     * at all (network failure, timeout, quota exceeded, missing/invalid
-     * API key). Same verified centroid table used client-side in
-     * evacuation.blade.php's BARANGAY_COORDINATES, kept in sync so the
-     * approximation always matches what the Add Center dropdown would pin.
+     * A point inside each barangay (its "pole of inaccessibility", the
+     * point farthest from its border), worked out from the official
+     * boundaries in resources/data/rosales-barangays.geojson (item 59).
+     * The earlier table was off for 25 of the 37 barangays — by up to
+     * 1.6 km (Station District, Salvacion) — so pins were often named
+     * after the wrong barangay. Used for the barangay labels on the maps,
+     * the Add Center pin (evacuation.blade.php has the same table), and as
+     * the last fallback when a pin is outside every boundary.
      */
     protected const BARANGAY_COORDINATES = [
-        'Acop' => [15.867531, 120.652154],
-        'Bakitbakit' => [15.878026, 120.650273],
-        'Balingcanaway' => [15.892046, 120.651996],
-        'Cabalaoangan Norte' => [15.884509, 120.626134],
-        'Cabalaoangan Sur' => [15.876132, 120.633595],
-        'Calanutan' => [15.864204, 120.633487],
-        'Camangaan' => [15.849665, 120.635914],
-        'Capitan Tomas' => [15.908782, 120.644112],
-        'Carmay East' => [15.914305, 120.637743],
-        'Carmay West' => [15.911984, 120.625233],
-        'Carmen East' => [15.891492, 120.601517],
-        'Carmen West' => [15.888648, 120.594245],
-        'Casanicolasan' => [15.924801, 120.642405],
-        'Coliling' => [15.854561, 120.620069],
-        'Don Antonio Village' => [15.899285, 120.621318],
-        'Guiling' => [15.849206, 120.621911],
-        'Palakipak' => [15.862663, 120.617815],
-        'Pangaoan' => [15.838011, 120.641362],
-        'Rabago' => [15.856993, 120.634730],
-        'Rizal' => [15.923404, 120.630220],
-        'Salvacion' => [15.846088, 120.659706],
-        'San Angel' => [15.860160, 120.656112],
-        'San Antonio' => [15.853902, 120.658100],
-        'San Bartolome' => [15.875859, 120.611195],
-        'San Isidro' => [15.838424, 120.623979],
-        'San Luis' => [15.842845, 120.650298],
-        'San Pedro East' => [15.896897, 120.645530],
-        'San Pedro West' => [15.896184, 120.636969],
-        'San Vicente' => [15.847728, 120.671759],
-        'Station District' => [15.892017, 120.620915],
-        'Tomana East' => [15.895439, 120.613376],
-        'Tomana West' => [15.892375, 120.608154],
-        'Zone I (Poblacion)' => [15.888483, 120.623073],
-        'Zone II (Poblacion)' => [15.897089, 120.629352],
-        'Zone III (Poblacion)' => [15.904627, 120.621300],
-        'Zone IV (Poblacion)' => [15.904928, 120.629206],
-        'Zone V (Poblacion)' => [15.890244, 120.629699],
+        'Acop' => [15.871027, 120.656276],
+        'Bakitbakit' => [15.899124, 120.656360],
+        'Balingcanaway' => [15.883806, 120.657101],
+        'Cabalaoangan Norte' => [15.882173, 120.627718],
+        'Cabalaoangan Sur' => [15.874409, 120.627279],
+        'Calanutan' => [15.860293, 120.647674],
+        'Camangaan' => [15.843486, 120.633193],
+        'Capitan Tomas' => [15.908639, 120.655709],
+        'Carmay East' => [15.909438, 120.642675],
+        'Carmay West' => [15.904790, 120.627777],
+        'Carmen East' => [15.882926, 120.603633],
+        'Carmen West' => [15.865548, 120.599287],
+        'Casanicolasan' => [15.922814, 120.654723],
+        'Coliling' => [15.856204, 120.612546],
+        'Don Antonio Village' => [15.893489, 120.629279],
+        'Guiling' => [15.843565, 120.615240],
+        'Palakipak' => [15.866569, 120.628655],
+        'Pangaoan' => [15.833010, 120.638903],
+        'Rabago' => [15.855915, 120.632263],
+        'Rizal' => [15.921771, 120.634742],
+        'Salvacion' => [15.837710, 120.669686],
+        'San Angel' => [15.850645, 120.645732],
+        'San Antonio' => [15.842333, 120.646739],
+        'San Bartolome' => [15.873866, 120.616820],
+        'San Isidro' => [15.826038, 120.621537],
+        'San Luis' => [15.832318, 120.653264],
+        'San Pedro East' => [15.898519, 120.647249],
+        'San Pedro West' => [15.891474, 120.643663],
+        'San Vicente' => [15.836458, 120.680809],
+        'Station District' => [15.882582, 120.636424],
+        'Tomana East' => [15.898201, 120.622321],
+        'Tomana West' => [15.887616, 120.613609],
+        'Zone I (Poblacion)' => [15.888476, 120.627011],
+        'Zone II (Poblacion)' => [15.891952, 120.631490],
+        'Zone III (Poblacion)' => [15.895859, 120.627112],
+        'Zone IV (Poblacion)' => [15.896214, 120.638706],
+        'Zone V (Poblacion)' => [15.892078, 120.635513],
     ];
 
     /**
@@ -90,43 +94,168 @@ class BarangayLocationService
     }
 
     /**
-     * Full name => [lat, lng] centroid map for every barangay — for
-     * anything that needs to actually PLACE them on a map (the Map
-     * View's barangay labels), not just list their names (see names()
-     * above). Centroids only — there's no per-barangay border geometry
-     * anywhere in this app, and none is available from OpenStreetMap
-     * either: confirmed via a direct Overpass query scoped to Rosales'
-     * real municipal relation that it has zero barangay-level
-     * administrative boundaries mapped there at all. A label pinned at
-     * this centroid is the best available placement, standing in for a
-     * sub-boundary outline that simply doesn't exist yet in OSM.
+     * Full name => [lat, lng] for every barangay — a point inside it, for
+     * anything that needs to PLACE a barangay on a map (the Map View's
+     * labels), not just list their names (see names() above). The
+     * barangays' real borders are in boundaries().
      */
     public static function allCoordinates(): array
     {
         return self::BARANGAY_COORDINATES;
     }
 
+    /** The official barangay boundaries (item 59) — see boundaries(). */
+    public const BOUNDARIES_FILE = 'data/rosales-barangays.geojson';
+
+    /** @var array<string, array{bbox: array{float,float,float,float}, rings: list<list<array{float,float}>>}>|null */
+    private static ?array $boundaries = null;
+
+    /**
+     * The 37 barangays' official borders (PSA and NAMRIA, PSGC 3Q 2026 —
+     * OpenStreetMap has none for Rosales), from
+     * resources/data/rosales-barangays.geojson: name => its outer rings
+     * as [lng, lat] points, and a bounding box to skip far ones quickly.
+     * Read once per request. Empty when the file is missing.
+     */
+    public static function boundaries(): array
+    {
+        if (self::$boundaries !== null) {
+            return self::$boundaries;
+        }
+
+        self::$boundaries = [];
+        $path = resource_path(self::BOUNDARIES_FILE);
+        $data = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+
+        foreach (($data['features'] ?? []) as $feature) {
+            $name = $feature['properties']['name'] ?? null;
+            $geometry = $feature['geometry'] ?? [];
+            $polygons = match ($geometry['type'] ?? null) {
+                'Polygon'      => [$geometry['coordinates']],
+                'MultiPolygon' => $geometry['coordinates'],
+                default        => [],
+            };
+            if (! $name || ! $polygons) {
+                continue;
+            }
+
+            $rings = [];
+            $lngs = [];
+            $lats = [];
+            foreach ($polygons as $polygon) {
+                $outer = $polygon[0] ?? [];
+                if (count($outer) < 3) {
+                    continue;
+                }
+                $rings[] = $outer;
+                foreach ($outer as [$lng, $lat]) {
+                    $lngs[] = $lng;
+                    $lats[] = $lat;
+                }
+            }
+            if ($rings) {
+                self::$boundaries[$name] = [
+                    'bbox'  => [min($lngs), min($lats), max($lngs), max($lats)],
+                    'rings' => $rings,
+                ];
+            }
+        }
+
+        return self::$boundaries;
+    }
+
+    /**
+     * The barangay whose official border the pin is inside (item 59), or
+     * null when it's outside all 37 — that is, outside Rosales.
+     */
+    public function barangayAt(?float $lat, ?float $lng): ?string
+    {
+        if ($lat === null || $lng === null) {
+            return null;
+        }
+
+        foreach (self::boundaries() as $name => $boundary) {
+            [$minLng, $minLat, $maxLng, $maxLat] = $boundary['bbox'];
+            if ($lng < $minLng || $lng > $maxLng || $lat < $minLat || $lat > $maxLat) {
+                continue;
+            }
+            foreach ($boundary['rings'] as $ring) {
+                if ($this->inRing($lat, $lng, $ring)) {
+                    return $name;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The barangay an incident is in: from its GPS pin and the official
+     * borders when it has one, otherwise the barangay named in its
+     * location text. Null when neither says — or the text says it's
+     * outside Rosales ("Outside Rosales: near Brgy. Carmen West, Rosales"
+     * isn't in Carmen West).
+     */
+    public function barangayOf(?string $location, $lat, $lng): ?string
+    {
+        if (is_numeric($lat) && is_numeric($lng)) {
+            $atPin = $this->barangayAt((float) $lat, (float) $lng);
+            if ($atPin) {
+                return $atPin;
+            }
+        }
+        if (stripos((string) $location, 'outside rosales') !== false) {
+            return null;
+        }
+
+        return $this->barangayFromText($location);
+    }
+
+    /** Ray casting: is the point inside this ring of [lng, lat] points? */
+    private function inRing(float $lat, float $lng, array $ring): bool
+    {
+        $inside = false;
+        $n = count($ring);
+        for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+            [$xi, $yi] = $ring[$i];
+            [$xj, $yj] = $ring[$j];
+            if ((($yi > $lat) !== ($yj > $lat))
+                && ($lng < ($xj - $xi) * ($lat - $yi) / (($yj - $yi) ?: 1e-12) + $xi)) {
+                $inside = ! $inside;
+            }
+        }
+
+        return $inside;
+    }
+
     /**
      * Turns a GPS pin into a readable place name — never raw coordinates.
      *
-     *   inside Rosales:  "[building,] [street,] Brgy. <barangay>, Rosales, Pangasinan"
-     *   outside Rosales: "Outside Rosales: <place, town, province>"
+     *   inside Rosales:  "[landmark,] [building,] [street,] Brgy. <barangay>, Rosales, Pangasinan"
+     *   outside Rosales: "Outside Rosales: [landmark,] <place, town, province>"
      *
-     * Where the details come from, best first:
+     * e.g. "About 120 m from Rosales Central School, Rizal St, Brgy. Zone II
+     * (Poblacion), Rosales, Pangasinan".
+     *
+     * The barangay (item 59) is the one whose official border the pin is
+     * inside (barangayAt()) — outside all 37 means outside Rosales. Only
+     * when the boundary file is missing: the Rosales boundary, the map
+     * service's area names, then the nearest barangay centre.
+     *
+     * The landmark (item 59) is the nearest well-known place — a school,
+     * church, barangay hall, market, gas station… — from Google Places
+     * (landmark()). With $withLandmark false (the bulk Recheck locations)
+     * Google isn't asked again: only a landmark already found for the spot
+     * in the last 7 days is used.
+     *
+     * The building and street, best first:
      *   1. Google Geocoding — street-level address. Needs GOOGLE_MAPS_API_KEY
      *      with the Geocoding API enabled and no HTTP-referrer restriction
      *      (a browser-only Maps key is refused for server calls).
      *   2. OpenStreetMap Nominatim (free) — used when Google fails, for
      *      single new reports only ($allowOsm), never for bulk rechecks.
-     *   3. Offline — the bundled Rosales boundary decides inside/outside,
-     *      and the barangay is the one whose centre is nearest the pin.
-     *      Always works, so a pin inside Rosales always gets a barangay.
-     *
-     * The barangay is taken from the map service when it names a real
-     * Rosales barangay, otherwise from the nearest barangay centre (there
-     * are no barangay border maps for Rosales — see allCoordinates()).
      */
-    public function describe(?float $lat, ?float $lng, bool $allowOsm = true): ?array
+    public function describe(?float $lat, ?float $lng, bool $allowOsm = true, bool $withLandmark = true): ?array
     {
         if ($lat === null || $lng === null) {
             return null;
@@ -137,27 +266,37 @@ class BarangayLocationService
             $geo = $this->reverseGeocodeOsm($lat, $lng);
         }
 
-        // Inside or outside Rosales: the real boundary polygon first, then
-        // what the map service says, then distance to the barangay centres.
-        $inside = $this->insideBoundary($lat, $lng);
-        if ($inside === null) {
-            $inside = ($geo && $geo['municipality'])
-                ? str_contains(strtolower($geo['municipality']), 'rosales')
-                : $this->nearestBarangay($lat, $lng) !== null;
-        }
+        // The official barangay borders decide (item 59).
+        $barangay = $this->barangayAt($lat, $lng);
+        $inside = $barangay !== null;
 
-        $barangay = null;
-        foreach (($geo['areas'] ?? []) as $area) {
-            $barangay = $this->barangayFromText($area);
-            if ($barangay) {
-                break;
+        if (! self::boundaries()) {
+            // No boundary file: the Rosales boundary polygon, then what the
+            // map service says, then distance to the barangay centres.
+            $inside = $this->insideBoundary($lat, $lng);
+            if ($inside === null) {
+                $inside = ($geo && $geo['municipality'])
+                    ? str_contains(strtolower($geo['municipality']), 'rosales')
+                    : $this->nearestBarangay($lat, $lng) !== null;
+            }
+            foreach (($geo['areas'] ?? []) as $area) {
+                $barangay = $this->barangayFromText($area);
+                if ($barangay) {
+                    break;
+                }
+            }
+            if (! $barangay && $inside) {
+                $barangay = $this->nearestBarangay($lat, $lng, 15.0);
             }
         }
-        if (! $barangay && $inside) {
-            $barangay = $this->nearestBarangay($lat, $lng, 15.0);
-        }
+
+        $landmark = $this->landmark($lat, $lng, $withLandmark);
 
         $parts = [];
+        // Not twice when the pin is at the landmark itself.
+        if ($landmark && mb_strtolower($landmark['name']) !== mb_strtolower((string) ($geo['place'] ?? ''))) {
+            $parts[] = self::landmarkPhrase($landmark);
+        }
         if (! empty($geo['place'])) {
             $parts[] = $geo['place'];
         }
@@ -186,9 +325,11 @@ class BarangayLocationService
         }
 
         return [
-            'label'    => $label,
+            // Fits incidents.location (255) with "SOS Alert — " in front.
+            'label'    => Str::limit($label, 235, '…'),
             'barangay' => $inside ? $barangay : null,
             'inside'   => $inside,
+            'landmark' => $landmark,
             'source'   => $geo['source'] ?? 'offline',
         ];
     }
@@ -197,9 +338,144 @@ class BarangayLocationService
      * Readable place name for a GPS pin (see describe()). Kept for the
      * existing callers.
      */
-    public function resolve(?float $lat, ?float $lng, bool $allowOsm = true): ?string
+    public function resolve(?float $lat, ?float $lng, bool $allowOsm = true, bool $withLandmark = true): ?string
     {
-        return $this->describe($lat, $lng, $allowOsm)['label'] ?? null;
+        return $this->describe($lat, $lng, $allowOsm, $withLandmark)['label'] ?? null;
+    }
+
+    // ── Landmarks (item 59) ───────────────────────────────────────────
+
+    /**
+     * Places that make good landmarks — Google Places (New) "Table A"
+     * types. Responders from another barangay know these.
+     */
+    public const LANDMARK_TYPES = [
+        'school', 'primary_school', 'secondary_school', 'university', 'church', 'mosque',
+        'city_hall', 'local_government_office', 'courthouse', 'police', 'fire_station',
+        'post_office', 'hospital', 'gas_station', 'bank', 'shopping_mall', 'supermarket',
+        'market', 'plaza', 'park', 'bus_station', 'cemetery', 'stadium', 'sports_complex',
+        'community_center', 'library',
+    ];
+
+    /** Smaller places: used when they're much nearer than a big one. */
+    public const MINOR_LANDMARK_TYPES = [
+        'preschool', 'pharmacy', 'drugstore', 'grocery_store', 'convenience_store',
+        'playground', 'transit_station', 'fast_food_restaurant', 'hotel', 'hardware_store',
+    ];
+
+    /** No landmark farther than this from the pin. */
+    public const LANDMARK_RADIUS_M = 500;
+
+    /** Set for an hour when Google refuses landmark searches (see landmark()). */
+    private const LANDMARKS_OFF_KEY = 'google_landmarks_off';
+
+    /**
+     * The nearest well-known place to a pin, within LANDMARK_RADIUS_M:
+     * ['name' => 'Rosales Central School', 'meters' => 120, 'type' => 'school'],
+     * or null. A small place (a convenience store, a fast-food branch…)
+     * wins only when it's much nearer than a big one.
+     *
+     * From Google Places (New) Nearby Search, with GOOGLE_MAPS_API_KEY —
+     * "Places API (New)" has to be turned on for that key in Google Cloud.
+     * Cached for 7 days per spot (~11 m); with $search false only that
+     * cache is read. When Google refuses (the API isn't on, no billing,
+     * quota), landmarks are skipped for an hour — 5 minutes when it can't
+     * be reached — and the location shows the street and barangay as
+     * before.
+     */
+    public function landmark(float $lat, float $lng, bool $search = true): ?array
+    {
+        $apiKey = config('services.google.maps_key');
+        if (empty($apiKey)) {
+            return null;
+        }
+
+        $cacheKey = 'google_landmark_v1:' . round($lat, 4) . ',' . round($lng, 4);
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return isset($cached['name']) ? $cached : null;
+        }
+        if (! $search || Cache::has(self::LANDMARKS_OFF_KEY)) {
+            return null;
+        }
+
+        try {
+            $response = Http::connectTimeout(3)
+                ->timeout(4)
+                ->withHeaders([
+                    'X-Goog-Api-Key'   => $apiKey,
+                    'X-Goog-FieldMask' => 'places.displayName,places.location,places.types',
+                ])
+                ->post('https://places.googleapis.com/v1/places:searchNearby', [
+                    'includedTypes'       => array_merge(self::LANDMARK_TYPES, self::MINOR_LANDMARK_TYPES),
+                    'maxResultCount'      => 20,
+                    'rankPreference'      => 'DISTANCE',
+                    'languageCode'        => 'en',
+                    'locationRestriction' => ['circle' => [
+                        'center' => ['latitude' => $lat, 'longitude' => $lng],
+                        'radius' => (float) self::LANDMARK_RADIUS_M,
+                    ]],
+                ]);
+        } catch (\Throwable $e) {
+            // Don't make every report wait for it.
+            Log::warning('Google Places could not be reached — landmarks are skipped for 5 minutes.', ['error' => $e->getMessage()]);
+            Cache::put(self::LANDMARKS_OFF_KEY, true, now()->addMinutes(5));
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            Log::warning('Google Places refused the landmark search — landmarks are skipped for an hour. '
+                . 'Turn on "Places API (New)" for GOOGLE_MAPS_API_KEY in Google Cloud.', [
+                'status' => $response->status(),
+                'error'  => $response->json('error.status'),
+            ]);
+            Cache::put(self::LANDMARKS_OFF_KEY, true, now()->addHour());
+
+            return null;
+        }
+
+        $best = null;
+        foreach (($response->json('places') ?? []) as $place) {
+            $name = trim((string) ($place['displayName']['text'] ?? ''));
+            $pLat = $place['location']['latitude'] ?? null;
+            $pLng = $place['location']['longitude'] ?? null;
+            if ($name === '' || ! is_numeric($pLat) || ! is_numeric($pLng)) {
+                continue;
+            }
+
+            $types = (array) ($place['types'] ?? []);
+            $major = (bool) array_intersect($types, self::LANDMARK_TYPES);
+            $meters = (int) round($this->haversineKm($lat, $lng, (float) $pLat, (float) $pLng) * 1000);
+            if ($meters > self::LANDMARK_RADIUS_M) {
+                continue;
+            }
+
+            // A small place 2.5 times nearer than a big one wins.
+            $score = $meters * ($major ? 1 : 2.5);
+            if ($best === null || $score < $best['score']) {
+                $kind = array_values(array_intersect($types, array_merge(self::LANDMARK_TYPES, self::MINOR_LANDMARK_TYPES)));
+                $best = ['name' => Str::limit($name, 60, '…'), 'meters' => $meters, 'type' => $kind[0] ?? null, 'score' => $score];
+            }
+        }
+
+        $result = $best ? ['name' => $best['name'], 'meters' => $best['meters'], 'type' => $best['type']] : ['none' => true];
+        Cache::put($cacheKey, $result, now()->addDays(7));
+
+        return $best ? $result : null;
+    }
+
+    /**
+     * "Near Rosales Central School" (50 m or less), otherwise "About 120 m
+     * from Rosales Central School" (to the nearest 10 m).
+     */
+    public static function landmarkPhrase(array $landmark): string
+    {
+        $meters = (int) ($landmark['meters'] ?? 0);
+
+        return $meters <= 50
+            ? "Near {$landmark['name']}"
+            : 'About ' . (int) (round($meters / 10) * 10) . " m from {$landmark['name']}";
     }
 
     /**
@@ -279,6 +555,11 @@ class BarangayLocationService
             // No coordinates to check (a logged-in citizen who typed an
             // address instead of dropping a pin) — nothing to gate on.
             return true;
+        }
+
+        // Inside one of the 37 official barangay borders (item 59).
+        if (self::boundaries()) {
+            return $this->barangayAt($lat, $lng) !== null;
         }
 
         // The real boundary polygon is authoritative: Google can label a
@@ -366,9 +647,9 @@ class BarangayLocationService
      * "SOS Alert" prefixed variant for SOS reports, which never carry
      * typed location text — only ever a GPS pin.
      */
-    public function approximateSosLabel(?float $lat, ?float $lng, bool $allowOsm = true): string
+    public function approximateSosLabel(?float $lat, ?float $lng, bool $allowOsm = true, bool $withLandmark = true): string
     {
-        $resolved = $this->resolve($lat, $lng, $allowOsm);
+        $resolved = $this->resolve($lat, $lng, $allowOsm, $withLandmark);
 
         return $resolved ? "SOS Alert — {$resolved}" : 'SOS Alert, Rosales';
     }
@@ -377,9 +658,9 @@ class BarangayLocationService
      * "Guest Report" prefixed variant for guest regular reports — same
      * GPS-pin-only situation as SOS (see Api\IncidentController::store()).
      */
-    public function approximateReportLabel(?float $lat, ?float $lng, bool $allowOsm = true): string
+    public function approximateReportLabel(?float $lat, ?float $lng, bool $allowOsm = true, bool $withLandmark = true): string
     {
-        $resolved = $this->resolve($lat, $lng, $allowOsm);
+        $resolved = $this->resolve($lat, $lng, $allowOsm, $withLandmark);
 
         return $resolved ? "Guest Report — {$resolved}" : 'Guest Report, Rosales';
     }

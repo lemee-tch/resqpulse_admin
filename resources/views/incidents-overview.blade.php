@@ -237,7 +237,7 @@
 
         <div style="margin-bottom:16px;">
             <form action="{{ route('incidents.recheck-locations') }}" method="POST"
-                  onsubmit="return confirm('Re-check locations? Incidents and SOS alerts that show GPS coordinates (Lat/Lng) as their location will show the street and barangay instead. Still-pending ones are also checked again for being outside Rosales. Addresses typed by residents are not changed.');">
+                  onsubmit="return confirm('Re-check locations? Incidents and SOS alerts that show GPS coordinates (Lat/Lng) as their location will show the street and barangay instead, and still-pending ones that name the wrong barangay get the right one from the official barangay borders. Still-pending ones are also checked again for being outside Rosales. Addresses typed by residents are not changed.');">
                 @csrf
                 <button type="submit" style="background:#fff;border:1.5px solid #d1d5db;border-radius:8px;padding:8px 16px;font-size:.82rem;font-weight:700;color:#374151;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
                     <i class="bi bi-arrow-repeat"></i> Recheck Locations

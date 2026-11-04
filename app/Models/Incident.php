@@ -51,6 +51,8 @@ class Incident extends Model
         'resolved_at', 'resolved_by', 'source', 'reported_via',
         // Assign Response Team — see the add_team_assignment migration.
         'assigned_teams', 'assignment_notes', 'responders_on_record', 'assigned_at', 'reviewed_by',
+        // Item 59: the resident's landmark, and how close the GPS pin is.
+        'landmark', 'location_accuracy', 'location_fixed_at',
     ];
 
     protected function casts(): array
@@ -68,7 +70,54 @@ class Incident extends Model
         'resolved_at'         => 'datetime',
         'assigned_teams'      => 'array',
         'assigned_at'         => 'datetime',
+        'location_accuracy'   => 'integer',
+        'location_fixed_at'   => 'datetime',
     ];
+
+    // ── The GPS pin (item 59) ─────────────────────────────────────────
+
+    /** Beyond this many meters the pin is shown as approximate. */
+    public const GPS_APPROXIMATE_M = 100;
+
+    /**
+     * How close the GPS pin is, as the phone said: "within about 12 m",
+     * "within about 1.2 km". Null when it didn't say (older apps).
+     */
+    public function gpsAccuracyLabel(): ?string
+    {
+        if ($this->location_accuracy === null) {
+            return null;
+        }
+
+        $meters = (int) $this->location_accuracy;
+
+        return 'within about ' . match (true) {
+            $meters >= 1000 => rtrim(rtrim(number_format($meters / 1000, 1), '0'), '.') . ' km',
+            $meters < 20    => max(1, $meters) . ' m',
+            default         => (int) (round($meters / 5) * 5) . ' m',
+        };
+    }
+
+    /** The phone couldn't get an exact fix: the pin may be off by more than 100 m. */
+    public function gpsIsApproximate(): bool
+    {
+        return $this->location_accuracy !== null && $this->location_accuracy > self::GPS_APPROXIMATE_M;
+    }
+
+    /**
+     * How many minutes older the pin was than the report (when the phone
+     * had to use an older one) — 2 or more, else null.
+     */
+    public function gpsAgeMinutes(): ?int
+    {
+        if (! $this->location_fixed_at || ! $this->created_at) {
+            return null;
+        }
+
+        $minutes = (int) floor($this->location_fixed_at->diffInSeconds($this->created_at, false) / 60);
+
+        return $minutes >= 2 ? $minutes : null;
+    }
 
     // Includes display_type (see getDisplayTypeAttribute() below) in
     // every JSON response automatically — both apps read incidents as

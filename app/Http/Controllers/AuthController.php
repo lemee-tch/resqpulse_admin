@@ -503,19 +503,23 @@ class AuthController extends Controller
     /**
      * The barangay an incident is counted under on Reports & Analytics
      * ("Incidents by Location") and in the exported PDF:
-     *   1. the Rosales barangay named in its location text;
-     *   2. "Outside Rosales" when the text says so;
-     *   3. otherwise — e.g. older SOS rows whose location is still
-     *      "Lat …, Lng …" — the barangay whose centre is nearest the GPS
-     *      pin, within 5 km (the same offline fallback
-     *      BarangayLocationService uses), else "Outside Rosales";
-     *   4. "Not identified" when there's nothing to go on.
+     *   1. the barangay whose official border its GPS pin is inside
+     *      (item 59 — older location texts can name the wrong one);
+     *   2. the Rosales barangay named in its location text;
+     *   3. "Outside Rosales" when the text says so, or the pin is outside
+     *      every border;
+     *   4. without the boundary file: the barangay whose centre is nearest
+     *      the pin, within 5 km, else "Outside Rosales";
+     *   5. "Not identified" when there's nothing to go on.
      * Offline only: no map service is called while the page loads.
      */
     private function barangayLabel(?string $location, $lat, $lng, \App\Services\BarangayLocationService $places): string
     {
-        if ($name = $places->barangayFromText($location)) {
+        if ($name = $places->barangayOf($location, $lat, $lng)) {
             return $name;
+        }
+        if (is_numeric($lat) && is_numeric($lng) && \App\Services\BarangayLocationService::boundaries()) {
+            return 'Outside Rosales';
         }
         if (stripos((string) $location, 'outside rosales') !== false) {
             return 'Outside Rosales';

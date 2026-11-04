@@ -11,7 +11,9 @@
       1. a coloured dot for where it stands, the type (plus the state on
          Active, and "Initial report" / "Report sent back" / "Sent again" /
          "Corrected") and the time that matters on this tab;
-      2. who sent it, their number (tap to call) and where;
+      2. who sent it, their number (tap to call) and where — with
+         "≈ within about 250 m" when the phone couldn't get an exact fix
+         (item 59);
       3. the team (Active, For Review, Resolved) or the decline reason.
 
     All the buttons are together on the right — on phones, under the text:
@@ -171,6 +173,9 @@
                 <a href="{{ $mapsUrl }}" target="_blank" rel="noopener" class="sos-place" title="Open the pin in Google Maps">{{ $place !== '' ? $place : 'Open the pin in Google Maps' }}</a>
             @else
                 <span class="sos-place">{{ $place !== '' ? $place : 'No location' }}</span>
+            @endif
+            @if($sos->gpsIsApproximate())
+                <span class="sos-approx" title="Approximate — the phone couldn't get an exact fix. Call the reporter for the exact spot.">&asymp; {{ $sos->gpsAccuracyLabel() }}</span>
             @endif
         </div>
 

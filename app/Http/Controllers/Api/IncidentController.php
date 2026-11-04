@@ -152,6 +152,39 @@ class IncidentController extends Controller
     }
 
     /**
+     * Item 59 — sent with a report or SOS by the residents app:
+     *   landmark           what the resident typed in the Landmark box
+     *                      ("beside the chapel, blue gate"); reports only
+     *   location_accuracy  how close the GPS pin is, in meters
+     *   location_age       how many seconds old the pin was when sent (the
+     *                      phone may have had to use an older one)
+     * All optional: older apps don't send them.
+     */
+    private const PIN_RULES = [
+        'landmark'          => ['nullable', 'string', 'max:150'],
+        'location_accuracy' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+        'location_age'      => ['nullable', 'integer', 'min:0', 'max:2592000'],
+    ];
+
+    /** The landmark and the pin's accuracy and time, for the new incident (PIN_RULES). */
+    private function pinDetails(Request $request): array
+    {
+        $landmark = trim((string) preg_replace('/\s+/u', ' ', (string) $request->input('landmark')));
+        // 0 = the phone couldn't say how close its pin is.
+        $accuracy = $request->input('location_accuracy');
+
+        return [
+            'landmark'          => $landmark !== '' ? $landmark : null,
+            'location_accuracy' => is_numeric($accuracy) && (float) $accuracy > 0
+                ? max(1, (int) ceil((float) $accuracy))
+                : null,
+            'location_fixed_at' => is_numeric($request->input('location_age'))
+                ? now()->subSeconds((int) $request->input('location_age'))
+                : null,
+        ];
+    }
+
+    /**
      * A report from the app ("Report Emergency", or a guest via the API).
      *
      * Nothing is sent to responders from here: every report waits in the
@@ -190,9 +223,10 @@ class IncidentController extends Controller
             'longitude'      => ['required', 'numeric', 'between:-180,180'],
             'photos'         => [$isGuest ? 'nullable' : 'required', 'array', $isGuest ? '' : 'min:1'],
             'photos.*'       => ['file', 'image', 'max:5120'],
-        ] + $guestRules, [
+        ] + $guestRules + self::PIN_RULES, [
             'latitude.required'  => self::NO_LOCATION_MESSAGE,
             'longitude.required' => self::NO_LOCATION_MESSAGE,
+            'landmark.max'       => 'Keep the landmark under 150 characters.',
         ] + $guestMessages);
 
         if ($validator->fails()) {
@@ -246,7 +280,7 @@ class IncidentController extends Controller
             'needs_review'   => true,
             // No priority yet — the admin sets it when approving.
             'priority'       => null,
-        ] + $this->guestColumns($guest));
+        ] + $this->pinDetails($request) + $this->guestColumns($guest));
 
         // Resident activity trail — shows up in the admin Audit Log page
         // (filterable by action=created). Same convention as login() in
@@ -304,7 +338,7 @@ class IncidentController extends Controller
             // build). Free text is allowed via "Other" on the app side,
             // so this isn't restricted to a fixed list server-side.
             'emergency_type' => ['nullable', 'string', 'max:255'],
-        ] + $guestRules, $guestMessages);
+        ] + $guestRules + self::PIN_RULES, $guestMessages);
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
@@ -350,7 +384,7 @@ class IncidentController extends Controller
             'sos_emergency_type' => $request->emergency_type ?: null,
             // Every SOS waits for an admin to verify it, same as reports.
             'needs_review'       => true,
-        ] + $this->guestColumns($guest));
+        ] + $this->pinDetails($request) + $this->guestColumns($guest));
 
         if ($photoPath) {
             $analysis = $imageAnalysis->classify($photoPath, $request->emergency_type);

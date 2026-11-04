@@ -226,6 +226,11 @@
         .sos-outside { color: #b91c1c; font-weight: 700; margin-right: 4px; }
         .sos-place { color: #374151; text-decoration: none; }
         a.sos-place:hover { color: #1a3c8f; text-decoration: underline; }
+        /* The phone couldn't get an exact fix (item 59). */
+        .sos-approx {
+            margin-left: 6px; font-size: .68rem; font-weight: 700; letter-spacing: .2px; white-space: nowrap;
+            color: #b45309; background: #fff7e6; padding: 1px 7px; border-radius: 20px; vertical-align: 1px;
+        }
         .sos-time { font-size: .78rem; color: #6b7280; white-space: nowrap; }
         .sos-time.waiting { color: #b45309; font-weight: 600; }
         .sos-time.late { color: #dc2626; font-weight: 700; }

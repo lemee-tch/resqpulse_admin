@@ -235,6 +235,10 @@ class PushNotificationService
             }
 
             $bodyParts = [$incident->location];
+            // What the resident typed to find the spot (item 59).
+            if (filled($incident->landmark)) {
+                $bodyParts[] = 'Landmark: ' . Str::limit($incident->landmark, 80);
+            }
             if ($incident->description) {
                 $bodyParts[] = Str::limit($incident->description, 80);
             }

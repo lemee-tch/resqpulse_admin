@@ -1453,12 +1453,18 @@ class IncidentController extends Controller
     public function recheckLocations(BarangayLocationService $locationService)
     {
         // Every pinned incident is looked at, whatever its status:
-        //   - still-pending ones get their auto-made label refreshed and the
-        //     "outside Rosales" check re-run (as before);
         //   - older/closed ones only get fixed when their label is still
         //     raw GPS coordinates ("SOS Alert — Lat 15.89…, Lng 120.63…")
         //     or the generic "SOS Alert, Rosales" — they now show the
-        //     street and barangay instead.
+        //     street and barangay instead;
+        //   - still-pending ones whose label was made from the pin (SOS,
+        //     guest reports, and residents' reports since item 49 — "…,
+        //     Brgy. Acop, Rosales, Pangasinan") get the right barangay when
+        //     the label names another one than the official borders say
+        //     (item 59 — the old barangay centres were off), or says
+        //     outside Rosales when it isn't (or the other way round). Only
+        //     the barangay is swapped — the street and landmark stay;
+        //   - still-pending ones are checked again for being outside Rosales.
         // A citizen's own typed address is never touched.
         $candidates = Incident::whereNotNull('latitude')
             ->whereNotNull('longitude')
@@ -1471,31 +1477,12 @@ class IncidentController extends Controller
 
         foreach ($candidates as $incident) {
             $updates = [];
-            $location = (string) $incident->location;
             $isPending = $incident->status === 'pending';
 
-            $wasAutoResolved = $incident->emergency_type === 'SOS Emergency'
-                || str_starts_with($location, 'Guest Report — ')
-                || str_starts_with($location, 'SOS Alert — ')
-                || $location === 'Guest Report, Rosales'
-                || $location === 'SOS Alert, Rosales'
-                || $location === '';
-
-            $showsCoordinates = (bool) preg_match('/\bLat\s*-?\d+(\.\d+)?\s*,\s*Lng\s*-?\d+/i', $location)
-                || in_array($location, ['', 'Guest Report, Rosales', 'SOS Alert, Rosales'], true);
-
-            if ($wasAutoResolved && ($isPending || $showsCoordinates)) {
-                // No OpenStreetMap here: its free service allows about one
-                // lookup per second, too slow for a whole batch. Google
-                // (cached) and the offline barangay lookup are used instead.
-                $newLocation = $incident->emergency_type === 'SOS Emergency'
-                    ? $locationService->approximateSosLabel($incident->latitude, $incident->longitude, false)
-                    : $locationService->approximateReportLabel($incident->latitude, $incident->longitude, false);
-
-                if ($newLocation !== $incident->location) {
-                    $updates['location'] = $newLocation;
-                    $relabeled++;
-                }
+            $newLocation = $this->recheckedLocation($incident, $locationService);
+            if ($newLocation !== null && $newLocation !== $incident->location) {
+                $updates['location'] = $newLocation;
+                $relabeled++;
             }
 
             // Only still-pending reports can be held back for review —
@@ -1520,7 +1507,78 @@ class IncidentController extends Controller
 
         return back()->with(
             'success',
-            "Rechecked {$candidates->count()} incidents: {$relabeled} location(s) now show the street/barangay instead of coordinates, {$flaggedForReview} newly flagged as outside Rosales and now pending review."
+            "Rechecked {$candidates->count()} incidents: {$relabeled} location(s) updated to the street and the right barangay, {$flaggedForReview} newly flagged as outside Rosales and now pending review."
         );
+    }
+
+    /** A location made from the pin: "…, Brgy. Acop, Rosales, Pangasinan". */
+    private const PIN_LABEL = '/\bBrgy\. ([^,]+), Rosales, Pangasinan$/u';
+
+    /**
+     * Recheck Locations: the incident's new location text, or null to leave
+     * it as it is (see recheckLocations()).
+     *
+     * No OpenStreetMap here: its free service allows about one lookup per
+     * second, too slow for a whole batch. Google (cached) and the official
+     * barangay borders are used instead — and no new landmark searches
+     * (item 59), which Google bills one by one: a landmark found when the
+     * report came in (kept 7 days) stays in the label.
+     */
+    private function recheckedLocation(Incident $incident, BarangayLocationService $places): ?string
+    {
+        $location = (string) $incident->location;
+        $lat = (float) $incident->latitude;
+        $lng = (float) $incident->longitude;
+        $isSos = $incident->emergency_type === 'SOS Emergency';
+
+        $rebuild = fn () => match (true) {
+            $isSos => $places->approximateSosLabel($lat, $lng, false, false),
+            str_starts_with($location, 'Guest Report') || $location === '' => $places->approximateReportLabel($lat, $lng, false, false),
+            default => $places->resolve($lat, $lng, false, false),
+        };
+
+        // Raw coordinates or a generic label: always worth a real one.
+        if (preg_match('/\bLat\s*-?\d+(\.\d+)?\s*,\s*Lng\s*-?\d+/i', $location)
+            || in_array($location, ['', 'Guest Report, Rosales', 'SOS Alert, Rosales'], true)) {
+            return $rebuild();
+        }
+
+        if ($incident->status !== 'pending') {
+            return null;
+        }
+
+        $madeFromPin = $isSos
+            || str_starts_with($location, 'Guest Report — ')
+            || str_starts_with($location, 'SOS Alert — ')
+            || str_starts_with($location, 'Outside Rosales')
+            || preg_match(self::PIN_LABEL, $location);
+        if (! $madeFromPin) {
+            return null; // typed by the resident (an older app)
+        }
+
+        // Without the boundary file: refreshed, as before item 59.
+        if (! BarangayLocationService::boundaries()) {
+            return ($isSos || str_starts_with($location, 'Guest Report')) ? $rebuild() : null;
+        }
+
+        // Is the label right? Its barangay (null = outside Rosales)
+        // against the official border the pin is inside.
+        $atPin = $places->barangayAt($lat, $lng);
+        $named = match (true) {
+            str_contains($location, 'Outside Rosales')          => null,
+            (bool) preg_match(self::PIN_LABEL, $location, $m)   => $places->barangayFromText($m[1]) ?? $m[1],
+            default                                             => $places->barangayFromText($location),
+        };
+        if ($named === $atPin) {
+            return null;
+        }
+
+        // Swap only the barangay, keeping the street and landmark…
+        if ($atPin && preg_match(self::PIN_LABEL, $location)) {
+            return preg_replace_callback(self::PIN_LABEL, fn () => "Brgy. {$atPin}, Rosales, Pangasinan", $location);
+        }
+
+        // …or, inside ↔ outside Rosales, a new label.
+        return $rebuild();
     }
 }
