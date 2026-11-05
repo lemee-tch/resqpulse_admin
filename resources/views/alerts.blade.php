@@ -543,7 +543,7 @@
                         <div class="form-group">
                             <label class="form-label-s">Send To</label>
                             <select name="type" class="form-input-s" required>
-                                <option value="Citizens">Citizens</option>
+                                <option value="Citizens">Residents</option>
                                 <option value="Responders">Responders</option>
                                 <option value="Both">Both</option>
                             </select>
