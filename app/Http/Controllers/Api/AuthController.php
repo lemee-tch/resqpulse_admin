@@ -294,6 +294,7 @@ class AuthController extends Controller
         } catch (\Throwable $e) {
             // The account is kept; "Resend code" tries again.
             report($e);
+            $this->emailCodeNotSent((string) $citizen->email, 'signup');
 
             return ['via' => 'email', 'sent' => false, 'code' => null, 'reason' => 'mail_error', 'retry_after' => null];
         }
@@ -316,7 +317,7 @@ class AuthController extends Controller
      */
     private function emailCodeLimit(string $email, string $purpose): ?array
     {
-        $key = "{$purpose}-mail:" . sha1(mb_strtolower(trim($email)));
+        $key = $this->emailCodeKey($email, $purpose);
 
         if (RateLimiter::tooManyAttempts($key, 1)) {
             return ['reason' => 'too_soon', 'retry_after' => max(1, RateLimiter::availableIn($key))];
@@ -329,6 +330,23 @@ class AuthController extends Controller
         RateLimiter::hit("{$key}:hour", 3600);
 
         return null;
+    }
+
+    /** emailCodeLimit()'s counter for one email; ":hour" is added for the hour. */
+    private function emailCodeKey(string $email, string $purpose): string
+    {
+        return "{$purpose}-mail:" . sha1(mb_strtolower(trim($email)));
+    }
+
+    /**
+     * An email that couldn't be sent doesn't count toward the 5 an hour
+     * (item 63) — before, 5 tries while the mail server was down locked the
+     * email out for an hour after it was fixed. The 1-minute wait still
+     * counts, so the mail server isn't asked again and again.
+     */
+    private function emailCodeNotSent(string $email, string $purpose): void
+    {
+        RateLimiter::decrement($this->emailCodeKey($email, $purpose) . ':hour', 3600);
     }
 
     /** What the app shows when a resend couldn't send the code, and the status. */
@@ -1003,7 +1021,10 @@ class AuthController extends Controller
         try {
             Mail::to($citizen->email)->send(new PasswordResetOtp($otp, $citizen->full_name));
         } catch (\Throwable $e) {
+            // Why it failed is in storage/logs/laravel.log — usually the
+            // MAIL_ settings in .env.
             report($e);
+            $this->emailCodeNotSent($request->email, 'reset');
 
             return response()->json([
                 'message' => 'We couldn\'t send the email right now. Please try again in a few minutes.',

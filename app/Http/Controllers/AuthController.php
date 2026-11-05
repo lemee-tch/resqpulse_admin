@@ -99,7 +99,11 @@ class AuthController extends Controller
             try {
                 Mail::to($user->email)->send(new PasswordResetOtp($otp, $user->name));
             } catch (\Throwable $e) {
+                // Why it failed is in storage/logs/laravel.log — usually the
+                // MAIL_ settings in .env. It doesn't count toward the 5 an
+                // hour (item 63); the 1-minute wait still does.
                 report($e);
+                RateLimiter::decrement("{$codes}:hour", 3600);
 
                 return back()->withErrors(['email' => 'We couldn\'t send the email right now. Please try again in a few minutes.'])->onlyInput('email');
             }
