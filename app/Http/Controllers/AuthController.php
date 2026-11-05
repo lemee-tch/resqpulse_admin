@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
@@ -58,11 +59,34 @@ class AuthController extends Controller
         return view('auth.forgot-password');
     }
 
+    /** Wrong reset codes allowed before a new code is needed (item 62). */
+    public const MAX_WRONG_RESET_CODES = 5;
+
+    /** Counts this email's reset codes, or its wrong codes (item 62). */
+    private function resetKey(string $what, string $email): string
+    {
+        return "admin-reset-{$what}:" . sha1(mb_strtolower(trim($email)));
+    }
+
     public function sendResetOtp(Request $request)
     {
         $request->validate([
             'email' => ['required', 'email'],
         ]);
+
+        // Item 62: 1 code a minute and 5 an hour to one email, counted
+        // before looking anything up, so it's the same for everyone.
+        $codes = $this->resetKey('mail', $request->email);
+        if (RateLimiter::tooManyAttempts($codes, 1)) {
+            $wait = max(1, RateLimiter::availableIn($codes));
+
+            return back()->withErrors(['email' => "Please wait {$wait} " . ($wait === 1 ? 'second' : 'seconds') . ' before asking for another code.'])->onlyInput('email');
+        }
+        if (RateLimiter::tooManyAttempts("{$codes}:hour", 5)) {
+            return back()->withErrors(['email' => 'Too many codes were asked for this email. Try again in an hour.'])->onlyInput('email');
+        }
+        RateLimiter::hit($codes, 60);
+        RateLimiter::hit("{$codes}:hour", 3600);
 
         $user = User::where('email', $request->email)->first();
 
@@ -70,21 +94,42 @@ class AuthController extends Controller
         if ($user) {
             $otp = (string) random_int(100000, 999999);
 
-            $user->update([
+            // Sent first (item 62): before, a failed email showed an error
+            // page and kept a code nobody got.
+            try {
+                Mail::to($user->email)->send(new PasswordResetOtp($otp, $user->name));
+            } catch (\Throwable $e) {
+                report($e);
+
+                return back()->withErrors(['email' => 'We couldn\'t send the email right now. Please try again in a few minutes.'])->onlyInput('email');
+            }
+
+            // forceFill (item 62): reset_otp isn't in User's $fillable, so
+            // update() dropped it without a word — the code was emailed but
+            // never saved, and every code was "Invalid code."
+            $user->forceFill([
                 'reset_otp'            => $otp,
                 'reset_otp_expires_at' => now()->addMinutes(10),
-            ]);
-
-            Mail::to($user->email)->send(new PasswordResetOtp($otp, $user->name));
+            ])->save();
+            RateLimiter::clear($this->resetKey('wrong', $user->email));
         }
 
-        return redirect()
-            ->route('password.reset', ['email' => $request->email])
-            ->with('success', 'If that email is registered, a 6-digit code has been sent.');
+        $next = redirect()->route('password.reset', ['email' => $request->email]);
+
+        // "Resend" on the code page says a new code is coming (item 62);
+        // the first time, the page itself says so.
+        return $request->boolean('resend')
+            ? $next->with('success', 'If an admin account uses that email, a new code is on its way. Codes sent before it no longer work.')
+            : $next;
     }
 
     public function showResetPassword(Request $request)
     {
+        // Opened without an email (item 62): there's no code to enter yet.
+        if (! filled($request->query('email'))) {
+            return redirect()->route('password.request');
+        }
+
         return view('auth.reset-password', [
             'email' => $request->query('email'),
         ]);
@@ -101,11 +146,21 @@ class AuthController extends Controller
             'password' => ['required', 'string', 'confirmed', Password::min(8)->mixedCase()->numbers()],
         ]);
 
+        // Item 62: 5 wrong codes for an account, then a new code is needed —
+        // before, only 5 tries a minute per address, so many addresses
+        // could keep guessing.
+        $wrongCodes = $this->resetKey('wrong', $request->email);
+        if (RateLimiter::tooManyAttempts($wrongCodes, self::MAX_WRONG_RESET_CODES)) {
+            return back()->withErrors(['otp' => 'Too many wrong codes. Ask for a new code below.'])->onlyInput('email');
+        }
+
         $user = User::where('email', $request->email)
             ->where('reset_otp', $request->otp)
             ->first();
 
         if (! $user) {
+            RateLimiter::hit($wrongCodes, 600);
+
             return back()->withErrors(['otp' => 'Invalid code.'])->onlyInput('email');
         }
 
@@ -113,14 +168,17 @@ class AuthController extends Controller
             return back()->withErrors(['otp' => 'This code has expired. Please request a new one.'])->onlyInput('email');
         }
 
-        $user->update([
+        RateLimiter::clear($wrongCodes);
+        $user->forceFill([
             'password'              => Hash::make($request->password),
             'reset_otp'             => null,
             'reset_otp_expires_at'  => null,
-            // Clears any "remember me" cookie tied to the old password
-            // on other devices — a reset should end those sessions too.
-            'remember_token'        => null,
-        ]);
+        ])->save();
+
+        // Item 62: signed out of every browser, not only "remember me".
+        $user->signOutEverywhere();
+
+        AuditLogService::log('updated', "Admin {$user->name} reset their password with an emailed code. Every browser signed in to the account was signed out.", $user);
 
         return redirect()->route('login')->with('success', 'Password reset successful. Please log in.');
     }

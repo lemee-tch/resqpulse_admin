@@ -284,6 +284,11 @@ class AuthController extends Controller
             }
         }
 
+        // 1 a minute and 5 an hour to one email (item 62).
+        if ($limited = $this->emailCodeLimit((string) $citizen->email, 'signup')) {
+            return ['via' => 'email', 'sent' => false, 'code' => null] + $limited;
+        }
+
         try {
             Mail::to($citizen->email)->send(new EmailVerificationOtp($otp, $citizen->full_name));
         } catch (\Throwable $e) {
@@ -294,6 +299,36 @@ class AuthController extends Controller
         }
 
         return ['via' => 'email', 'sent' => true, 'code' => $otp];
+    }
+
+    /** Codes one email can get in an hour (item 62). */
+    public const EMAIL_CODES_PER_HOUR = 5;
+
+    /**
+     * Item 62: 1 code a minute and 5 an hour to one email, for sign-up and
+     * password reset — texts already have the same limits (SmsService).
+     * Without it, asking for a new reset code by email started the
+     * wrong-code count over, so the 6 digits could be guessed by asking
+     * again and again, and an inbox could be flooded.
+     *
+     * Null when a code may be sent (it's counted); otherwise the reason
+     * ('too_soon' or 'email_hourly_limit') and retry_after in seconds.
+     */
+    private function emailCodeLimit(string $email, string $purpose): ?array
+    {
+        $key = "{$purpose}-mail:" . sha1(mb_strtolower(trim($email)));
+
+        if (RateLimiter::tooManyAttempts($key, 1)) {
+            return ['reason' => 'too_soon', 'retry_after' => max(1, RateLimiter::availableIn($key))];
+        }
+        if (RateLimiter::tooManyAttempts("{$key}:hour", self::EMAIL_CODES_PER_HOUR)) {
+            return ['reason' => 'email_hourly_limit', 'retry_after' => max(1, RateLimiter::availableIn("{$key}:hour"))];
+        }
+
+        RateLimiter::hit($key, 60);
+        RateLimiter::hit("{$key}:hour", 3600);
+
+        return null;
     }
 
     /** What the app shows when a resend couldn't send the code, and the status. */
@@ -312,6 +347,10 @@ class AuthController extends Controller
             ],
             'hourly_limit' => [
                 'Too many codes were sent to this number. Try again later' . $orEmail,
+                429,
+            ],
+            'email_hourly_limit' => [
+                'Too many codes were sent to this email. Try again in an hour.',
                 429,
             ],
             'invalid_number' => [
@@ -695,11 +734,6 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * Logs in with the email OR the mobile number (field "login"; older
-     * app builds send "email"). Mobile accounts have no email, so they
-     * always use the number.
-     */
     /** Wrong passwords allowed a minute, per account and phone (item 61). */
     public const MAX_LOGIN_TRIES = 5;
 
@@ -723,6 +757,11 @@ class AuthController extends Controller
         ], 429);
     }
 
+    /**
+     * Logs in with the email OR the mobile number (field "login"; older
+     * app builds send "email"). Mobile accounts have no email, so they
+     * always use the number.
+     */
     public function login(Request $request)
     {
         $login = $this->inputString($request, 'login');
@@ -938,6 +977,17 @@ class AuthController extends Controller
             return $this->sendResetCodeByText($request, $sms);
         }
 
+        // 1 code a minute and 5 an hour to one email (item 62). Counted
+        // before looking anything up, so it's the same for everyone.
+        if ($limited = $this->emailCodeLimit($request->email, 'reset')) {
+            return response()->json([
+                'message'     => $limited['reason'] === 'too_soon'
+                    ? "Please wait {$limited['retry_after']} " . ($limited['retry_after'] === 1 ? 'second' : 'seconds') . ' before asking for another code.'
+                    : 'Too many codes were asked for this email. Try again in an hour.',
+                'retry_after' => $limited['retry_after'],
+            ], 429);
+        }
+
         $citizen = Citizen::where('email', $request->email)->first();
 
         // Don't reveal whether the email exists — same response either way.
@@ -948,14 +998,24 @@ class AuthController extends Controller
 
         $otp = (string) random_int(100000, 999999);
 
+        // Sent first (item 62): before, a failed email showed "Server
+        // Error" and kept a code the resident never got.
+        try {
+            Mail::to($citizen->email)->send(new PasswordResetOtp($otp, $citizen->full_name));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'message' => 'We couldn\'t send the email right now. Please try again in a few minutes.',
+            ], 503);
+        }
+
         $citizen->update([
             'reset_otp' => $otp,
             'reset_otp_expires_at' => now()->addMinutes(self::CODE_MINUTES),
         ]);
 
         $this->clearWrongResetCodes($citizen);
-
-        Mail::to($citizen->email)->send(new PasswordResetOtp($otp, $citizen->full_name));
 
         return response()->json(['message' => 'If that email is registered, a code has been sent.']);
     }
@@ -1100,7 +1160,16 @@ class AuthController extends Controller
             'password' => Hash::make($request->password),
             'reset_otp' => null,
             'reset_otp_expires_at' => null,
+            // The phone that was getting this account's notifications
+            // registers again when it logs in (item 62).
+            'fcm_token' => null,
         ]);
+
+        // Item 62: every phone signed in to the account is signed out — if
+        // someone else got in, the reset ends that.
+        $citizen->tokens()->delete();
+
+        AuditLogService::log('updated', "Citizen {$citizen->full_name} reset their password. Every phone signed in to the account was signed out.", $citizen);
 
         return response()->json(['message' => 'Password reset successful. Please log in.']);
     }

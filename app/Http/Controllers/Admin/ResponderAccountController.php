@@ -108,8 +108,9 @@ class ResponderAccountController extends Controller
             'password' => Hash::make($request->password),
         ]);
 
-        // Immediately signs out every device currently using this account.
-        $responder->tokens()->delete();
+        // Immediately signs out every device currently using this account,
+        // and stops its incident alerts on them (item 62).
+        $responder->signOutEverywhere();
 
         AuditLogService::log('updated', "Reset password for {$responder->agency} responder account.", $responder);
 
@@ -123,8 +124,10 @@ class ResponderAccountController extends Controller
         $responder->update(['status' => $newStatus]);
 
         if ($newStatus === 'inactive') {
-            // Deactivating should also kick any currently-logged-in devices.
-            $responder->tokens()->delete();
+            // Deactivating should also kick any currently-logged-in devices
+            // — and their alerts, or they'd ring again if it's reactivated
+            // (item 62).
+            $responder->signOutEverywhere();
         }
 
         AuditLogService::log('updated', "Set {$responder->agency} responder account to {$newStatus}.", $responder);

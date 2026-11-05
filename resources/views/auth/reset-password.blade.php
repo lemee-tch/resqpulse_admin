@@ -62,10 +62,14 @@
 <div class="auth-card">
     <div class="icon-wrap"><i class="bi bi-envelope-check"></i></div>
     <h2>Enter the code</h2>
-    <p class="subtitle">We sent a 6-digit code to <strong>{{ $email }}</strong>. It expires in 10 minutes.</p>
+    {{-- Item 62: the server doesn't say whether an account uses the email,
+         so a mistyped one isn't said to have a code. --}}
+    <p class="subtitle">If an admin account uses <strong>{{ $email }}</strong>, we emailed it a 6-digit code. It expires in 10 minutes.</p>
 
     @if ($errors->any())
         <div class="alert alert-danger" style="border-radius:10px;font-size:.85rem;">{{ $errors->first() }}</div>
+    @elseif (session('success'))
+        <div class="alert alert-success" style="border-radius:10px;font-size:.85rem;">{{ session('success') }}</div>
     @endif
 
     <form method="POST" action="{{ route('password.update') }}">
@@ -94,10 +98,13 @@
                 id="password"
                 name="password"
                 class="form-control"
-                placeholder="At least 6 characters"
-                minlength="6"
+                placeholder="8+ characters, with A–Z, a–z and 0–9"
+                minlength="8"
                 required
             >
+            {{-- Item 62: the same rule the server checks — before, this
+                 said 6 characters and the server refused anything under 8. --}}
+            <div class="form-text" style="font-size:.78rem;">At least 8 characters, with a capital letter, a small letter and a number.</div>
         </div>
 
         <div class="mb-3">
@@ -108,7 +115,7 @@
                 name="password_confirmation"
                 class="form-control"
                 placeholder="Re-enter your new password"
-                minlength="6"
+                minlength="8"
                 required
             >
         </div>
@@ -119,6 +126,7 @@
     <form method="POST" action="{{ route('password.email') }}" style="margin-top:4px;">
         @csrf
         <input type="hidden" name="email" value="{{ $email }}">
+        <input type="hidden" name="resend" value="1">
         <button type="submit" class="back-link" style="background:none;border:none;width:100%;cursor:pointer;">
             Didn't receive a code? Resend
         </button>

@@ -38,6 +38,19 @@ class Responder extends Authenticatable
     }
 
     /**
+     * Signs every phone out of this account, and stops its incident alerts
+     * on those phones (item 62) — after MDRRMO resets the password or
+     * deactivates the account. Before, the signed-out phones kept ringing
+     * with the team's incidents. A phone that signs in again gets them back.
+     */
+    public function signOutEverywhere(): void
+    {
+        $this->tokens()->delete();
+        $this->pushTokens()->delete();
+        $this->forceFill(['fcm_token' => null])->saveQuietly();
+    }
+
+    /**
      * Where to send this account's pushes: every phone signed in to it,
      * plus the single token saved before phones were kept separately.
      *

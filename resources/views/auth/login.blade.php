@@ -266,6 +266,12 @@
         <h2>Welcome Back!</h2>
         <p class="subtitle">Sign in to your account</p>
 
+        {{-- "Password reset successful. Please log in." (item 62) — before,
+             this page didn't show it, so a reset looked like it did nothing. --}}
+        @if (session('success'))
+            <div class="alert alert-success w-100" style="border-radius:10px;font-size:.85rem;">{{ session('success') }}</div>
+        @endif
+
         <form method="POST" action="{{ route('login') }}" class="w-100">
             @csrf
 

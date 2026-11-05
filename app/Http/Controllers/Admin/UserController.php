@@ -69,11 +69,18 @@ class UserController extends Controller
         $user->name        = $this->buildFullName($validated);
         $user->email       = $validated['email'];
 
-        if (! empty($validated['password'])) {
+        $passwordChanged = ! empty($validated['password']);
+        if ($passwordChanged) {
             $user->password = Hash::make($validated['password']);
         }
 
         $user->save();
+
+        // Item 62: a new password signs that admin out of every other
+        // browser (this one stays signed in when it's your own account).
+        if ($passwordChanged) {
+            $user->signOutEverywhere($user->is($request->user()) ? $request->session()->getId() : null);
+        }
 
         AuditLogService::log('updated', "Updated admin user {$user->name}.", $user);
 
