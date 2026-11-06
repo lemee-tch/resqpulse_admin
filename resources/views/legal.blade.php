@@ -1,8 +1,10 @@
 {{--
-    Item 64: one public legal page — Privacy Policy, Terms and Conditions,
-    Cookie Policy or Accessibility (LegalController, App\Support\Legal).
-    No sign-in needed. Nothing is loaded from other websites, so opening it
-    sends nothing to Google or a CDN.
+    Items 64–65: one public legal page — Privacy Policy, Terms and
+    Conditions, Cookie Policy or Accessibility (LegalController,
+    App\Support\Legal), from one of two sets: ResQPulse's (the residents'
+    app and this website) or Resqponder's (the response teams' app, under
+    /resqponder/). No sign-in needed. Nothing is loaded from other websites,
+    so opening it sends nothing to Google or a CDN.
 
     Accessibility: a "Skip to the document" link, one h1 and an h2 per
     section, "On this page" links, the current document marked in the
@@ -14,8 +16,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $document['title'] }} · ResQPulse</title>
-    <meta name="description" content="{{ $document['summary'] }} — ResQPulse, MDRRMO Rosales, Pangasinan.">
+    <title>{{ $document['title'] }} · {{ $set['name'] }}</title>
+    <meta name="description" content="{{ $document['summary'] }} — {{ $set['name'] }}, MDRRMO Rosales, Pangasinan.">
     <link rel="icon" href="{{ asset('images/logo.png') }}">
     <style>
         :root {
@@ -92,6 +94,13 @@
         }
         nav.docs a:hover { text-decoration: underline; }
         nav.docs a[aria-current="page"] { border-bottom-color: #fbbf24; }
+        .other-set {
+            background: #e8edfb;
+            color: #1f2937;
+            font-size: .92rem;
+        }
+        .other-set .site-inner { padding-top: .6rem; padding-bottom: .6rem; }
+        .other-set a { font-weight: 600; }
         main { padding-top: 2rem; padding-bottom: 2.5rem; }
         h1 { color: var(--ink); font-size: 2rem; line-height: 1.2; margin: 0 0 .35rem; }
         .updated { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
@@ -130,14 +139,14 @@
 
 <header class="site">
     <div class="site-inner">
-        <a class="brand" href="{{ route('legal.privacy') }}">
+        <a class="brand" href="{{ url($setKey === 'resqponder' ? 'resqponder/privacy-policy' : 'privacy-policy') }}">
             <img src="{{ asset('images/logo.png') }}" alt="">
             <span>
-                <strong>ResQPulse</strong>
-                <span>MDRRMO Rosales, Pangasinan</span>
+                <strong>{{ $set['name'] }}</strong>
+                <span>{{ $setKey === 'resqponder' ? 'For MDRRMO Rosales response teams' : 'MDRRMO Rosales, Pangasinan' }}</span>
             </span>
         </a>
-        <nav class="docs" aria-label="Legal documents">
+        <nav class="docs" aria-label="{{ $set['name'] }} legal documents">
             <ul>
                 @foreach ($documents as $docPath => $doc)
                     <li>
@@ -148,10 +157,22 @@
         </nav>
     </div>
 </header>
+{{-- Item 65: each app has its own documents. --}}
+<div class="other-set">
+    <div class="site-inner">
+        @if ($setKey === 'resqponder')
+            These are Resqponder's documents, for response teams. Residents and the website:
+            <a href="{{ url($otherPath) }}">ResQPulse's documents</a>.
+        @else
+            Response teams using the Resqponder app:
+            <a href="{{ url($otherPath) }}">Resqponder's documents</a>.
+        @endif
+    </div>
+</div>
 
 <main id="document" tabindex="-1">
     <h1>{{ $document['title'] }}</h1>
-    <p class="updated">Last updated: {{ \App\Support\Legal::UPDATED }}</p>
+    <p class="updated">Last updated: {{ $set['updated'] }}</p>
 
     @foreach ($document['intro'] as $paragraph)
         <p>{{ \App\Support\Legal::inline($paragraph) }}</p>
@@ -191,7 +212,7 @@
 
 <footer class="site">
     <div class="inner">
-        ResQPulse is run by the Municipal Disaster Risk Reduction and Management Office (MDRRMO) of Rosales, Pangasinan.
+        {{ $set['name'] }} is run by the Municipal Disaster Risk Reduction and Management Office (MDRRMO) of Rosales, Pangasinan.
         · <a href="{{ route('login') }}">MDRRMO staff sign-in</a>
     </div>
 </footer>

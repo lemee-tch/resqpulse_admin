@@ -36,11 +36,16 @@ Route::get('/', fn() => redirect()->route('login'));
 
 // Item 64: Privacy Policy, Terms and Conditions, Cookie Policy and
 // Accessibility — public, for the apps, Google Play and the login page.
-// The same text is in both apps (lib/legal.dart). App\Support\Legal.
+// The same text as each app's lib/legal_text.dart. App\Support\Legal.
 Route::get('/privacy-policy', [LegalController::class, 'show'])->defaults('path', 'privacy-policy')->name('legal.privacy');
 Route::get('/terms', [LegalController::class, 'show'])->defaults('path', 'terms')->name('legal.terms');
 Route::get('/cookie-policy', [LegalController::class, 'show'])->defaults('path', 'cookie-policy')->name('legal.cookies');
 Route::get('/accessibility', [LegalController::class, 'show'])->defaults('path', 'accessibility')->name('legal.accessibility');
+// Item 65: Resqponder's own documents (the response teams' app).
+Route::get('/resqponder/privacy-policy', [LegalController::class, 'show'])->defaults('path', 'resqponder/privacy-policy')->name('legal.resqponder.privacy');
+Route::get('/resqponder/terms', [LegalController::class, 'show'])->defaults('path', 'resqponder/terms')->name('legal.resqponder.terms');
+Route::get('/resqponder/cookie-policy', [LegalController::class, 'show'])->defaults('path', 'resqponder/cookie-policy')->name('legal.resqponder.cookies');
+Route::get('/resqponder/accessibility', [LegalController::class, 'show'])->defaults('path', 'resqponder/accessibility')->name('legal.resqponder.accessibility');
 Route::get('/login',     [AuthController::class, 'showLogin'])->name('login');
 // Throttled to 5 attempts/minute per IP+email combo — slows down brute-force
 // and credential-stuffing against the admin panel. Laravel's default
