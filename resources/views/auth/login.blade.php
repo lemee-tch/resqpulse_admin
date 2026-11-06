@@ -186,6 +186,14 @@
             color: #6b7280;
         }
 
+        /* Item 67: under Remember me. */
+        .remember-hint {
+            font-size: .76rem;
+            line-height: 1.45;
+            color: #4b5563;
+            margin: 0 0 1.5rem;
+        }
+
         .forgot-link {
             font-size: .83rem;
             color: #1a3c8f;
@@ -210,10 +218,19 @@
             padding: 13px;
             width: 100%;
             transition: background .2s, box-shadow .2s, transform .1s;
+            /* Item 67: Bootstrap's own .btn states made the text dark on
+               hover (hard to read on navy), and the button see-through
+               with no focus ring when reached with the keyboard. */
+            --bs-btn-hover-color: #fff;
+            --bs-btn-hover-bg: #152f72;
+            --bs-btn-active-color: #fff;
+            --bs-btn-active-bg: #152f72;
+            --bs-btn-focus-box-shadow: 0 0 0 3px #f59e0b;
         }
 
         .btn-signin:hover {
             background: #152f72;
+            color: #fff;
             box-shadow: 0 6px 20px rgba(26, 60, 143, .35);
             transform: translateY(-1px);
         }
@@ -344,14 +361,16 @@
             </div>
 
             <!-- Remember me + Forgot password -->
-            <div class="d-flex align-items-center justify-content-between mb-4">
+            <div class="d-flex align-items-center justify-content-between mb-1">
                 <div class="form-check">
                     <input
                         class="form-check-input"
                         type="checkbox"
                         id="remember"
                         name="remember"
-                        {{ old('remember') ? 'checked' : '' }}
+                        value="1"
+                        aria-describedby="remember-hint"
+                        @checked(old('remember'))
                     >
                     <label class="form-check-label" for="remember">Remember me</label>
                 </div>
@@ -361,6 +380,8 @@
                     <a href="#" class="forgot-link">Forgot Password?</a>
                 @endif
             </div>
+            {{-- Item 67: what Remember me does. --}}
+            <p id="remember-hint" class="remember-hint">Keeps you signed in on this browser until you sign out. Don't tick it on a shared computer.</p>
 
             <!-- Submit -->
             <button type="submit" class="btn btn-signin">Sign In</button>

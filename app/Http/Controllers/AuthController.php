@@ -35,6 +35,10 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
+        // Remember me ticked: a cookie keeps the admin signed in on this
+        // browser until they sign out (item 67). Not ticked: the session
+        // ends when the browser is closed (session.expire_on_close), or
+        // after 2 hours without use.
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
 
@@ -44,9 +48,10 @@ class AuthController extends Controller
 
         }
 
+        // Item 67: the Remember me tick stays after a wrong password.
         return back()->withErrors([
             'email' => 'Invalid email or password.',
-        ])->onlyInput('email');
+        ])->onlyInput('email', 'remember');
     }
 
     // ── Forgot Password (OTP) ───────────────────────────────────────────
@@ -702,10 +707,20 @@ class AuthController extends Controller
         return (int) round((($new - $old) / $old) * 100);
     }
 
+    /**
+     * Signs out this browser only (item 67), and forgets its Remember me.
+     * Auth::logout() also changed the account's remember token, so
+     * signing out on one computer cancelled Remember me on every other
+     * computer using the same account. To sign out everywhere, change the
+     * password (item 62).
+     */
     public function logout(Request $request)
     {
-        AuditLogService::log('logout', auth()->user()->name . ' logged out.');
-        Auth::logout();
+        // No one signed in (before, a server error): just go to Sign In.
+        if ($admin = Auth::user()) {
+            AuditLogService::log('logout', $admin->name . ' logged out.');
+        }
+        Auth::logoutCurrentDevice();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

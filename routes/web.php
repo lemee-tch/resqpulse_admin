@@ -32,7 +32,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/responder-accounts/{responder}/toggle-status', [ResponderAccountController::class, 'toggleStatus'])->name('responder-accounts.toggle-status');
 });
 
-Route::get('/', fn() => redirect()->route('login'));
+// Item 67: an admin who's signed in, or whose browser remembers them
+// ("Remember me"), goes straight to the Dashboard. Before, the site always
+// opened on the sign-in form, so Remember me looked like it did nothing.
+Route::get('/', fn () => redirect()->route(auth()->check() ? 'dashboard' : 'login'));
 
 // Item 64: Privacy Policy, Terms and Conditions, Cookie Policy and
 // Accessibility — public, for the apps, Google Play and the login page.
@@ -46,19 +49,25 @@ Route::get('/resqponder/privacy-policy', [LegalController::class, 'show'])->defa
 Route::get('/resqponder/terms', [LegalController::class, 'show'])->defaults('path', 'resqponder/terms')->name('legal.resqponder.terms');
 Route::get('/resqponder/cookie-policy', [LegalController::class, 'show'])->defaults('path', 'resqponder/cookie-policy')->name('legal.resqponder.cookies');
 Route::get('/resqponder/accessibility', [LegalController::class, 'show'])->defaults('path', 'resqponder/accessibility')->name('legal.resqponder.accessibility');
-Route::get('/login',     [AuthController::class, 'showLogin'])->name('login');
-// Throttled to 5 attempts/minute per IP+email combo — slows down brute-force
-// and credential-stuffing against the admin panel. Laravel's default
-// 'throttle' limiter uses the 'database' cache store configured in
-// config/cache.php, so this works on shared hosting with no Redis needed.
-Route::post('/login',    [AuthController::class, 'login'])->middleware('throttle:5,1');
-Route::post('/logout',   [AuthController::class, 'logout'])->name('logout');
+// The sign-in pages are for admins who aren't signed in ('guest', item 67).
+// One who's signed in, or remembered, is sent to the Dashboard instead —
+// that's what makes "Remember me" work when the site is opened again. To
+// change the password while signed in, use the Users page.
+Route::middleware('guest')->group(function () {
+    Route::get('/login',     [AuthController::class, 'showLogin'])->name('login');
+    // Throttled to 5 attempts/minute per IP+email combo — slows down brute-force
+    // and credential-stuffing against the admin panel. Laravel's default
+    // 'throttle' limiter uses the 'database' cache store configured in
+    // config/cache.php, so this works on shared hosting with no Redis needed.
+    Route::post('/login',    [AuthController::class, 'login'])->middleware('throttle:5,1');
 
-//fogot password
-Route::get('/forgot-password', [AuthController::class, 'showForgotPassword'])->name('password.request');
-Route::post('/forgot-password', [AuthController::class, 'sendResetOtp'])->name('password.email')->middleware('throttle:5,1');
-Route::get('/reset-password', [AuthController::class, 'showResetPassword'])->name('password.reset');
-Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.update')->middleware('throttle:5,1');
+    //fogot password
+    Route::get('/forgot-password', [AuthController::class, 'showForgotPassword'])->name('password.request');
+    Route::post('/forgot-password', [AuthController::class, 'sendResetOtp'])->name('password.email')->middleware('throttle:5,1');
+    Route::get('/reset-password', [AuthController::class, 'showResetPassword'])->name('password.reset');
+    Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.update')->middleware('throttle:5,1');
+});
+Route::post('/logout',   [AuthController::class, 'logout'])->name('logout');
 
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard',  [AuthController::class, 'dashboard'])->name('dashboard');

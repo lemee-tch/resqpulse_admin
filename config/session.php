@@ -34,7 +34,10 @@ return [
 
     'lifetime' => (int) env('SESSION_LIFETIME', 120),
 
-    'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
+    // Item 67: true, so "Remember me" on the admin sign-in means something.
+    // Not ticked: closing the browser signs the admin out. Ticked: a
+    // separate cookie keeps them signed in until they sign out.
+    'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', true),
 
     /*
     |--------------------------------------------------------------------------

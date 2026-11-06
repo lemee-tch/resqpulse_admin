@@ -2,10 +2,14 @@
 
 namespace App\Providers;
 
+use Illuminate\Auth\Events\Login;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\View;
 use App\Models\Incident;
+use App\Services\AuditLogService;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,6 +30,15 @@ class AppServiceProvider extends ServiceProvider
         // markup: the admin panel uses Bootstrap, not Tailwind, so
         // Laravel's default links showed giant arrows (item 60).
         Paginator::useBootstrapFive();
+
+        // Item 67: an admin let in by "Remember me" (no password typed,
+        // because their browser remembered them) goes in the Audit Log
+        // too, next to "… logged in.".
+        Event::listen(Login::class, function (Login $event) {
+            if ($event->guard === 'web' && $event->remember && Auth::guard('web')->viaRemember()) {
+                AuditLogService::log('login', $event->user->name . ' logged in with Remember me.');
+            }
+        });
 
         View::composer('*', function ($view) {
             static $sosCount = null;
