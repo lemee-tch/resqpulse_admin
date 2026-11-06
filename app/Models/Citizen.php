@@ -21,6 +21,8 @@ class Citizen extends Authenticatable
         'verification_otp', 'verification_otp_expires_at', 'verification_otp_via',
         'email_verified_at', 'mobile_verified_at', 'fcm_token',
         'blocked_at', 'blocked_by', 'block_reason',
+        // Item 64: when they agreed to the Terms and Privacy Policy.
+        'privacy_consent_at', 'privacy_consent_version',
     ];
 
     /**
@@ -54,6 +56,8 @@ class Citizen extends Authenticatable
         'fcm_token', 'google_id',
         // MDRRMO's block (item 54): the app gets the message instead.
         'blocked_at', 'blocked_by', 'block_reason',
+        // Item 64: MDRRMO's record of the consent; responders don't need it.
+        'privacy_consent_at', 'privacy_consent_version',
     ];
 
     protected function casts(): array
@@ -63,6 +67,7 @@ class Citizen extends Authenticatable
             'mobile_verified_at' => 'datetime',
             'verified_at'        => 'datetime',
             'blocked_at'         => 'datetime',
+            'privacy_consent_at' => 'datetime',
             'password'           => 'hashed',
         ];
     }

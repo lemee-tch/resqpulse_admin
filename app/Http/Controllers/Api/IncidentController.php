@@ -404,7 +404,8 @@ class IncidentController extends Controller
             }
 
             return response()->json([
-                'message'  => 'SOS already sent. MDRRMO has it and will verify it right away.',
+                // Item 64: no promise of "right away".
+                'message'  => 'SOS already sent. MDRRMO has it and will check it as soon as possible.',
                 'incident' => $repeat,
                 'repeat'   => true,
             ], 201);
@@ -478,7 +479,8 @@ class IncidentController extends Controller
         // approves the SOS (Admin\IncidentController::approve()).
         $message = $isOutsideRosales
             ? 'SOS sent. Since this location is outside Rosales, MDRRMO will review it before responders are notified.'
-            : 'SOS sent. MDRRMO will verify it right away and then send responders.';
+            // Item 64: no promise of "right away".
+            : 'SOS sent. MDRRMO will check it and send responders as soon as possible.';
 
         return response()->json([
             'message'  => $message,

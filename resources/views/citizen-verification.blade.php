@@ -105,14 +105,15 @@
             color: #4b5563; vertical-align: middle;
         }
         .td-name { font-weight: 600; color: #111827; }
-        .td-sub { font-size: .76rem; color: #9ca3af; }
+        /* #9ca3af was too faint to read (item 64): #6b7280 is 4.8:1 on white. */
+        .td-sub { font-size: .76rem; color: #6b7280; }
 
         /* ID thumbnail */
         .id-thumb {
             width: 56px; height: 38px; object-fit: cover;
             border-radius: 6px; border: 1px solid #e5e7eb; cursor: pointer;
         }
-        .id-none { font-size: .76rem; color: #d1d5db; font-style: italic; }
+        .id-none { font-size: .76rem; color: #6b7280; font-style: italic; }
 
         /* Status badge */
         .badge-pending  { background: #fef3c7; color: #92400e; font-size: .72rem; font-weight: 700; padding: 3px 12px; border-radius: 20px; }
@@ -399,7 +400,15 @@
                                     <span class="id-none">No ID uploaded</span>
                                 @endif
                             </td>
-                            <td>{{ $citizen->created_at->format('M d, Y') }}</td>
+                            <td>
+                                {{ $citizen->created_at->format('M d, Y') }}
+                                {{-- Item 64: the sign-up consent on record (Data Privacy Act). --}}
+                                @if($citizen->privacy_consent_at)
+                                    <div class="td-sub" title="Agreed {{ $citizen->privacy_consent_at->format('M d, Y g:i A') }}">Agreed to the terms ({{ $citizen->privacy_consent_version }})</div>
+                                @else
+                                    <div class="td-sub">No consent on record</div>
+                                @endif
+                            </td>
                             <td>
                                 @if($citizen->verification_status === 'rejected')
                                     <span class="badge-rejected">Rejected</span>
@@ -488,7 +497,15 @@
                                     <span class="id-none">No ID uploaded</span>
                                 @endif
                             </td>
-                            <td>{{ $citizen->created_at->format('M d, Y') }}</td>
+                            <td>
+                                {{ $citizen->created_at->format('M d, Y') }}
+                                {{-- Item 64: the sign-up consent on record (Data Privacy Act). --}}
+                                @if($citizen->privacy_consent_at)
+                                    <div class="td-sub" title="Agreed {{ $citizen->privacy_consent_at->format('M d, Y g:i A') }}">Agreed to the terms ({{ $citizen->privacy_consent_version }})</div>
+                                @else
+                                    <div class="td-sub">No consent on record</div>
+                                @endif
+                            </td>
                             <td><span class="badge-verified">Verified</span></td>
                             <td>
                                 {{-- Item 54: Block, not Reject — a verified resident who sends

@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\IncidentController;
+use App\Http\Controllers\LegalController;
 use App\Http\Controllers\Admin\CitizenVerificationController;
 use App\Http\Controllers\Admin\AlertController;
 use App\Http\Controllers\Admin\EvacuationCenterController;
@@ -32,6 +33,14 @@ Route::middleware('auth')->group(function () {
 });
 
 Route::get('/', fn() => redirect()->route('login'));
+
+// Item 64: Privacy Policy, Terms and Conditions, Cookie Policy and
+// Accessibility — public, for the apps, Google Play and the login page.
+// The same text is in both apps (lib/legal.dart). App\Support\Legal.
+Route::get('/privacy-policy', [LegalController::class, 'show'])->defaults('path', 'privacy-policy')->name('legal.privacy');
+Route::get('/terms', [LegalController::class, 'show'])->defaults('path', 'terms')->name('legal.terms');
+Route::get('/cookie-policy', [LegalController::class, 'show'])->defaults('path', 'cookie-policy')->name('legal.cookies');
+Route::get('/accessibility', [LegalController::class, 'show'])->defaults('path', 'accessibility')->name('legal.accessibility');
 Route::get('/login',     [AuthController::class, 'showLogin'])->name('login');
 // Throttled to 5 attempts/minute per IP+email combo — slows down brute-force
 // and credential-stuffing against the admin panel. Laravel's default

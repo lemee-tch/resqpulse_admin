@@ -220,6 +220,35 @@
 
         .btn-signin:active { transform: translateY(0); }
 
+        /* Item 64: who may sign in, and the legal pages. */
+        .legal-note {
+            font-size: .8rem;
+            line-height: 1.5;
+            color: #4b5563;
+            margin: 18px 0 0;
+            text-align: center;
+        }
+        .legal-note a,
+        .legal-links a {
+            color: #1a3c8f;
+            font-weight: 600;
+            text-underline-offset: 2px;
+        }
+        .legal-links {
+            margin-top: 10px;
+            font-size: .8rem;
+            text-align: center;
+            color: #6b7280;
+        }
+        .legal-links a { display: inline-block; padding: 4px 2px; }
+        .legal-note a:focus-visible,
+        .legal-links a:focus-visible,
+        .forgot-link:focus-visible {
+            outline: 3px solid #f59e0b;
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+
         @media (max-width: 640px) {
             .login-card {
                 flex-direction: column;
@@ -336,6 +365,19 @@
             <!-- Submit -->
             <button type="submit" class="btn btn-signin">Sign In</button>
         </form>
+
+        {{-- Item 64: who may sign in, what's recorded, and the legal pages. --}}
+        <p class="legal-note">
+            For authorized MDRRMO Rosales staff only. What you do in the panel is recorded.
+            By signing in, you agree to the <a href="{{ route('legal.terms') }}">Terms and Conditions</a>
+            and the <a href="{{ route('legal.privacy') }}">Privacy Policy</a>.
+        </p>
+        <nav class="legal-links" aria-label="Legal">
+            <a href="{{ route('legal.privacy') }}">Privacy Policy</a> ·
+            <a href="{{ route('legal.terms') }}">Terms</a> ·
+            <a href="{{ route('legal.cookies') }}">Cookie Policy</a> ·
+            <a href="{{ route('legal.accessibility') }}">Accessibility</a>
+        </nav>
     </div>
 
 </div>

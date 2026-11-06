@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Citizen;
 use App\Services\AuditLogService;
 use App\Services\SmsService;
+use App\Support\Legal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -121,9 +122,17 @@ class AuthController extends Controller
             'street'       => ['nullable', 'string'],
             'zone'         => ['nullable', 'string'],
             'valid_id'     => ['required', 'file', 'image', 'max:5120'],
+            // Item 64: the resident's agreement to the Terms and Conditions
+            // and the Privacy Policy, including the use of their ID photo
+            // (Data Privacy Act, Sections 12(a) and 13(a); NPC Circular
+            // No. 2023-04: a clear action, kept as a record). Last, so a
+            // problem with a field is shown first.
+            'consent'         => ['accepted'],
+            'consent_version' => ['nullable', 'string', 'max:20'],
         ], [
             'mobile.unique' => $this->takenMessage($waiting, 'mobile', $this->inputString($request, 'mobile')),
             'email.unique'  => $this->takenMessage($waiting, 'email', $this->inputString($request, 'email')),
+            'consent.accepted' => 'Please agree to the Terms and Conditions and the Privacy Policy to create an account. If the app has no box for it, update the app.',
         ]);
 
         if ($validator->fails()) {
@@ -153,10 +162,14 @@ class AuthController extends Controller
         $otp = (string) random_int(100000, 999999);
         $via = $useSms ? 'sms' : 'email';
 
+        // The documents' version the app showed (item 64); this server's
+        // version if the app didn't say.
+        $consentVersion = $this->inputString($request, 'consent_version') ?: Legal::VERSION;
+
         try {
             // Removing the unfinished sign-up(s) and saving the new one
             // happen together: if saving fails, the old one is kept.
-            $citizen = DB::transaction(function () use ($request, $replaceable, $fullName, $validIdPath, $otp, $via, $mobileAccount) {
+            $citizen = DB::transaction(function () use ($request, $replaceable, $fullName, $validIdPath, $otp, $via, $mobileAccount, $consentVersion) {
                 foreach ($replaceable as $old) {
                     $old->delete();
                 }
@@ -178,6 +191,9 @@ class AuthController extends Controller
                     'verification_otp'            => $otp,
                     'verification_otp_expires_at' => now()->addMinutes(self::CODE_MINUTES),
                     'verification_otp_via'        => $via,
+                    // Item 64: when they agreed, and to which version.
+                    'privacy_consent_at'          => now(),
+                    'privacy_consent_version'     => $consentVersion,
                 ]);
             });
         } catch (\Throwable $e) {
