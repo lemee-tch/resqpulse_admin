@@ -381,7 +381,6 @@
                 @endif
             </div>
             {{-- Item 67: what Remember me does. --}}
-            <p id="remember-hint" class="remember-hint">Keeps you signed in on this browser until you sign out. Don't tick it on a shared computer.</p>
 
             <!-- Submit -->
             <button type="submit" class="btn btn-signin">Sign In</button>
