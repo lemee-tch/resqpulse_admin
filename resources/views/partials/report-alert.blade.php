@@ -226,7 +226,7 @@
                 '<div class="ra-where" title="' + escapeHtml(r.where) + '">' + escapeHtml(r.where) + '</div>' +
                 '<div class="ra-foot">' +
                     '<span class="ra-from">From ' + escapeHtml(r.from) + '</span>' +
-                    '<a class="ra-open" href="' + escapeHtml(r.url) + '">' + escapeHtml(r.action) + ' <i class="bi bi-arrow-right"></i></a>' +
+                    '<a class="ra-open" href="' + escapeHtml(r.url) + '">' + escapeHtml(r.action) + ' <i class="bi bi-chevron-right"></i></a>' +
                 '</div>' +
             '</div>' +
             '<button type="button" class="ra-close" aria-label="Close" title="Close">&times;</button>';

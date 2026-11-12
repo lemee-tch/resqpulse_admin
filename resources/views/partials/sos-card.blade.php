@@ -16,18 +16,12 @@
          (item 59);
       3. the team (Active, For Review, Resolved) or the decline reason.
 
-    All the buttons are together on the right — on phones, under the text:
-      pending     View (approve or decline on SOS Details)
-      active      View (an approved SOS with no team yet says so; the team
-                  is assigned on SOS Details)
-      for-review  View · Report · Edit · Return · Approve (item 49: the
-                  team's Initial report — correct it, approve it as
-                  resolved, or send it back)
-      resolved    View
-      declined    View · Delete
-    Clicking anywhere else on the row opens SOS Details too (the script on
-    the page skips the row's own buttons and links). The photo and the AI's
-    reading of it are on SOS Details only.
+    The only button is View, on the right — on phones, under the text
+    (item 68). Everything else is done on SOS Details: approve or decline,
+    send it to the team, read, correct, approve or return the team's
+    report, and delete a declined alert. Clicking anywhere else on the row
+    opens SOS Details too (the script on the page skips the row's own
+    links). The photo and the AI's reading of it are on SOS Details only.
 
     The styles (.sos-card …) are on the page.
 --}}
@@ -184,42 +178,10 @@
         @endif
     </div>
 
-    {{-- Every button for this alert, together. --}}
+    {{-- Item 68: View only, with the same arrow as every View button. --}}
     <div class="sos-actions">
-        <a href="{{ $url }}" class="act" title="Open the SOS details: photo, map, team and timeline">
-            <i class="bi bi-eye"></i> View
+        <a href="{{ $url }}" class="btn-view" title="Open the SOS details: photo, map, team, report and timeline">
+            View <i class="bi bi-chevron-right"></i>
         </a>
-
-        @if($tab === 'for-review')
-            @if($sos->report_data)
-                <a href="{{ route('incident.report-pdf', $sos) }}" target="_blank" class="act" title="Open the report (PDF)">
-                    <i class="bi bi-file-earmark-pdf"></i> Report
-                </a>
-                <a href="{{ route('incident.report.edit', $sos) }}" class="act act--edit" title="Read the report and correct it before approving">
-                    <i class="bi bi-pencil-square"></i> Edit
-                </a>
-            @endif
-            <button type="button" class="act act--warn" data-bs-toggle="modal" data-bs-target="#returnModal{{ $sos->id }}">
-                <i class="bi bi-arrow-return-left"></i> Return
-            </button>
-            <form action="{{ route('incident.confirm-resolved', $sos->id) }}" method="POST" class="resolve-form"
-                  data-type="SOS"
-                  data-notifies-citizen="{{ $sos->citizen_id ? '1' : '0' }}">
-                @csrf
-                <button type="submit" class="act act--primary" title="Approve the report and mark the SOS resolved">
-                    <i class="bi bi-check2-circle"></i> Approve
-                </button>
-            </form>
-        @elseif($tab === 'declined')
-            {{-- Permanently removes this declined alert (IncidentController::destroy()). --}}
-            <form method="POST" action="{{ route('incident.destroy', $sos->id) }}" class="delete-form"
-                  data-what="SOS alert from {{ $reporter }}">
-                @csrf
-                @method('DELETE')
-                <button type="submit" class="act act--danger" title="Delete this declined SOS alert">
-                    <i class="bi bi-trash3"></i> Delete
-                </button>
-            </form>
-        @endif
     </div>
 </article>

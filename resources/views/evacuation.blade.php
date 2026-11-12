@@ -113,6 +113,14 @@
             border-radius: 6px; transition: color .2s, background .2s;
         }
         .action-btn:hover { color: #1a3c8f; background: #eff2fb; }
+        /* Item 68: View, like the View buttons on Incidents (text + arrow). */
+        .btn-view {
+            display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; vertical-align: middle;
+            background: #fff; color: #1a3c8f; border: 1.5px solid #c7d2fe; border-radius: 6px;
+            padding: 5px 12px; font-size: .78rem; font-weight: 700; cursor: pointer;
+            transition: background .2s, color .2s, border-color .2s;
+        }
+        .btn-view:hover, .btn-view:focus-visible { background: #1a3c8f; border-color: #1a3c8f; color: #fff; }
 
         .empty-state { text-align: center; padding: 48px 20px; color: #9ca3af; font-size: .9rem; }
 
@@ -320,8 +328,8 @@
                         <td>{{ $c->barangay }}</td>
                         <td>{{ $dist !== null ? $dist . ' km' : '—' }}</td>
                         <td>
-                            <button class="action-btn" title="View details" data-bs-toggle="modal" data-bs-target="#viewModal{{ $c->id }}">
-                                <i class="bi bi-eye"></i>
+                            <button type="button" class="btn-view" title="View details" data-bs-toggle="modal" data-bs-target="#viewModal{{ $c->id }}">
+                                View <i class="bi bi-chevron-right"></i>
                             </button>
                             <a href="{{ route('evacuation.log', $c) }}" class="action-btn" title="Evacuation log" style="text-decoration:none;display:inline-block;">
                                 <i class="bi bi-clipboard2-pulse"></i>

@@ -238,37 +238,24 @@
         .sos-line3 { margin: 3px 0 0 19px; font-size: .8rem; color: #6b7280; }
         .sos-line3.warn { color: #b45309; font-weight: 600; }
 
-        /* All the buttons, together. */
+        /* View, the card's only button (item 68): the same button as View on
+           Incidents and Evacuation Centers. */
         .sos-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-        .sos-actions form { margin: 0; display: flex; }
-        .act {
-            display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
-            height: 36px; padding: 0 14px; border-radius: 9px;
-            background: #fff; color: #374151; border: 1px solid #d9dee8;
-            font-size: .8rem; font-weight: 600; text-decoration: none; cursor: pointer;
-            transition: background .15s, border-color .15s, color .15s;
+        .btn-view {
+            display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;
+            background: #fff; color: #1a3c8f; border: 1.5px solid #c7d2fe; border-radius: 6px;
+            padding: 5px 12px; font-size: .78rem; font-weight: 700; text-decoration: none; cursor: pointer;
+            transition: background .2s, color .2s, border-color .2s;
         }
-        .act i { font-size: .9rem; }
-        .act:hover, .act:focus-visible { background: #f5f7fb; border-color: #c3cad9; color: #111827; outline: none; }
-        .act--primary { background: #16a34a; border-color: #16a34a; color: #fff; }
-        .act--primary:hover, .act--primary:focus-visible { background: #15803d; border-color: #15803d; color: #fff; }
-        .act--danger { color: #dc2626; border-color: #f5c2c2; }
-        .act--danger:hover, .act--danger:focus-visible { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
-        .act--warn { color: #b45309; border-color: #f3d9a4; }
-        .act--warn:hover, .act--warn:focus-visible { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
-        /* For Review: correct the team's report (item 49). */
-        .act--edit { color: #6d28d9; border-color: #d8ccfb; }
-        .act--edit:hover, .act--edit:focus-visible { background: #f5f3ff; border-color: #a78bfa; color: #5b21b6; }
+        .btn-view:hover, .btn-view:focus-visible { background: #1a3c8f; border-color: #1a3c8f; color: #fff; }
 
         @media (max-width: 760px) {
             .sos-card { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
             .sos-line2, .sos-line3 { margin-left: 0; }
             .sos-time::before { display: none; } /* it may start a new line */
-            /* The main action first, full width; the others share a row. */
-            .sos-actions { flex-wrap: wrap; }
-            .sos-actions > a, .sos-actions > button, .sos-actions > form { flex: 1 1 0; }
-            .sos-actions form .act, .sos-actions .act { width: 100%; height: 40px; }
-            .sos-actions > form:has(.act--primary) { flex-basis: 100%; order: -1; }
+            /* View, full width under the text. */
+            .sos-actions > a { flex: 1 1 0; }
+            .sos-actions .btn-view { width: 100%; height: 40px; }
         }
 
         .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
@@ -491,12 +478,11 @@
         <div id="tab-for-review" class="tab-panel">
             <div class="review-banner review-banner--report">
                 <i class="bi bi-clipboard2-check" style="margin-top:1px;"></i>
-                <span>The team sent their Initial report. Check it — <strong>Edit</strong> it if something needs correcting — then <strong>Approve</strong> it as resolved, or <strong>Return</strong> it with what needs fixing.</span>
+                <span>The team sent their Initial report. Open <strong>View</strong> to read it, correct it if something is wrong, then approve it as resolved or return it with what needs fixing.</span>
             </div>
 
             @forelse($forReviewSos as $sos)
                 @include('partials.sos-card', ['sos' => $sos, 'tab' => 'for-review'])
-                @include('partials.return-report-modal', ['incident' => $sos, 'modalId' => 'returnModal' . $sos->id])
             @empty
                 <div class="empty-state">
                     <i class="bi bi-clipboard2-check"></i>
@@ -642,58 +628,22 @@
         return !!btn;
     }
 
-    // ?tab=declined (e.g. after deleting a declined alert) opens that tab.
+    // ?tab=declined (e.g. after deleting a declined alert on SOS Details)
+    // opens that tab.
     (function () {
         const tab = new URLSearchParams(window.location.search).get('tab');
         if (tab) openTab(tab);
     })();
 
-    // Pending is the first tab, so after Approve / Return on the
-    // For Review tab the reload would jump back to it. Remember the tab the
-    // change came from and reopen it once.
-    (function () {
-        const KEY = 'resqpulse_sos_return_tab';
-        document.querySelectorAll('.tab-panel form:not(.delete-form)').forEach(form => {
-            form.addEventListener('submit', () => {
-                const panel = form.closest('.tab-panel');
-                if (!panel) return;
-                try { sessionStorage.setItem(KEY, panel.id.replace('tab-', '')); } catch (e) {}
-            });
-        });
-        let tab = null;
-        try { tab = sessionStorage.getItem(KEY); sessionStorage.removeItem(KEY); } catch (e) {}
-        if (tab) openTab(tab);
-    })();
-
     // Clicking a card opens the SOS details, like its View button —
-    // except on the card's own buttons, links and forms, or while text is
-    // being selected.
+    // except on the card's own links, or while text is being selected.
+    // (Item 68: View is the only button; approving, returning and
+    // deleting are done on SOS Details.)
     document.querySelectorAll('.sos-card[data-href]').forEach(card => {
         card.addEventListener('click', e => {
             if (e.target.closest('a, button, form, input, select, textarea, label')) return;
             if (String(window.getSelection ? window.getSelection() : '').trim() !== '') return;
             window.location.href = card.dataset.href;
-        });
-    });
-
-    // Delete (declined alerts only) — asks first, since it can't be undone.
-    document.querySelectorAll('.delete-form').forEach(form => {
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-            const what = document.createElement('div');
-            what.textContent = form.dataset.what || 'declined SOS alert';
-            Swal.fire({
-                icon: 'warning',
-                title: 'Delete this declined SOS alert?',
-                html: `<div style="font-size:.9em;color:#4b5563;">${what.innerHTML}<br>It's removed for good, with its photo. This can't be undone.</div>`,
-                showCancelButton: true,
-                confirmButtonText: 'Yes, delete',
-                cancelButtonText: 'Cancel',
-                confirmButtonColor: '#dc2626',
-                focusCancel: true,
-            }).then(result => {
-                if (result.isConfirmed) form.submit();
-            });
         });
     });
 

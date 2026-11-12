@@ -131,36 +131,20 @@
         .photo-thumb { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e7eb; cursor: pointer; }
         .thumb-broken-icon { color: #d1d5db; font-size: 1.2rem; }
 
-        .btn-approve {
-            background: #10b981; color: #fff; border: none; border-radius: 6px;
-            padding: 6px 14px; font-size: .78rem; font-weight: 700; cursor: pointer;
-            display: inline-flex; align-items: center; gap: 6px; transition: background .2s;
-        }
-        .btn-approve:hover { background: #059669; }
-        .review-actions { display: flex; gap: 8px; }
-        .review-actions { align-items: center; white-space: nowrap; }
         .td-location { max-width: 360px; }
         /* What the resident typed to find the spot (item 59). */
         .td-landmark { display: block; margin-top: 3px; font-size: .74rem; color: #6b7280; }
         .td-landmark i { color: #1a3c8f; }
         .td-action { width: 1%; text-align: right; white-space: nowrap; }
+        /* View, the only button on every tab (item 68): the details page
+           has Approve, Decline, Edit, Return and Delete. */
         .btn-view {
             display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
             background: #fff; color: #1a3c8f; border: 1.5px solid #c7d2fe; border-radius: 6px;
             padding: 5px 12px; font-size: .78rem; font-weight: 700; text-decoration: none;
             transition: background .2s, color .2s, border-color .2s;
         }
-        .btn-view:hover { background: #1a3c8f; border-color: #1a3c8f; color: #fff; }
-        /* Resolved History: Delete (declined reports only) next to View. */
-        .row-actions { display: inline-flex; align-items: center; gap: 8px; }
-        .row-actions form { margin: 0; }
-        .btn-delete {
-            display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
-            background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; border-radius: 6px;
-            padding: 5px 11px; font-size: .78rem; font-weight: 700; cursor: pointer;
-            transition: background .2s, color .2s, border-color .2s;
-        }
-        .btn-delete:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
+        .btn-view:hover, .btn-view:focus-visible { background: #1a3c8f; border-color: #1a3c8f; color: #fff; }
         .map-link { margin-left: 6px; font-size: .74rem; font-weight: 600; color: #1a3c8f; text-decoration: none; white-space: nowrap; }
         .map-link:hover { text-decoration: underline; }
         .guest-note { font-size: .74rem; color: #92400e; font-style: italic; }
@@ -178,31 +162,6 @@
         .tab-note i { margin-top: 1px; }
         .tab-note--pending { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
         .tab-note--review  { background: #f5f3ff; border: 1px solid #ddd6fe; color: #5b21b6; }
-
-        /* For Review actions: the report PDF, Edit (correct the report —
-           item 49), Approve, Return. */
-        .btn-pdf {
-            display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
-            background: #fff; color: #b91c1c; border: 1.5px solid #fecaca; border-radius: 6px;
-            padding: 5px 11px; font-size: .78rem; font-weight: 700; text-decoration: none;
-            transition: background .2s, color .2s, border-color .2s;
-        }
-        .btn-pdf:hover { background: #fef2f2; border-color: #f87171; color: #991b1b; }
-        .btn-edit {
-            display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
-            background: #fff; color: #6d28d9; border: 1.5px solid #c4b5fd; border-radius: 6px;
-            padding: 5px 12px; font-size: .78rem; font-weight: 700; text-decoration: none;
-            transition: background .2s, color .2s, border-color .2s;
-        }
-        .btn-edit:hover { background: #6d28d9; border-color: #6d28d9; color: #fff; }
-        .btn-return {
-            background: #fff; color: #b45309; border: 1.5px solid #f59e0b; border-radius: 6px;
-            padding: 5px 13px; font-size: .78rem; font-weight: 700; cursor: pointer;
-            display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
-            transition: background .2s, color .2s;
-        }
-        .btn-return:hover { background: #f59e0b; color: #fff; }
-        .review-actions form { margin: 0; }
 
         /* Resolved tab: add an incident handled outside the app. */
         .btn-add-report {
@@ -653,7 +612,7 @@
         <div id="tab-for-review" class="tab-panel">
             <div class="tab-note tab-note--review">
                 <i class="bi bi-clipboard2-check"></i>
-                <span>The responding team sent their <strong>Initial report</strong> for these incidents. Check it — <strong>Edit</strong> it if something needs correcting — then <strong>Approve</strong> it to mark the incident resolved, or <strong>Return</strong> it to the team with what needs fixing. A returned report goes back to Active until they send it again.</span>
+                <span>The responding team sent their <strong>Initial report</strong> for these incidents. Open <strong>View</strong> to read it, correct it if something is wrong, then approve it to mark the incident resolved, or return it to the team with what needs fixing. A returned report goes back to Active until they send it again.</span>
             </div>
 
             <div class="table-card">
@@ -691,34 +650,8 @@
                                 {{ $sentAt->format('M d, Y g:i A') }}
                                 <div class="row-ago">{{ $sentAt->gt(now()->subMinute()) ? 'just now' : $sentAt->diffForHumans() }}</div>
                             </td>
-                            <td onclick="event.stopPropagation()">
-                                <div class="review-actions">
-                                    @if($inc->report_data)
-                                        <a href="{{ route('incident.report-pdf', $inc) }}" target="_blank" class="btn-pdf" title="Open the report (PDF)" aria-label="Open the report (PDF)">
-                                            <i class="bi bi-file-earmark-pdf"></i>
-                                        </a>
-                                        <a href="{{ route('incident.report.edit', $inc) }}" class="btn-edit" title="Read the report and correct it before approving">
-                                            <i class="bi bi-pencil-square"></i> Edit
-                                        </a>
-                                    @endif
-                                    <form action="{{ route('incident.confirm-resolved', $inc->id) }}" method="POST" class="resolve-form"
-                                          data-type="{{ $inc->emergency_type }}"
-                                          data-notifies-citizen="{{ $inc->citizen_id ? '1' : '0' }}">
-                                        @csrf
-                                        <button type="submit" class="btn-approve" title="Approve the report and mark the incident resolved">
-                                            <i class="bi bi-check2-circle"></i> Approve
-                                        </button>
-                                    </form>
-                                    <button type="button" class="btn-return" title="Send the report back to the responders"
-                                            data-bs-toggle="modal" data-bs-target="#returnModal{{ $inc->id }}">
-                                        <i class="bi bi-arrow-return-left"></i> Return
-                                    </button>
-                                    <a href="{{ route('incident.detail', $inc->id) }}" class="btn-view">View <i class="bi bi-chevron-right"></i></a>
-                                </div>
-                            </td>
+                            <td class="td-action"><a href="{{ route('incident.detail', $inc->id) }}" class="btn-view" onclick="event.stopPropagation()">View <i class="bi bi-chevron-right"></i></a></td>
                         </tr>
-
-
                         @empty
                         <tr>
                             <td colspan="6">
@@ -732,11 +665,6 @@
                     </tbody>
                 </table>
             </div>
-
-            {{-- Return dialogs — outside the table, like the Decline dialogs above. --}}
-            @foreach($forReviewIncidents as $inc)
-                @include('partials.return-report-modal', ['incident' => $inc, 'modalId' => 'returnModal' . $inc->id])
-            @endforeach
         </div>
 
         <!-- ══ TAB: RESOLVED (plus declined, and incidents added by MDRRMO) ══ -->
@@ -822,22 +750,8 @@
                             <td class="td-location">{{ $inc->location ?: '—' }}@if($inc->landmark)<span class="td-landmark"><i class="bi bi-signpost-2"></i> {{ $inc->landmark }}</span>@endif</td>
                             <td><span class="{{ $statusBadge }}">{{ $statusLabel }}</span></td>
                             <td style="white-space:nowrap;">{{ $inc->created_at->format('M d, Y g:i A') }}</td>
-                            <td class="td-action" onclick="event.stopPropagation()">
-                                <div class="row-actions">
-                                    @if($isDeclined)
-                                        {{-- Declined reports only (IncidentController::destroy()). --}}
-                                        <form method="POST" action="{{ route('incident.destroy', $inc->id) }}" class="delete-form"
-                                              data-what="{{ $inc->emergency_type }} report from {{ $reporterName }}">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="submit" class="btn-delete" title="Delete this declined report">
-                                                <i class="bi bi-trash3"></i> Delete
-                                            </button>
-                                        </form>
-                                    @endif
-                                    <a href="{{ route('incident.detail', $inc->id) }}" class="btn-view">View <i class="bi bi-chevron-right"></i></a>
-                                </div>
-                            </td>
+                            {{-- A declined report is deleted on its details page (item 68). --}}
+                            <td class="td-action"><a href="{{ route('incident.detail', $inc->id) }}" class="btn-view" onclick="event.stopPropagation()">View <i class="bi bi-chevron-right"></i></a></td>
                         </tr>
                         @empty
                         <tr>
@@ -957,28 +871,6 @@
         applyFilters();
     })();
 
-    // Pending is the first tab, so after changing something on another tab
-    // (a priority on Active, Approve on For Review…) the reload
-    // would jump back to it. Remember the tab the change came from and
-    // reopen it once. (The priority dropdown sends its form with
-    // form.submit(), which doesn't fire "submit", so listen for "change"
-    // too.)
-    (function () {
-        const KEY = 'resqpulse_incidents_return_tab';
-        const remember = form => {
-            const panel = form.closest('.tab-panel');
-            if (!panel) return;
-            try { sessionStorage.setItem(KEY, panel.id.replace('tab-', '')); } catch (e) {}
-        };
-        document.querySelectorAll('.tab-panel form:not(.delete-form)').forEach(form => {
-            form.addEventListener('submit', () => remember(form));
-            form.querySelectorAll('select').forEach(s => s.addEventListener('change', () => remember(form)));
-        });
-
-        let tab = null;
-        try { tab = sessionStorage.getItem(KEY); sessionStorage.removeItem(KEY); } catch (e) {}
-        if (tab) openTab(tab);
-    })();
 
     // Every row opens the Incident Details page (the buttons in a row stop
     // the click on their own).
@@ -1044,35 +936,10 @@
         applyFilters();
     })();
 
-    // Report types can be free text ("Other"), so escape before putting
-    // them inside the dialogs' HTML.
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    // Delete (declined reports only) — asks first, since it can't be undone.
-    document.querySelectorAll('.delete-form').forEach(form => {
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-            Swal.fire({
-                icon: 'warning',
-                title: 'Delete this declined report?',
-                html: `<div style="font-size:.9em;color:#4b5563;">${escapeHtml(form.dataset.what || 'Declined report')}<br>It's removed for good, with its photos. This can't be undone.</div>`,
-                showCancelButton: true,
-                confirmButtonText: 'Yes, delete',
-                cancelButtonText: 'Cancel',
-                confirmButtonColor: '#dc2626',
-                focusCancel: true,
-            }).then(result => {
-                if (result.isConfirmed) form.submit();
-            });
-        });
-    });
-
-    // ?tab=resolved (e.g. after deleting a declined report) or
-    // ?tab=for-review opens that tab.
+    // ?tab=resolved (e.g. after deleting a declined report on its details
+    // page) or ?tab=for-review opens that tab. (Item 68: View is the only
+    // button in the lists; Approve, Return, Edit and Delete are on the
+    // details page.)
     (function () {
         const tab = new URLSearchParams(window.location.search).get('tab');
         if (tab) openTab(tab);

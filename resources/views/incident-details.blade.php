@@ -853,7 +853,8 @@
                                 @if($incident->isForReview())
                                     <a href="{{ route('incident.report.edit', $incident) }}" class="btn-soft"><i class="bi bi-pencil-square"></i> Review &amp; Edit</a>
                                 @endif
-                                <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="btn-soft"><i class="bi bi-eye"></i> View</a>
+                                {{-- Item 68: the same arrow as every View button. --}}
+                                <a href="{{ route('incident.report-pdf', $incident) }}" target="_blank" class="btn-soft">View <i class="bi bi-chevron-right"></i></a>
                                 <a href="{{ route('incident.report-pdf', [$incident, 'download' => 1]) }}" class="btn-soft" title="Download"><i class="bi bi-download"></i></a>
                             </div>
 
