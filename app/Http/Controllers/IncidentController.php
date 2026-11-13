@@ -6,6 +6,7 @@ use App\Models\BackupRequest;
 use App\Models\Incident;
 use App\Services\AuditLogService;
 use App\Services\BarangayLocationService;
+use App\Services\PlaceNames;
 use App\Services\PushNotificationService;
 use App\Services\IncidentReportService;
 use Carbon\Carbon;
@@ -13,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class IncidentController extends Controller
@@ -1017,12 +1019,15 @@ class IncidentController extends Controller
      * Resolved → "Add Resolved Report": the form for an incident MDRRMO
      * handled outside the app (a walk-in, a phone call, a radio report…).
      * Opened from Incidents → Resolved, or from All Incidents (?from=overview,
-     * item 71), which its Back and Cancel links go back to.
+     * item 71), which its Back and Cancel links go back to. It can be in
+     * Rosales or in another town (item 72).
      */
     public function createManual(Request $request)
     {
         return view('incident-manual-report', [
             'barangays' => array_keys(BarangayLocationService::allCoordinates()),
+            'otherTowns' => PlaceNames::otherTowns(),
+            'provinces' => PlaceNames::PROVINCES,
             'photosMax' => self::MANUAL_PHOTOS_MAX,
             'photoLimits' => self::photoUploadLimits(),
             'backUrl'   => $request->query('from') === 'overview'
@@ -1089,13 +1094,24 @@ class IncidentController extends Controller
             $phone = $digits;
         }
         $request->merge(['reporter_mobile' => $phone]);
+        // In Rosales unless "Another town or city" is chosen (item 72).
+        $request->mergeIfMissing(['place' => 'rosales']);
 
         $casualtyRow = ['nullable', 'string'];
         $validated = $request->validate([
             'emergency_type'  => ['required', Rule::in(Incident::TYPES)],
             'other_type'      => ['nullable', 'required_if:emergency_type,Other', 'string', 'max:60'],
             'priority'        => ['required', 'in:critical,high,low'],
-            'barangay'        => ['required', Rule::in(array_keys(BarangayLocationService::allCoordinates()))],
+            'place'           => ['required', 'in:rosales,other'],
+            'barangay'        => ['exclude_unless:place,rosales', 'required', Rule::in(array_keys(BarangayLocationService::allCoordinates()))],
+            'town'            => ['exclude_unless:place,other', 'required', 'string', 'max:40',
+                function (string $attribute, $value, \Closure $fail) use ($request) {
+                    if (is_string($value) && PlaceNames::isRosales($value, (string) $request->input('province'))) {
+                        $fail('For Rosales, choose "Rosales" above and pick the barangay.');
+                    }
+                }],
+            'province'        => ['exclude_unless:place,other', 'required', 'string', 'max:30'],
+            'town_barangay'   => ['exclude_unless:place,other', 'nullable', 'string', 'max:40'],
             'street'          => ['nullable', 'string', 'max:150'],
             'occurred_at'     => ['required', 'date', 'before_or_equal:now'],
             'resolved_at'     => ['required', 'date', 'after_or_equal:occurred_at', 'before_or_equal:now'],
@@ -1123,8 +1139,14 @@ class IncidentController extends Controller
             'emergency_type.required' => 'Choose the type of incident.',
             'other_type.required_if'  => 'Type what kind of incident it was.',
             'priority.required'       => 'Choose the priority (Critical, High or Low).',
+            'place.in'                => 'Choose Rosales or another town or city.',
             'barangay.required'       => 'Choose the barangay where it happened.',
             'barangay.in'             => 'Choose a barangay of Rosales from the list.',
+            'town.required'           => 'Type the town or city where it happened.',
+            'town.max'                => 'The town or city can be up to 40 characters.',
+            'province.required'       => 'Type the province.',
+            'province.max'            => 'The province can be up to 30 characters.',
+            'town_barangay.max'       => 'The barangay can be up to 40 characters.',
             'occurred_at.required'    => 'Enter when the incident happened.',
             'occurred_at.before_or_equal' => "The incident's date and time can't be in the future.",
             'resolved_at.required'    => 'Enter when the incident was resolved.',
@@ -1147,7 +1169,7 @@ class IncidentController extends Controller
             ? trim($validated['other_type'])
             : $validated['emergency_type'];
         $street   = trim((string) ($validated['street'] ?? ''));
-        $location = ($street !== '' ? "{$street}, " : '') . "Brgy. {$validated['barangay']}, Rosales, Pangasinan";
+        [$location, $address, $place] = $this->manualPlace($validated, $street);
         $occurred = Carbon::parse($validated['occurred_at']);
         $resolved = Carbon::parse($validated['resolved_at']);
 
@@ -1188,7 +1210,7 @@ class IncidentController extends Controller
 
         $report = $reports->normalize($incident, null, [
             'report_type'   => 'final',
-            'location'      => $location,
+            'location'      => $address, // the PDF: the address, without "Outside Rosales:"
             'narrative'     => $validated['narrative'],
             'casualties'    => $validated['casualties'] ?? [],
             'effects'       => $validated['effects'] ?? '',
@@ -1197,6 +1219,7 @@ class IncidentController extends Controller
         ]);
         $report['team']         = $reports->teamFromInput($validated['team'] ?? []);
         $report['source']       = 'manual';
+        $report['place']        = $place;
         $report['reported_via'] = $validated['reported_via'];
         $report['recorded_by']  = $admin?->name ? "{$admin->name}, MDRRMO Rosales" : 'MDRRMO Rosales';
         $report['recorded_at']  = now()->format('F j, Y g:i A');
@@ -1216,6 +1239,52 @@ class IncidentController extends Controller
         return redirect()
             ->route('incident.detail', $incident)
             ->with('success', 'Resolved report added. It is listed on the Resolved tab.');
+    }
+
+    /**
+     * Add Resolved Report: where it happened, as
+     * [the incident's location, the address for the PDF, the parts].
+     *   - Rosales: "Rizal St, Brgy. Acop, Rosales, Pangasinan" for both.
+     *   - Another town (item 72): "Outside Rosales: Rizal St, Brgy.
+     *     Poblacion, Villasis, Pangasinan" — like a GPS pin outside Rosales,
+     *     so it's counted under "Outside Rosales", not under a Rosales
+     *     barangay of the same name. The PDF prints the address without
+     *     "Outside Rosales:".
+     */
+    private function manualPlace(array $validated, string $street): array
+    {
+        if (($validated['place'] ?? 'rosales') !== 'other') {
+            $location = ($street !== '' ? "{$street}, " : '') . "Brgy. {$validated['barangay']}, Rosales, Pangasinan";
+
+            return [$location, $location, [
+                'in_rosales' => true,
+                'barangay'   => $validated['barangay'],
+                'town'       => 'Rosales',
+                'province'   => 'Pangasinan',
+                'street'     => $street !== '' ? $street : null,
+            ]];
+        }
+
+        $province = PlaceNames::province($validated['province']);
+        $town     = PlaceNames::town($validated['town'], $province);
+        $barangay = PlaceNames::barangay((string) ($validated['town_barangay'] ?? ''));
+        $tail     = implode(', ', array_filter([$barangay !== '' ? "Brgy. {$barangay}" : '', $town, $province]));
+        $address  = ($street !== '' ? "{$street}, " : '') . $tail;
+
+        // incidents.location holds 255 characters: a very long street is
+        // shortened there (the PDF keeps all of it).
+        $prefix = 'Outside Rosales: ';
+        $room   = 255 - mb_strlen($prefix) - mb_strlen($tail) - 2;
+        $short  = $street !== '' ? Str::limit($street, max(10, $room - 1), '…') : '';
+        $location = $prefix . ($short !== '' ? "{$short}, " : '') . $tail;
+
+        return [$location, $address, [
+            'in_rosales' => false,
+            'barangay'   => $barangay !== '' ? $barangay : null,
+            'town'       => $town,
+            'province'   => $province,
+            'street'     => $street !== '' ? $street : null,
+        ]];
     }
 
     /** Rebuilds the MDRRMC report PDF. A PDF problem never undoes the change itself. */

@@ -393,6 +393,7 @@
                     @foreach ($barangayList as $brgy)
                         <option value="{{ strtolower($brgy) }}">{{ $brgy }}</option>
                     @endforeach
+                    <option value="outside rosales">Outside Rosales</option>
                 </select>
 
                 <input type="date" class="filter-date" id="filterDate" title="Filter by date">
@@ -567,6 +568,7 @@
                     @foreach ($barangayList as $brgy)
                         <option value="{{ strtolower($brgy) }}">{{ $brgy }}</option>
                     @endforeach
+                    <option value="outside rosales">Outside Rosales</option>
                 </select>
 
                 <select class="filter-select" id="filterResultH">
@@ -670,6 +672,17 @@
         return !!btn;
     }
 
+    // The barangay filters (item 72): "Outside Rosales" shows the places
+    // outside Rosales; a Rosales barangay doesn't match one of them
+    // ("Outside Rosales: Brgy. San Isidro, Villasis" isn't Rosales' San Isidro).
+    function barangayOk(row, barangay) {
+        if (!barangay) return true;
+        const text = row.dataset.search || '';
+        const outside = text.includes('outside rosales');
+        if (barangay === 'outside rosales') return outside;
+        return !outside && text.includes(barangay);
+    }
+
     // Active tab filters (priority / status / type / barangay / date / search)
     (function () {
         const priorityFilter = document.getElementById('filterPriority');
@@ -709,7 +722,7 @@
                 const ok = (!priority || row.dataset.priority === priority)
                         && statusOk
                         && (!type     || row.dataset.type     === type)
-                        && (!barangay || row.dataset.search.includes(barangay))
+                        && barangayOk(row, barangay)
                         && (!date     || row.dataset.date     === date)
                         && (!search   || row.dataset.search.includes(search));
                 row.style.display = ok ? '' : 'none';
@@ -788,7 +801,7 @@
                     || (result === 'resolved' && row.dataset.result === 'manual');
                 const ok = (!priority || row.dataset.priority === priority)
                         && (!type     || row.dataset.type     === type)
-                        && (!barangay || row.dataset.search.includes(barangay))
+                        && barangayOk(row, barangay)
                         && resultOk
                         && (!date     || row.dataset.date     === date)
                         && (!search   || row.dataset.search.includes(search));

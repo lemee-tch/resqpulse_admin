@@ -84,6 +84,7 @@
         .chip-resolved { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
         .chip-declined { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
         .chip-source   { background: #fff; color: #4b5563; border-color: #d1d5db; }
+        .chip-outside  { background: #fffbeb; color: #b45309; border-color: #fcd34d; }
         /* The team's latest report (items 46, 49) — goes to the report card.
            Purple while it waits for your review; amber for an Initial report
            a team saved before item 49 and hasn't sent to MDRRMO yet. */
@@ -432,6 +433,11 @@
     // the official borders when there is one (item 59) — older location
     // texts can name the wrong barangay.
     $barangay = app(\App\Services\BarangayLocationService::class)->barangayOf($incident->location, $incident->latitude, $incident->longitude);
+    // Item 72: a report MDRRMO added for another town (no GPS pin) keeps
+    // the barangay, town and province it was typed with.
+    $placeTyped = $isManual && is_array($incident->report_data['place'] ?? null) ? $incident->report_data['place'] : null;
+    $otherTown  = ($placeTyped && ($placeTyped['in_rosales'] ?? true) === false) ? $placeTyped : null;
+    $otherTownAddress = $otherTown ? (string) ($incident->report_data['location'] ?? preg_replace('/^Outside Rosales:\s*/u', '', (string) $incident->location)) : null;
     $hasPin = $incident->latitude && $incident->longitude;
     $gpsAccuracy = $hasPin ? $incident->gpsAccuracyLabel() : null;
     $gpsAge = $hasPin ? $incident->gpsAgeMinutes() : null;
@@ -668,7 +674,14 @@
                     <div class="card-title">Location</div>
                     <dl class="kv">
                         <dt>Barangay</dt>
-                        <dd>{!! $barangay ? e($barangay) : '<span class="muted">Not identified</span>' !!}</dd>
+                        @if($otherTown)
+                            <dd>{!! filled($otherTown['barangay'] ?? null) ? e($otherTown['barangay']) : '<span class="muted">Not given</span>' !!}</dd>
+
+                            <dt>Town / City</dt>
+                            <dd>{{ $otherTown['town'] ?? '' }}, {{ $otherTown['province'] ?? '' }} <span class="chip chip-outside">Outside Rosales</span></dd>
+                        @else
+                            <dd>{!! $barangay ? e($barangay) : '<span class="muted">Not identified</span>' !!}</dd>
+                        @endif
 
                         <dt>Address</dt>
                         <dd>{{ $incident->location ?: '—' }}</dd>
@@ -692,22 +705,32 @@
                                 @if($gpsAge)
                                     <div class="gps-warn"><i class="bi bi-clock-history"></i> This pin is from {{ $gpsAge >= 120 ? round($gpsAge / 60) . ' hours' : $gpsAge . ' minutes' }} before the report was sent — the phone couldn't get a new one.</div>
                                 @endif
+                            @elseif($otherTown)
+                                <span class="muted">No GPS pin — outside Rosales, so there's no map here. Google Maps can look up the address.</span>
                             @else
                                 <span class="muted">No GPS pin{{ $approxPoint ? " — the map shows the middle of Brgy. {$barangay}" : '' }}</span>
                             @endif
                         </dd>
                     </dl>
-                    <div id="detail-map" aria-label="Map of the incident location"></div>
-                    <div class="map-actions">
-                        <a href="https://www.google.com/maps?q={{ $lat }},{{ $lng }}" target="_blank" rel="noopener" class="btn-soft">
-                            <i class="bi bi-map"></i> Open in Google Maps
-                        </a>
-                        @if($hasPin)
-                            <a href="https://www.google.com/maps/dir/?api=1&destination={{ $lat }},{{ $lng }}" target="_blank" rel="noopener" class="btn-soft">
-                                <i class="bi bi-sign-turn-right"></i> Directions
+                    @if($otherTown && ! $hasPin)
+                        <div class="map-actions">
+                            <a href="https://www.google.com/maps/search/?api=1&amp;query={{ urlencode($otherTownAddress) }}" target="_blank" rel="noopener" class="btn-soft">
+                                <i class="bi bi-map"></i> Look up the address in Google Maps
                             </a>
-                        @endif
-                    </div>
+                        </div>
+                    @else
+                        <div id="detail-map" aria-label="Map of the incident location"></div>
+                        <div class="map-actions">
+                            <a href="https://www.google.com/maps?q={{ $lat }},{{ $lng }}" target="_blank" rel="noopener" class="btn-soft">
+                                <i class="bi bi-map"></i> Open in Google Maps
+                            </a>
+                            @if($hasPin)
+                                <a href="https://www.google.com/maps/dir/?api=1&destination={{ $lat }},{{ $lng }}" target="_blank" rel="noopener" class="btn-soft">
+                                    <i class="bi bi-sign-turn-right"></i> Directions
+                                </a>
+                            @endif
+                        </div>
+                    @endif
                 </section>
 
                 <!-- DESCRIPTION & ATTACHMENTS -->

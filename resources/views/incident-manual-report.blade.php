@@ -86,6 +86,29 @@
         .prio-input:checked + .prio-choice.prio-low      { background: #3b82f6; border-color: #3b82f6; }
         .prio-input:focus-visible + .prio-choice { outline: 3px solid #1a3c8f; outline-offset: 2px; }
 
+        /* Where it happened (item 72): Rosales, or another town or city. */
+        .place-choices { display: flex; gap: 8px; }
+        .place-input { position: absolute; opacity: 0; pointer-events: none; }
+        .place-choice {
+            flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+            margin: 0; padding: 9px 8px; border-radius: 10px; border: 2px solid #c7d2fe;
+            background: #fff; color: #1a3c8f; cursor: pointer; user-select: none; text-align: center;
+            font-weight: 700; font-size: .84rem; transition: background .15s, color .15s;
+        }
+        .place-choice i { display: none; }
+        .place-choice:hover { background: #eef2ff; }
+        .place-input:checked + .place-choice { background: #1a3c8f; border-color: #1a3c8f; color: #fff; }
+        .place-input:checked + .place-choice i { display: inline; }
+        .place-input:focus-visible + .place-choice { outline: 3px solid #1a3c8f; outline-offset: 2px; }
+        [data-place][hidden] { display: none !important; }
+        .place-town .field, .place-town .field:last-child { margin-bottom: 14px; }
+        .place-note {
+            display: flex; gap: 8px; align-items: flex-start; margin-top: 12px;
+            font-size: .76rem; line-height: 1.45; color: #92400e;
+            background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 10px;
+        }
+        .place-note i { color: #d97706; margin-top: 1px; }
+
         /* Casualties / team rows */
         .group-title { font-size: .8rem; font-weight: 800; color: #111827; margin: 16px 0 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
         .group-title:first-child { margin-top: 4px; }
@@ -187,6 +210,7 @@
     $now = now()->format('Y-m-d\TH:i');
     $releasedDefault = auth('web')->user()?->name ? strtoupper(auth('web')->user()->name) . ', MDRRMO Rosales' : 'MDRRMO Rosales';
     $fieldError = fn (string $key) => $errors->has($key) ? 'is-invalid' : '';
+    $isOtherTown = old('place') === 'other'; // item 72
 @endphp
 
 <!-- ════ MAIN ════ -->
@@ -275,12 +299,53 @@
                 <!-- LOCATION + WHO REPORTED IT -->
                 <div class="card-box">
                     <div class="card-title"><i class="bi bi-geo-alt-fill"></i> Location</div>
-                    <div class="card-hint">Where in Rosales it happened.</div>
+                    <div class="card-hint">In Rosales, or in another town or city MDRRMO responded to.</div>
+
+                    {{-- Item 72: Rosales, or another town or city. Only the chosen one's fields are sent. --}}
+                    <div class="field">
+                        <span class="f-label" id="placeLabel">Where it happened <span class="req">*</span></span>
+                        <div class="place-choices" role="radiogroup" aria-labelledby="placeLabel">
+                            <input class="place-input" type="radio" name="place" id="place-rosales" value="rosales" {{ $isOtherTown ? '' : 'checked' }}>
+                            <label class="place-choice" for="place-rosales"><i class="bi bi-check-lg"></i>Rosales</label>
+                            <input class="place-input" type="radio" name="place" id="place-other" value="other" {{ $isOtherTown ? 'checked' : '' }}>
+                            <label class="place-choice" for="place-other"><i class="bi bi-check-lg"></i>Another town or city</label>
+                        </div>
+                        @error('place') <div class="f-error">{{ $message }}</div> @enderror
+                    </div>
+
+                    <div class="place-town" data-place="other" {{ $isOtherTown ? '' : 'hidden' }}>
+                        <div class="field-row">
+                            <div class="field">
+                                <label class="f-label" for="town">Town / City <span class="req">*</span></label>
+                                <input type="text" name="town" id="town" maxlength="40" list="townList" autocomplete="off" required
+                                       class="f-input {{ $fieldError('town') }}" value="{{ old('town') }}" placeholder="e.g. Villasis"
+                                       {{ $isOtherTown ? '' : 'disabled' }}>
+                                <datalist id="townList">
+                                    @foreach($otherTowns ?? [] as $townName)
+                                        <option value="{{ $townName }}"></option>
+                                    @endforeach
+                                </datalist>
+                                @error('town') <div class="f-error">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="field">
+                                <label class="f-label" for="province">Province <span class="req">*</span></label>
+                                <input type="text" name="province" id="province" maxlength="30" list="provinceList" autocomplete="off" required
+                                       class="f-input {{ $fieldError('province') }}" value="{{ old('province', 'Pangasinan') }}"
+                                       {{ $isOtherTown ? '' : 'disabled' }}>
+                                <datalist id="provinceList">
+                                    @foreach($provinces ?? ['Pangasinan'] as $provinceName)
+                                        <option value="{{ $provinceName }}"></option>
+                                    @endforeach
+                                </datalist>
+                                @error('province') <div class="f-error">{{ $message }}</div> @enderror
+                            </div>
+                        </div>
+                    </div>
 
                     <div class="field-row">
-                        <div class="field">
+                        <div class="field" data-place="rosales" {{ $isOtherTown ? 'hidden' : '' }}>
                             <label class="f-label" for="barangay">Barangay <span class="req">*</span></label>
-                            <select name="barangay" id="barangay" class="f-input {{ $fieldError('barangay') }}" required>
+                            <select name="barangay" id="barangay" class="f-input {{ $fieldError('barangay') }}" required {{ $isOtherTown ? 'disabled' : '' }}>
                                 <option value="" disabled {{ old('barangay') ? '' : 'selected' }}>Select the barangay...</option>
                                 @foreach($barangays as $brgy)
                                     <option value="{{ $brgy }}" {{ old('barangay') === $brgy ? 'selected' : '' }}>{{ $brgy }}</option>
@@ -288,12 +353,23 @@
                             </select>
                             @error('barangay') <div class="f-error">{{ $message }}</div> @enderror
                         </div>
+                        <div class="field" data-place="other" {{ $isOtherTown ? '' : 'hidden' }}>
+                            <label class="f-label" for="town_barangay">Barangay <span class="opt">(optional)</span></label>
+                            <input type="text" name="town_barangay" id="town_barangay" maxlength="40"
+                                   class="f-input {{ $fieldError('town_barangay') }}" value="{{ old('town_barangay') }}" placeholder="e.g. Poblacion"
+                                   {{ $isOtherTown ? '' : 'disabled' }}>
+                            @error('town_barangay') <div class="f-error">{{ $message }}</div> @enderror
+                        </div>
                         <div class="field">
                             <label class="f-label" for="street">Street / landmark <span class="opt">(optional)</span></label>
                             <input type="text" name="street" id="street" maxlength="150" class="f-input {{ $fieldError('street') }}"
                                    value="{{ old('street') }}" placeholder="e.g. Rizal St, near the public market">
                             @error('street') <div class="f-error">{{ $message }}</div> @enderror
                         </div>
+                    </div>
+                    <div class="place-note" data-place="other" {{ $isOtherTown ? '' : 'hidden' }}>
+                        <i class="bi bi-info-circle-fill"></i>
+                        <span>It's saved as <strong>Outside Rosales</strong>, so Reports &amp; Analytics counts it under "Outside Rosales", not under a Rosales barangay. The PDF report shows the town.</span>
                     </div>
 
                     <div class="card-title" style="margin-top:18px;"><i class="bi bi-telephone-inbound-fill"></i> Who reported it</div>
@@ -566,6 +642,20 @@
         row.remove();
         if (table.dataset.casualtyTable) syncEmpty(table.dataset.casualtyTable);
     });
+
+    // Where it happened (item 72): Rosales, or another town or city. Only
+    // the chosen one's fields show, are required and are sent (a disabled
+    // field is neither checked nor sent).
+    const syncPlace = () => {
+        const other = form.querySelector('input[name="place"]:checked')?.value === 'other';
+        form.querySelectorAll('[data-place]').forEach(group => {
+            const on = (group.dataset.place === 'other') === other;
+            group.hidden = !on;
+            group.querySelectorAll('input, select').forEach(field => { field.disabled = !on; });
+        });
+    };
+    form.querySelectorAll('input[name="place"]').forEach(radio => radio.addEventListener('change', syncPlace));
+    syncPlace();
 
     // Photos from the scene (item 71): add several, in one go or a few at a
     // time; see them; remove one with ×. Big photos are made smaller here
