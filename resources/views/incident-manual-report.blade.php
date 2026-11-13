@@ -106,8 +106,39 @@
         }
         .btn-row-remove:hover { background: #fef2f2; }
 
-        .photo-drop { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-        .photo-preview { width: 96px; height: 72px; border-radius: 8px; object-fit: cover; border: 1px solid #e5e7eb; display: none; }
+        /* Photos from the scene (item 71): the photos added so far, each
+           with × to remove it, then "Add photos". */
+        .photo-picker {
+            position: relative; display: flex; flex-wrap: wrap; gap: 10px; padding: 10px;
+            border: 1.5px dashed #c7d2fe; border-radius: 12px; background: #f8f9ff;
+        }
+        .photo-picker.is-invalid { border-color: #dc2626; }
+        .photo-thumbs { display: contents; }
+        .photo-thumb {
+            position: relative; width: 104px; height: 78px; border-radius: 8px; overflow: hidden;
+            border: 1px solid #e5e7eb; background: #eef1f6;
+        }
+        .photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .photo-thumb .photo-remove {
+            position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 50%;
+            border: 0; background: rgba(17, 24, 39, .75); color: #fff; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: .75rem;
+        }
+        .photo-thumb .photo-remove:hover, .photo-thumb .photo-remove:focus-visible { background: #dc2626; outline: none; }
+        .photo-add {
+            width: 104px; height: 78px; margin: 0; border-radius: 8px; border: 1.5px dashed #a5b4fc;
+            background: #fff; color: #1a3c8f; cursor: pointer; text-align: center; line-height: 1.2;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+            font-size: .76rem; font-weight: 700;
+        }
+        .photo-add i { font-size: 1.25rem; }
+        .photo-add:hover { background: #eef2ff; }
+        .photo-add[hidden] { display: none; }
+        .photo-add.is-working { cursor: wait; opacity: .7; }
+        /* The real file input: out of sight, still in the form and reachable with Tab. */
+        .photo-input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; }
+        .photo-picker:focus-within .photo-add { outline: 2px solid #1a3c8f; outline-offset: 2px; }
+        .photo-note { font-size: .78rem; color: #b45309; margin-top: 4px; }
 
         .form-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
         .btn-save {
@@ -164,8 +195,8 @@
 
         <div class="page-header">
             <div class="page-title"><i class="bi bi-journal-plus" style="color:#1a3c8f;"></i> Add Resolved Report</div>
-            <a href="{{ route('incident', ['tab' => 'resolved']) }}" class="back-link">
-                <i class="bi bi-arrow-left"></i> Back to Incidents
+            <a href="{{ $backUrl ?? route('incident', ['tab' => 'resolved']) }}" class="back-link">
+                <i class="bi bi-arrow-left"></i> {{ $backLabel ?? 'Back to Incidents' }}
             </a>
         </div>
         <div class="page-sub">
@@ -403,29 +434,41 @@
                         </div>
                     </div>
 
-                    <div class="field-row">
-                        <div class="field">
-                            <label class="f-label" for="released_by">Report released by <span class="opt">(Reporter / Designation / Office)</span></label>
-                            <input type="text" name="released_by" id="released_by" maxlength="255" class="f-input {{ $fieldError('released_by') }}"
-                                   value="{{ old('released_by', $releasedDefault) }}">
-                            @error('released_by') <div class="f-error">{{ $message }}</div> @enderror
+                    <div class="field">
+                        <label class="f-label" for="released_by">Report released by <span class="opt">(Reporter / Designation / Office)</span></label>
+                        <input type="text" name="released_by" id="released_by" maxlength="255" class="f-input {{ $fieldError('released_by') }}"
+                               value="{{ old('released_by', $releasedDefault) }}">
+                        @error('released_by') <div class="f-error">{{ $message }}</div> @enderror
+                    </div>
+
+                    {{-- Item 71: several photos (was one). --}}
+                    @php
+                        $photoErrors = collect($errors->get('photos'))->merge(collect($errors->get('photos.*'))->flatten())->unique();
+                    @endphp
+                    <div class="field">
+                        <label class="f-label" for="photos">Photos from the scene <span class="opt">(optional, up to {{ $photosMax }})</span></label>
+                        <div class="photo-picker {{ $photoErrors->isNotEmpty() ? 'is-invalid' : '' }}" id="photoPicker">
+                            <div class="photo-thumbs" id="photoThumbs"></div>
+                            <label class="photo-add" for="photos" id="photoAdd">
+                                <i class="bi bi-images"></i>
+                                <span>Add photos</span>
+                            </label>
+                            <input type="file" name="photos[]" id="photos" class="photo-input" multiple
+                                   accept="image/jpeg,image/png,image/webp" aria-describedby="photoHelp">
                         </div>
-                        <div class="field">
-                            <label class="f-label" for="photo">Photo from the scene <span class="opt">(optional, up to 5 MB)</span></label>
-                            <div class="photo-drop">
-                                <input type="file" name="photo" id="photo" accept="image/*" class="f-input {{ $fieldError('photo') }}" style="flex:1;min-width:200px;">
-                                <img id="photoPreview" class="photo-preview" alt="Selected photo">
-                            </div>
-                            @error('photo') <div class="f-error">{{ $message }}</div> @enderror
-                            <div class="f-help">It's printed on the PDF report.</div>
-                        </div>
+                        <div class="photo-note" id="photoNote" role="status" hidden></div>
+                        @foreach($photoErrors as $message) <div class="f-error">{{ $message }}</div> @endforeach
+                        @if($errors->any())
+                            <div class="photo-note">A browser can't keep photos when the form comes back with an error — add them again.</div>
+                        @endif
+                        <div class="f-help" id="photoHelp">Choose one or more (JPG, PNG or WebP). They're shown on the incident's page and printed on the PDF report. Big photos are made smaller before they're sent.</div>
                     </div>
                 </div>
             </div>
 
             <div class="form-actions">
                 <button type="submit" class="btn-save" id="btnSave"><i class="bi bi-check2-circle"></i> Save Resolved Report</button>
-                <a href="{{ route('incident', ['tab' => 'resolved']) }}" class="btn-cancel">Cancel</a>
+                <a href="{{ $backUrl ?? route('incident', ['tab' => 'resolved']) }}" class="btn-cancel">Cancel</a>
                 <span class="save-note">Saved as resolved, with the PDF report.</span>
             </div>
         </form>
@@ -524,14 +567,145 @@
         if (table.dataset.casualtyTable) syncEmpty(table.dataset.casualtyTable);
     });
 
-    // Photo preview.
-    const photo = document.getElementById('photo');
-    const preview = document.getElementById('photoPreview');
-    photo.addEventListener('change', () => {
-        const file = photo.files && photo.files[0];
-        if (!file) { preview.style.display = 'none'; return; }
-        preview.src = URL.createObjectURL(file);
-        preview.style.display = 'block';
+    // Photos from the scene (item 71): add several, in one go or a few at a
+    // time; see them; remove one with ×. Big photos are made smaller here
+    // (longest side 1600px, JPEG), so the upload stays small. The files the
+    // form sends are rebuilt from this list, and kept within what the server
+    // takes in one save (bytes; 0 = no limit) — more than that loses the form.
+    const MAX_PHOTOS = {{ (int) ($photosMax ?? 10) }};
+    const PHOTO_FILE_MAX = {{ (int) ($photoLimits['file'] ?? 2 * 1024 * 1024) }};
+    const PHOTO_TOTAL_MAX = {{ (int) ($photoLimits['total'] ?? 7 * 1024 * 1024) }};
+    const PHOTO_TYPES = /^image\/(jpeg|png|webp)$/;
+    const mb = bytes => (Math.floor(bytes / 1024 / 1024 * 10) / 10) + ' MB';
+    const photoInput = document.getElementById('photos');
+    const photoThumbs = document.getElementById('photoThumbs');
+    const photoAdd = document.getElementById('photoAdd');
+    const photoNote = document.getElementById('photoNote');
+    const saveBtn = document.getElementById('btnSave');
+    const saveLabel = saveBtn.innerHTML;
+    const canRebuild = typeof DataTransfer !== 'undefined';
+    let photos = [];
+    let thumbUrls = [];
+    let preparing = 0;
+
+    const shrink = file => new Promise(resolve => {
+        if (!PHOTO_TYPES.test(file.type)) return resolve(file);
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+            if (scale === 1 && file.size <= 500 * 1024) return resolve(file);
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.naturalWidth * scale);
+            canvas.height = Math.round(img.naturalHeight * scale);
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff'; // a see-through PNG gets a white background
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(blob => {
+                if (!blob || blob.size >= file.size) return resolve(file);
+                resolve(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: file.lastModified }));
+            }, 'image/jpeg', 0.85);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+        img.src = url;
+    });
+
+    const syncPhotos = () => {
+        if (canRebuild) {
+            const files = new DataTransfer();
+            photos.forEach(file => files.items.add(file));
+            photoInput.files = files.files;
+        }
+        thumbUrls.forEach(url => URL.revokeObjectURL(url));
+        thumbUrls = [];
+        photoThumbs.innerHTML = '';
+        photos.forEach((file, i) => {
+            const tile = document.createElement('div');
+            tile.className = 'photo-thumb';
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.alt = 'Photo ' + (i + 1);
+            thumbUrls.push(img.src);
+            tile.appendChild(img);
+            if (canRebuild) {
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'photo-remove';
+                remove.title = 'Remove this photo';
+                remove.setAttribute('aria-label', 'Remove photo ' + (i + 1));
+                remove.innerHTML = '<i class="bi bi-x-lg"></i>';
+                remove.addEventListener('click', () => {
+                    photos.splice(i, 1);
+                    photoNote.hidden = true;
+                    syncPhotos();
+                    photoAdd.focus();
+                });
+                tile.appendChild(remove);
+            }
+            photoThumbs.appendChild(tile);
+        });
+        photoAdd.hidden = photos.length >= MAX_PHOTOS;
+        photoAdd.querySelector('span').textContent = photos.length ? `Add more (${photos.length}/${MAX_PHOTOS})` : 'Add photos';
+    };
+
+    photoInput.addEventListener('change', async () => {
+        const picked = Array.from(photoInput.files || []);
+        if (!picked.length) { syncPhotos(); return; }
+        if (!canRebuild) { // an old browser keeps only the last pick
+            photos = picked.slice(0, MAX_PHOTOS);
+            syncPhotos();
+            return;
+        }
+
+        const images = picked.filter(file => PHOTO_TYPES.test(file.type));
+        const adding = images.slice(0, Math.max(0, MAX_PHOTOS - photos.length));
+        const notes = [];
+        const showNotes = () => {
+            photoNote.textContent = notes.join(' ');
+            photoNote.hidden = notes.length === 0;
+        };
+        if (images.length > adding.length) {
+            const left = images.length - adding.length;
+            notes.push(`Up to ${MAX_PHOTOS} photos — ${left} ${left === 1 ? "wasn't" : "weren't"} added.`);
+        }
+        if (picked.length > images.length) {
+            const other = picked.length - images.length;
+            notes.push(other === 1 ? "1 file isn't a JPG, PNG or WebP photo." : `${other} files aren't JPG, PNG or WebP photos.`);
+        }
+        showNotes();
+
+        preparing++;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Preparing photos…';
+        photoAdd.classList.add('is-working');
+        const ready = await Promise.all(adding.map(shrink));
+        // Within what the server takes: each photo, and all of them together.
+        let total = photos.reduce((sum, file) => sum + file.size, 0);
+        let tooBig = 0;
+        let tooMuch = 0;
+        ready.forEach(file => {
+            if (photos.length >= MAX_PHOTOS) return;
+            if (file.size > PHOTO_FILE_MAX) { tooBig++; return; }
+            if (PHOTO_TOTAL_MAX && total + file.size > PHOTO_TOTAL_MAX) { tooMuch++; return; }
+            total += file.size;
+            photos.push(file);
+        });
+        if (tooBig) {
+            notes.push(`${tooBig === 1 ? '1 photo is' : tooBig + ' photos are'} over ${mb(PHOTO_FILE_MAX)} and can't be sent — try a smaller one.`);
+        }
+        if (tooMuch) {
+            notes.push(`The photos together can be up to ${mb(PHOTO_TOTAL_MAX)} — ${tooMuch} ${tooMuch === 1 ? "wasn't" : "weren't"} added.`);
+        }
+        showNotes();
+        preparing--;
+        syncPhotos();
+        if (preparing === 0) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = saveLabel;
+            photoAdd.classList.remove('is-working');
+        }
     });
 
     // "Resolved" can't be before "happened".

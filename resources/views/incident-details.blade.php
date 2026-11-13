@@ -721,7 +721,8 @@
                     <div class="desc-text">{{ $incident->description ?: 'No description was sent.' }}</div>
 
                     @if($photos->count())
-                        <div class="sub-label">Photos from the reporter</div>
+                        {{-- Item 71: an incident MDRRMO added by hand has the photos added with it. --}}
+                        <div class="sub-label">{{ $isManual ? 'Photos from the scene' : 'Photos from the reporter' }}</div>
                         <div class="photo-grid">
                             @foreach($photos as $index => $photoPath)
                                 <button type="button" class="photo-tile" data-index="{{ $index }}" aria-label="Open photo {{ $index + 1 }}">

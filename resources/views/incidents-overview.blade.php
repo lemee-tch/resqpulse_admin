@@ -70,6 +70,17 @@
         .badge-declined   { background: #fee2e2; color: #991b1b; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
         .badge-resolved   { background: #d1fae5; color: #065f46; font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 
+        /* Recheck Locations and, on All and Resolved, Add Resolved Report (item 71). */
+        .page-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+        .page-actions form { margin: 0; }
+        .btn-add-report {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #1a3c8f; color: #fff; border: 1.5px solid #1a3c8f; border-radius: 8px;
+            padding: 8px 16px; font-size: .82rem; font-weight: 700; text-decoration: none; white-space: nowrap;
+            transition: background .2s, box-shadow .2s;
+        }
+        .btn-add-report:hover, .btn-add-report:focus-visible { background: #0d2e7a; color: #fff; box-shadow: 0 4px 12px rgba(26,60,143,.25); }
+
         .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
         .empty-state i { font-size: 2.2rem; color: #9ca3af; margin-bottom: 10px; display: block; }
 
@@ -110,7 +121,7 @@
             </div>
         @endif
 
-        <div style="margin-bottom:16px;">
+        <div class="page-actions">
             <form action="{{ route('incidents.recheck-locations') }}" method="POST"
                   onsubmit="return confirm('Re-check locations? Incidents and SOS alerts that show GPS coordinates (Lat/Lng) as their location will show the street and barangay instead, and still-pending ones that name the wrong barangay get the right one from the official barangay borders. Still-pending ones are also checked again for being outside Rosales. Addresses typed by residents are not changed.');">
                 @csrf
@@ -118,6 +129,12 @@
                     <i class="bi bi-arrow-repeat"></i> Recheck Locations
                 </button>
             </form>
+            @if($status === null || $status === 'resolved')
+                {{-- An incident MDRRMO handled outside the app, with its photos (item 71). --}}
+                <a href="{{ route('incident.manual.create', ['from' => 'overview']) }}" class="btn-add-report" title="Add an incident that was handled outside the app">
+                    <i class="bi bi-plus-lg"></i> Add Resolved Report
+                </a>
+            @endif
         </div>
 
         <div class="status-tabs">

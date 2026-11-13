@@ -316,10 +316,18 @@ class IncidentReportService
         $report = $incident->report_data;
         $report['team'] = $this->currentTeam($incident);
 
+        // One photo prints big, as before; several print two to a row,
+        // a little smaller (item 71).
+        $photos = $this->reportPhotos($incident);
+        $photoSrcs = array_values(array_filter(array_map(
+            fn (string $path) => $this->photoDataUri($path, count($photos) > 1 ? 800 : 1000),
+            $photos
+        )));
+
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('incident-report-pdf', [
             'incident' => $incident,
             'report'   => $report,
-            'photoSrc' => $this->photoDataUri($incident->resolution_photo_path),
+            'photoSrcs' => $photoSrcs,
             'logoLeft' => $this->imageDataUri(public_path('images/logo_mdrrmo.png')),
             'logoRight' => $this->imageDataUri(public_path('images/logo_rosales.png')),
         ])->setPaper('a4');
@@ -337,8 +345,31 @@ class IncidentReportService
         return "data:{$mime};base64," . base64_encode(file_get_contents($file));
     }
 
-    /** Resolution photo → data URI, downscaled so big phone photos don't exhaust PDF memory. */
-    private function photoDataUri(?string $relativePath): ?string
+    /**
+     * The photos printed on the report (public-disk paths): the team's
+     * photo, and for an incident MDRRMO added by hand, the photos added
+     * with it (item 71: up to 10; before, one).
+     */
+    public function reportPhotos(Incident $incident): array
+    {
+        $paths = [];
+        if ($incident->resolution_photo_path) {
+            $paths[] = $incident->resolution_photo_path;
+        }
+        if ($incident->source === 'manual' && $incident->photo_path) {
+            $decoded = json_decode($incident->photo_path, true);
+            foreach (is_array($decoded) ? $decoded : [$incident->photo_path] as $path) {
+                if (is_string($path) && $path !== '') {
+                    $paths[] = $path;
+                }
+            }
+        }
+
+        return array_slice(array_values(array_unique($paths)), 0, 10);
+    }
+
+    /** A photo → data URI, downscaled so big phone photos don't exhaust PDF memory. */
+    private function photoDataUri(?string $relativePath, int $max = 1000): ?string
     {
         if (! $relativePath || ! Storage::disk('public')->exists($relativePath)) return null;
 
@@ -347,7 +378,6 @@ class IncidentReportService
 
         if (function_exists('imagecreatefromstring') && ($img = @imagecreatefromstring($bytes))) {
             $w = imagesx($img); $h = imagesy($img);
-            $max = 1000;
             if ($w > $max || $h > $max) {
                 $scale = $max / max($w, $h);
                 $resized = imagescale($img, (int) ($w * $scale), (int) ($h * $scale));

@@ -1010,15 +1010,56 @@ class IncidentController extends Controller
         return back()->with('success', 'Report sent back to the responders. It comes back to For Review when they send it again.');
     }
 
+    /** Photos on one Add Resolved Report (item 71). */
+    public const MANUAL_PHOTOS_MAX = 10;
+
     /**
      * Resolved → "Add Resolved Report": the form for an incident MDRRMO
      * handled outside the app (a walk-in, a phone call, a radio report…).
+     * Opened from Incidents → Resolved, or from All Incidents (?from=overview,
+     * item 71), which its Back and Cancel links go back to.
      */
-    public function createManual()
+    public function createManual(Request $request)
     {
         return view('incident-manual-report', [
             'barangays' => array_keys(BarangayLocationService::allCoordinates()),
+            'photosMax' => self::MANUAL_PHOTOS_MAX,
+            'photoLimits' => self::photoUploadLimits(),
+            'backUrl'   => $request->query('from') === 'overview'
+                ? route('incidents.overview', ['status' => 'resolved'])
+                : route('incident', ['tab' => 'resolved']),
+            'backLabel' => $request->query('from') === 'overview' ? 'Back to All Incidents' : 'Back to Incidents',
         ]);
+    }
+
+    /**
+     * What this server's PHP takes in one save, in bytes (item 71), so the
+     * form keeps the photos within it: one photo up to upload_max_filesize
+     * (and the 8 MB rule), all of them together up to post_max_size less
+     * room for the rest of the form. Sending more than post_max_size would
+     * lose the whole form. 0 = no limit.
+     */
+    public static function photoUploadLimits(): array
+    {
+        $bytes = function (string $key): int {
+            $value = trim((string) ini_get($key));
+            $number = (float) $value;
+
+            return (int) match (strtolower(substr($value, -1))) {
+                'g' => $number * 1024 ** 3,
+                'm' => $number * 1024 ** 2,
+                'k' => $number * 1024,
+                default => $number,
+            };
+        };
+        $rule = 8192 * 1024; // photos.* max:8192
+        $file = $bytes('upload_max_filesize');
+        $post = $bytes('post_max_size');
+
+        return [
+            'file'  => $file > 0 ? min($file, $rule) : $rule,
+            'total' => $post > 0 ? max(1024 * 1024, $post - 256 * 1024) : 0,
+        ];
     }
 
     /**
@@ -1029,6 +1070,11 @@ class IncidentController extends Controller
      * It's dated when it happened (created_at), so the Dashboard and
      * Reports & Analytics count it on the right day. No one is notified
      * and nothing is sent to the responders — it's a record.
+     *
+     * Item 71: up to MANUAL_PHOTOS_MAX photos (was one). They're kept like a
+     * resident's report photos (photo_path, incident_photos on the public
+     * disk), shown on its page as "Photos from the scene" and printed on the
+     * PDF. The form makes big photos smaller before sending them.
      */
     public function storeManual(Request $request, IncidentReportService $reports)
     {
@@ -1071,7 +1117,8 @@ class IncidentController extends Controller
             'team'            => ['nullable', 'array', 'max:20'],
             'team.*.name'     => ['nullable', 'string', 'max:120'],
             'team.*.agency'   => ['nullable', 'string', 'max:160'],
-            'photo'           => ['nullable', 'image', 'max:5120'],
+            'photos'          => ['nullable', 'array', 'max:' . self::MANUAL_PHOTOS_MAX],
+            'photos.*'        => ['file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
         ], [
             'emergency_type.required' => 'Choose the type of incident.',
             'other_type.required_if'  => 'Type what kind of incident it was.',
@@ -1087,8 +1134,12 @@ class IncidentController extends Controller
             'reporter_mobile.regex'   => 'Enter a valid contact number, e.g. 09171234567.',
             'narrative.required'      => 'Describe what happened (Details / Narrative).',
             'actions_taken.required'  => 'Write the actions taken.',
-            'photo.image'             => 'The photo must be an image (JPG or PNG).',
-            'photo.max'               => 'The photo must be 5 MB or smaller.',
+            'photos.max'              => 'Add up to ' . self::MANUAL_PHOTOS_MAX . ' photos.',
+            'photos.*.uploaded'       => "A photo couldn't be uploaded — it may be too big. Try a smaller one.",
+            'photos.*.file'           => "A photo couldn't be uploaded — it may be too big. Try a smaller one.",
+            'photos.*.image'          => 'Each photo must be an image (JPG, PNG or WebP).',
+            'photos.*.mimes'          => 'Each photo must be an image (JPG, PNG or WebP).',
+            'photos.*.max'            => 'Each photo must be 8 MB or smaller.',
         ]);
 
         $admin    = auth('web')->user();
@@ -1100,9 +1151,11 @@ class IncidentController extends Controller
         $occurred = Carbon::parse($validated['occurred_at']);
         $resolved = Carbon::parse($validated['resolved_at']);
 
-        $photoPath = $request->hasFile('photo')
-            ? $request->file('photo')->store('incident_resolution_photos', 'public')
-            : null;
+        // Kept like a resident's report photos (item 71).
+        $photoPaths = [];
+        foreach ((array) $request->file('photos', []) as $file) {
+            $photoPaths[] = $file->store('incident_photos', 'public');
+        }
 
         $incident = new Incident([
             'citizen_id'            => null,
@@ -1111,12 +1164,12 @@ class IncidentController extends Controller
             'latitude'              => null,
             'longitude'             => null,
             'description'           => $validated['narrative'],
+            'photo_path'            => $photoPaths ? json_encode($photoPaths) : null,
             'status'                => 'resolved',
             'priority'              => $validated['priority'],
             'needs_review'          => false,
             'reviewed_at'           => now(),
             'resolution_notes'      => $validated['narrative'],
-            'resolution_photo_path' => $photoPath,
             'resolved_at'           => $resolved,
             'resolved_by'           => $admin?->id,
             'source'                => 'manual',
@@ -1152,9 +1205,11 @@ class IncidentController extends Controller
         $incident->update(['report_data' => $report]);
         $this->rebuildReportPdf($incident, $reports);
 
+        $photoCount = count($photoPaths);
         AuditLogService::log(
             'created',
-            "Added a resolved {$this->describeIncident($incident)} — reported to MDRRMO via " . strtolower($validated['reported_via']) . '.',
+            "Added a resolved {$this->describeIncident($incident)} — reported to MDRRMO via " . strtolower($validated['reported_via'])
+                . ($photoCount ? ', with ' . $photoCount . ' ' . ($photoCount === 1 ? 'photo' : 'photos') : '') . '.',
             $incident
         );
 
