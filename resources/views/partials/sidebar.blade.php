@@ -123,3 +123,7 @@
 {{-- Outside the <aside>: on phones the menu slides away (a transform),
      which would carry the notices with it. --}}
 @include('partials.report-alert')
+
+{{-- Phones and tablets: the bottom tab bar, the menu as a drawer, tables
+     that fit the screen (item 70). --}}
+@include('partials.responsive')
