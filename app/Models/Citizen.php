@@ -96,14 +96,27 @@ class Citizen extends Authenticatable
     }
 
     /**
-     * Signed up with "Mobile Number": no email — the mobile number is how
-     * they log in, get codes and reset their password. Residents who signed
-     * up with Email log in with the email; their mobile number is there so
-     * MDRRMO can call them.
+     * No email: the mobile number is how they log in, get codes and reset
+     * their password. Item 69: every resident signs up with a mobile
+     * number, and the email is optional; one with an email can log in
+     * with either.
      */
     public function isMobileAccount(): bool
     {
         return trim((string) $this->email) === '';
+    }
+
+    /**
+     * Notices for the resident (the ID was rejected) go by text, not
+     * email, when their number was confirmed with a code or their email
+     * wasn't (item 69). An email typed at sign-up isn't confirmed until
+     * they verify it in Personal Information, and may be mistyped.
+     */
+    public function prefersText(): bool
+    {
+        return $this->isMobileAccount()
+            || $this->mobile_verified_at !== null
+            || $this->email_verified_at === null;
     }
 
     /**

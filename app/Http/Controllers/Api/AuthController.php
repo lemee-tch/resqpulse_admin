@@ -30,9 +30,10 @@ class AuthController extends Controller
     private const MAX_WRONG_CODES = 5;
 
     /**
-     * GET /api/verification-options — what Create Account step 3 can
-     * offer. The app enables "Mobile Number" only when sms is true, i.e.
-     * an SMS gateway is set up in .env (see SmsService).
+     * GET /api/verification-options — whether codes can be texted right
+     * now (an SMS gateway set up in .env and not paused, see SmsService).
+     * When sms is false, Create Account (item 69) asks for the email, since
+     * the code can only go there.
      */
     public function verificationOptions(SmsService $sms)
     {
@@ -45,18 +46,24 @@ class AuthController extends Controller
     /**
      * Creates the account and sends the 6-digit code.
      *
-     * Two kinds of account, picked on Create Account step 3:
-     *   Email          email + mobile number (so MDRRMO can call). Logs in
-     *                  with the email; the code goes by email.
-     *   Mobile Number  mobile number only, no email (verify_via=sms and no
-     *                  email sent). Logs in with the mobile number; the code
-     *                  is texted. Needs texting to be on (503 otherwise).
+     * Item 69 — one sign-up form, no choosing between Email and Mobile
+     * Number any more:
+     *   mobile  required. A Philippine mobile number, saved as 09XXXXXXXXX
+     *           however it was typed. The resident logs in with it, and
+     *           MDRRMO calls it during an emergency.
+     *   email   optional. A resident who adds one can log in with it too.
      *
-     * App builds from before mobile accounts send verify_via=sms together
-     * with an email: that's an email account whose code is texted, and if
-     * the text can't be sent the code goes by email instead. A mobile
-     * account has no email to fall back to — if its text fails, the reply
-     * says code_sent=false and "Resend code" tries again.
+     * The code is texted to the mobile number. When the text can't be sent
+     * (texting off or paused, the day's limit reached, the gateway refused
+     * it) the code goes to the email instead, if there is one. With no email
+     * and no texting, no account is made: 503, "add your email or try again
+     * later". If texting looked available but the text then failed, the
+     * account is kept and the reply says code_sent=false; "Resend code"
+     * tries again.
+     *
+     * verify_via, sent by app builds that had the Email / Mobile Number
+     * choice, is ignored: the reply says where the code went, and those
+     * builds show the code entry for that.
      *
      * The reply says where the code went (verify_via) and whether it was
      * sent (code_sent); the app shows the code entry for that.
@@ -74,13 +81,18 @@ class AuthController extends Controller
      */
     public function register(Request $request, SmsService $sms)
     {
-        $wantsSms      = $request->input('verify_via') === 'sms';
-        $mobileAccount = $wantsSms && $this->inputString($request, 'email') === '';
+        // "0917 123 4567", "+63 917…" → "09171234567", so the number is
+        // checked and saved the same way however it was typed.
+        $this->normalizeMobileInputs($request, ['mobile', 'previous_mobile']);
 
-        // A mobile account gets its code only by text.
-        if ($mobileAccount && ! $sms->isAvailable()) {
+        $hasEmail = $this->inputString($request, 'email') !== '';
+        $canText  = $sms->isAvailable();
+
+        // The code can't be texted right now, and there's no email for it.
+        if (! $canText && ! $hasEmail) {
             return response()->json([
-                'message' => 'Signing up with a mobile number isn\'t available right now. Please choose Email instead.',
+                'message' => 'We can\'t text your code right now. Add your email to get the code there instead, or try again later.',
+                'needs_email' => true,
             ], 503);
         }
 
@@ -93,25 +105,22 @@ class AuthController extends Controller
         [$replaceable, $waiting] = $this->unfinishedSignups($request);
         $replaceIds = $replaceable->pluck('id')->all();
 
-        $useSms = $wantsSms && $sms->isAvailable();
-
         $validator = Validator::make($request->all(), [
             'first_name'   => ['required', 'string', 'max:255'],
             'middle_name'  => ['nullable', 'string', 'max:255'],
             'last_name'    => ['required', 'string', 'max:255'],
             'suffix'       => ['nullable', 'string', 'max:20'],
-            // Unique, except for unfinished sign-ups this one replaces.
-            // When the code is texted, it must also be a number we can text.
-            'mobile'       => array_values(array_filter([
+            // Required (item 69): a Philippine mobile number we can text,
+            // even when the code goes by email this time. Unique, except
+            // for unfinished sign-ups this one replaces.
+            'mobile'       => [
                 'required',
                 'string',
+                $this->textableNumberRule(),
                 Rule::unique('citizens', 'mobile')->whereNotIn('id', $replaceIds),
-                $useSms ? $this->textableNumberRule() : null,
-            ])),
-            // Not asked for a mobile account (it logs in with the number).
-            'email'        => $mobileAccount
-                ? ['nullable']
-                : ['required', 'email', Rule::unique('citizens', 'email')->whereNotIn('id', $replaceIds)],
+            ],
+            // Optional (item 69). Unique when given.
+            'email'        => ['nullable', 'string', 'email', 'max:255', Rule::unique('citizens', 'email')->whereNotIn('id', $replaceIds)],
             // Was min:6 with no complexity requirement — now at least 8
             // characters with a mix of upper/lower case and a number.
             // Illuminate\Validation\Rules\Password ships with Laravel,
@@ -130,7 +139,9 @@ class AuthController extends Controller
             'consent'         => ['accepted'],
             'consent_version' => ['nullable', 'string', 'max:20'],
         ], [
+            'mobile.required' => 'Please enter your mobile number. You\'ll log in with it, and we\'ll text your code to it.',
             'mobile.unique' => $this->takenMessage($waiting, 'mobile', $this->inputString($request, 'mobile')),
+            'email.email'   => 'Enter a valid email address, or leave it blank.',
             'email.unique'  => $this->takenMessage($waiting, 'email', $this->inputString($request, 'email')),
             'consent.accepted' => 'Please agree to the Terms and Conditions and the Privacy Policy to create an account. If the app has no box for it, update the app.',
         ]);
@@ -160,7 +171,8 @@ class AuthController extends Controller
         ])->filter(fn ($part) => filled($part))->implode(' ');
 
         $otp = (string) random_int(100000, 999999);
-        $via = $useSms ? 'sms' : 'email';
+        // Texted first; by email only when texts can't be sent right now.
+        $via = $canText ? 'sms' : 'email';
 
         // The documents' version the app showed (item 64); this server's
         // version if the app didn't say.
@@ -169,7 +181,7 @@ class AuthController extends Controller
         try {
             // Removing the unfinished sign-up(s) and saving the new one
             // happen together: if saving fails, the old one is kept.
-            $citizen = DB::transaction(function () use ($request, $replaceable, $fullName, $validIdPath, $otp, $via, $mobileAccount, $consentVersion) {
+            $citizen = DB::transaction(function () use ($request, $replaceable, $fullName, $validIdPath, $otp, $via, $hasEmail, $consentVersion) {
                 foreach ($replaceable as $old) {
                     $old->delete();
                 }
@@ -181,7 +193,8 @@ class AuthController extends Controller
                     'suffix'        => $request->suffix,
                     'full_name'     => $fullName,
                     'mobile'        => $request->mobile,
-                    'email'         => $mobileAccount ? null : $request->email,
+                    // Optional (item 69): no email is saved as none.
+                    'email'         => $hasEmail ? $this->inputString($request, 'email') : null,
                     'password'      => Hash::make($request->password),
                     'municipality'  => $request->municipality,
                     'barangay'      => $request->barangay,
@@ -206,7 +219,8 @@ class AuthController extends Controller
             $this->deleteIdPhoto($old->valid_id_path);
         }
 
-        $delivery = $this->sendCode($citizen, $otp, $via, $sms, fallBackToEmail: ! $mobileAccount);
+        // A text that fails goes by email instead, when there is one.
+        $delivery = $this->sendCode($citizen, $otp, $via, $sms, fallBackToEmail: $hasEmail);
 
         // Where the code really went, and which code (see SmsService).
         $citizen->update([
@@ -247,11 +261,8 @@ class AuthController extends Controller
             $delivery['via'] === 'sms' => $isNew
                 ? 'Registration successful. We texted a verification code to your mobile number.'
                 : 'Your sign-up was updated. We texted a new verification code to your mobile number.',
-            $wantsSms =>
+            default =>
                 'We couldn\'t text your mobile number right now, so we sent the code to your email instead.',
-            default => $isNew
-                ? 'Registration successful. Please check your email for a verification code.'
-                : 'Your sign-up was updated. Please check your email for a new verification code.',
         };
 
         // No token yet — the citizen must enter the code before they can log in.
@@ -610,6 +621,22 @@ class AuthController extends Controller
     }
 
     /**
+     * Rewrites these fields as 09XXXXXXXXX when they hold a Philippine
+     * mobile number however it was typed (+63, spaces, dashes). Anything
+     * else is left as it is, for the validation to refuse.
+     */
+    private function normalizeMobileInputs(Request $request, array $keys): void
+    {
+        foreach ($keys as $key) {
+            $number = SmsService::normalizeNumber($this->inputString($request, $key)); // 639XXXXXXXXX
+
+            if ($number !== null) {
+                $request->merge([$key => '0' . substr($number, 2)]);
+            }
+        }
+    }
+
+    /**
      * Deletes an ID photo. New ones are on the private 'local' disk; old
      * ones may still be on 'public' (see the note in register()).
      */
@@ -696,8 +723,10 @@ class AuthController extends Controller
      * Sends a new sign-up code.
      *
      *   email given   emails it — or texts it with verify_via=sms (the login
-     *                 screen's "Verify Your Email" page sends no verify_via)
-     *   mobile given  texts it (mobile accounts have no email)
+     *                 screen's "Verify Your Email" page sends no verify_via).
+     *                 Create Account's "Email me the code instead" (item 69)
+     *                 sends the email with verify_via=email.
+     *   mobile given  texts it
      *
      * The new code is saved only once it was sent, so a text that fails
      * leaves the previous code working.
@@ -793,10 +822,10 @@ class AuthController extends Controller
 
     /**
      * Logs in with the email OR the mobile number (field "login"; older
-     * app builds send "email"). Mobile accounts have no email, so they
-     * always use the number.
+     * app builds send "email"). Every account has a mobile number; the
+     * email is optional (item 69).
      */
-    public function login(Request $request)
+    public function login(Request $request, SmsService $sms)
     {
         $login = $this->inputString($request, 'login');
         if ($login === '') {
@@ -849,16 +878,19 @@ class AuthController extends Controller
 
         // Finished sign-up = the code was entered, by email or by text.
         if (! $citizen->hasVerifiedContact()) {
-            $mobileAccount = $citizen->isMobileAccount();
+            // Item 69: by text to the mobile number, like the sign-up; by
+            // email only when texts can't be sent and there is an email.
+            $bySms = $citizen->isMobileAccount()
+                || ($sms->isAvailable() && SmsService::normalizeNumber((string) $citizen->mobile) !== null);
 
             return response()->json([
-                'message'            => $mobileAccount
+                'message'            => $bySms
                     ? 'Please verify your mobile number before logging in.'
                     : 'Please verify your email before logging in.',
                 'needs_verification' => true,
                 'email'              => $citizen->email,
-                'mobile'             => $mobileAccount ? $citizen->mobile : null,
-                'verify_via'         => $mobileAccount ? 'sms' : 'email',
+                'mobile'             => $bySms ? $citizen->mobile : null,
+                'verify_via'         => $bySms ? 'sms' : 'email',
             ], 403);
         }
 
@@ -978,7 +1010,15 @@ class AuthController extends Controller
     /**
      * Sends a 6-digit password-reset code.
      *
-     *   via=email (default)  emails it, as before.
+     *   via=email (default)  emails it to an account whose email was
+     *                        confirmed with a code (email_verified_at).
+     *                        Item 69: the email is optional at sign-up and
+     *                        the code is texted, so an email typed there is
+     *                        only confirmed once the resident verifies it in
+     *                        Personal Information. Until then, a stranger
+     *                        whose email was mistyped into someone's account
+     *                        would get the code — the same reason as for
+     *                        numbers below.
      *   via=sms + mobile     texts it to an account that logs in with that
      *                        mobile number — one whose number was confirmed
      *                        with a texted code (mobile_verified_at). Numbers
@@ -1026,7 +1066,8 @@ class AuthController extends Controller
 
         // Don't reveal whether the email exists — same response either way.
         // A blocked account (item 54) gets no code: it can't log in anyway.
-        if (! $citizen || $citizen->isBlocked()) {
+        // Nor does an email that was never confirmed (item 69).
+        if (! $citizen || $citizen->isBlocked() || $citizen->email_verified_at === null) {
             return response()->json(['message' => 'If that email is registered, a code has been sent.']);
         }
 

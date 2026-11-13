@@ -57,9 +57,11 @@ class CitizenVerificationController extends Controller
     }
 
     /**
-     * Rejects the ID: the resident gets the reason (email, or a text for a
-     * resident who signed up with a mobile number) and the account is
-     * removed.
+     * Rejects the ID: the resident gets the reason and the account is
+     * removed. The reason is texted when their number was confirmed with a
+     * code or they have no confirmed email (item 69, Citizen::prefersText()),
+     * and emailed otherwise. A text that can't be sent goes by email when
+     * there is one.
      *
      * The reason is one from the list, or "Other" with the reason the admin
      * typed in rejection_reason_other (panel revision: Reject Action > add
@@ -98,13 +100,14 @@ class CitizenVerificationController extends Controller
         $citizen->tokens()->delete();
 
         // Send the notification BEFORE deleting — once gone, there's no
-        // model left to pull the name/email from. A resident who signed up
-        // with a mobile number has no email, so they get a text instead.
-        if (! $citizen->isMobileAccount()) {
+        // model left to pull the name/email from. By text to a confirmed
+        // number (item 69), otherwise by email; a text that can't be sent
+        // goes by email when there is one.
+        if ($citizen->prefersText() && $sms->sendMessage((string) $mobile, $this->rejectionText($reason))) {
+            $notified = "A text message was sent to {$mobile}.";
+        } elseif (! $citizen->isMobileAccount()) {
             Mail::to($email)->send(new CitizenRejected($name, $reason));
             $notified = "A notification was sent to {$email}.";
-        } elseif ($sms->sendMessage((string) $mobile, $this->rejectionText($reason))) {
-            $notified = "A text message was sent to {$mobile}.";
         } else {
             $notified = "They have no email and the text to {$mobile} couldn't be sent, so they weren't notified.";
         }

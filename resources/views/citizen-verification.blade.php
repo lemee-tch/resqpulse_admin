@@ -668,7 +668,7 @@
                                 <p class="reject-note">
                                     <i class="bi bi-info-circle"></i>
                                     The account is removed, and the reason is sent to the resident
-                                    {{ $citizen->isMobileAccount() ? 'by text message' : 'by email' }}.
+                                    {{ $citizen->prefersText() ? 'by text message' : 'by email' }}.
                                 </p>
                             </div>
                             <div class="modal-footer border-0 pt-0">
